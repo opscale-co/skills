@@ -1,0 +1,109 @@
+name: Auto Check
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+jobs:
+  quality-gates:
+    runs-on: ubuntu-latest
+    name: Quality Gates
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --ignore-scripts
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, ctype, fileinfo, json, mbstring, openssl, pdo, pdo_mysql, tokenizer, xml, zip
+          coverage: xdebug
+          tools: composer:v2
+
+      - name: Cache Composer
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+
+      - name: Install PHP dependencies
+        run: composer install --no-progress --no-interaction --optimize-autoloader
+        env:
+          COMPOSER_AUTH: '{"http-basic": {"nova.laravel.com": {"username": "${{ secrets.NOVA_USERNAME }}", "password": "${{ secrets.NOVA_LICENSE_KEY }}"}}}'
+
+      # Gate 1: Code Quality (Duster)
+      - name: Gate 1 - Duster
+        id: duster-check
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Gate 1 - Report
+        if: always()
+        run: |
+          if [[ "${{ steps.duster-check.outcome }}" == "failure" ]]; then
+            echo "❌ Code quality failed — run 'npm run lint' locally"; exit 1
+          else
+            echo "✅ Code quality passed"
+          fi
+
+      # Gate 2: Static Analysis (SonarQube)
+      - name: Gate 2 - SonarQube Scan
+        id: sonar-scan
+        uses: SonarSource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        continue-on-error: true
+
+      - name: Gate 2 - Quality Gate
+        id: sonarqube-check
+        if: steps.sonar-scan.outcome == 'success'
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        continue-on-error: true
+
+      # Gate 3: Tests
+      - name: Gate 3 - Tests with coverage
+        id: phpunit-check
+        run: |
+          if [[ -f "phpunit.xml" ]] || [[ -f "phpunit.xml.dist" ]]; then
+            npm run test:coverage
+          else
+            echo "⚠️ No PHPUnit config found — skipping"
+          fi
+        continue-on-error: true
+
+      - name: Gate 3 - Report
+        if: always()
+        run: |
+          if [[ "${{ steps.phpunit-check.outcome }}" == "failure" ]]; then
+            echo "❌ Tests failed"; exit 1
+          else
+            echo "✅ Tests passed"
+          fi
+
+      # Summary
+      - name: Quality Gates Summary
+        if: always()
+        run: |
+          echo "Gate 1 (Duster):    ${{ steps.duster-check.outcome }}"
+          echo "Gate 2 (SonarQube): ${{ steps.sonarqube-check.outputs.quality-gate-status }}"
+          echo "Gate 3 (Tests):     ${{ steps.phpunit-check.outcome }}"
+          if [[ "${{ steps.duster-check.outcome }}" == "failure" ]] ||
+             [[ "${{ steps.phpunit-check.outcome }}" == "failure" ]]; then
+            exit 1
+          fi

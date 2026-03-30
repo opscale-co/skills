@@ -1,0 +1,93 @@
+name: Deploy App
+
+on:
+  push:
+    branches:
+      - main
+      - next
+      - beta
+      - "*.x"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: jq
+          coverage: none
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Configure Nova authentication
+        env:
+          NOVA_USERNAME: ${{ secrets.NOVA_USERNAME }}
+          NOVA_LICENSE_KEY: ${{ secrets.NOVA_LICENSE_KEY }}
+        run: |
+          composer config http-basic.nova.laravel.com "$NOVA_USERNAME" "$NOVA_LICENSE_KEY"
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+
+      - name: Install Node.js dependencies
+        run: npm ci
+
+      - name: Release with semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          VAPOR_API_TOKEN: ${{ secrets.VAPOR_API_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: npx semantic-release
+
+  update-develop:
+    name: Update Develop Branch
+    needs: [release]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Set up Git configuration
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Merge main to develop
+        run: |
+          if git ls-remote --heads origin develop | grep -q "refs/heads/develop"; then
+            git checkout develop
+            git merge main --no-ff -m "chore: merge main into develop"
+
+            CURRENT_VERSION=$(git describe --tags --abbrev=0 | sed 's/v//')
+            jq --arg version "$CURRENT_VERSION" '.version = $version' composer.json > tmp.json
+            mv tmp.json composer.json
+
+            git add composer.json
+            git commit -m "chore: update develop version to $CURRENT_VERSION" || exit 0
+            git push origin develop
+          else
+            echo "Develop branch does not exist, skipping merge"
+          fi
