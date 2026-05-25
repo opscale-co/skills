@@ -22,13 +22,15 @@ Output is written to `.specify/specs/{NNN}-{module-name}/process.md`.
 
 ---
 
-## Input Requirements
+## Prerequisites — MUST be satisfied (ordered)
 
-Before starting, verify:
-- `.specify/specs/{NNN}-{module-name}/spec.md` exists and passed completeness gate
-- `.specify/specs/{NNN}-{module-name}/data-model.md` exists and passed completeness gate
+| # | Requirement | Check | If missing |
+|---|-------------|-------|-----------|
+| 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init` first. |
+| 2 | `opscale-process` has been run for this module | `.specify/specs/{NNN}-{module-name}/spec.md` exists and PASS | Stop. Run `/opscale-process` first. |
+| 3 | `opscale-dbml` has been run for this module | `.specify/specs/{NNN}-{module-name}/data-model.md` exists and PASS | Stop. Run `/opscale-dbml` first. |
 
-If either is missing, stop and tell the user which skill to run first.
+This skill is **Step 3 (last) of the Plan phase**. The Plan phase is `process → dbml → bpmn` — strictly ordered, no skipping. After this skill passes, the module enters the Generate phase (`domain → ui → logic`).
 
 ---
 
@@ -251,10 +253,30 @@ The script never gets copied to the project.
 
 Only reached after validator exits with `0`.
 
-Write to:
+Write the live process map to:
 ```
 .specify/specs/{NNN}-{module-name}/process.md
 ```
+
+**Also write the frozen initial snapshot — first run only:**
+
+```bash
+# Extract the raw BPMN XML (the ```xml ... ``` fenced section) from the
+# assembled process.md and write it to docs/initial.bpmn — ONLY if the file
+# does not already exist.
+mkdir -p .specify/specs/{NNN}-{module-name}/docs
+[ -f .specify/specs/{NNN}-{module-name}/docs/initial.bpmn ] \
+  || cp /tmp/.bpmn-extracted.bpmn .specify/specs/{NNN}-{module-name}/docs/initial.bpmn
+```
+
+**Two artifacts, two purposes:**
+- `process.md` — the **live** process map. Evolves with every iteration that
+  changes the flow; downstream skills (logic, outputs, test) read from here.
+- `docs/initial.bpmn` — the **frozen** BPMN snapshot captured the very first
+  time this skill runs. Pure XML, no markdown wrapper. Never modified by
+  future iterations — used to diff the flow against its original design.
+
+If `docs/initial.bpmn` already exists, leave it alone.
 
 Deliver summary:
 
@@ -280,6 +302,8 @@ Then verify the semantic gate:
 BPMN COMPLETENESS GATE
 ──────────────────────────────────────────────────────
 [ ] Script exited with code 0
+[ ] process.md written
+[ ] docs/initial.bpmn written on first run (or preserved if already present)
 [ ] Only serviceTask, businessRuleTask, sendTask used — no scriptTask
 [ ] Every crud serviceTask entity exists in data-model.md
 [ ] Every crud serviceTask has valid action (create|read|update|delete)

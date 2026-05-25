@@ -23,23 +23,37 @@ Output is written to `.specify/specs/{NNN}-{module-name}/data-model.md`.
 
 ---
 
-## Input Requirements
+## Prerequisites — MUST be satisfied (ordered)
 
-Before starting, verify:
-- `.specify/specs/{NNN}-{module-name}/spec.md` exists
-- The spec has passed its completeness gate (PASS status)
-- The Bounded Context section is complete (subdomain slug, responsibility, dependencies)
+| # | Requirement | Check | If missing |
+|---|-------------|-------|-----------|
+| 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init` first. |
+| 2 | `opscale-process` has been run for this module | `.specify/specs/{NNN}-{module-name}/spec.md` exists and passed its completeness gate (PASS) | Stop. Run `/opscale-process` first. |
+| 3 | The spec's Bounded Context section is complete (subdomain slug, responsibility, dependencies) | Read spec.md | Return to `/opscale-process` to complete it. |
 
-If the spec does not exist or has not passed the gate, stop and tell the user to run
-`opscale-process` first.
+This skill is **Step 2 of the Plan phase** and must run **AFTER `opscale-process`** and **BEFORE `opscale-bpmn`**. No skipping, no parallel runs with sibling Plan skills.
 
 ---
 
 ## Output Location
 
 ```
-.specify/specs/{NNN}-{module-name}/data-model.md
+.specify/specs/{NNN}-{module-name}/
+├── data-model.md           ← validated DBML wrapped in narrative (this skill's primary output)
+└── docs/
+    └── initial.dbml        ← raw DBML snapshot at module creation — frozen
 ```
+
+**Two artifacts, two purposes:**
+- `data-model.md` — the **live** DBML for the module. It evolves with every
+  iteration; downstream skills (domain, ui, logic) read from here.
+- `docs/initial.dbml` — the **frozen** DBML snapshot captured the very first
+  time this skill runs for the module. Never modified by future iterations.
+  Used to diff against the live model and answer "what has the data model
+  drifted to since launch?".
+
+If `docs/initial.dbml` already exists, **do not overwrite it** — it is the
+historical baseline. Only write it on first run.
 
 ---
 
@@ -248,6 +262,21 @@ Write the validated DBML to the project:
 .specify/specs/{NNN}-{module-name}/data-model.md
 ```
 
+**Also write the frozen initial snapshot — first run only:**
+
+```bash
+# Extract the raw DBML block (the ```dbml ... ``` fenced section) from the
+# assembled data-model.md and write it to docs/initial.dbml — ONLY if the file
+# does not already exist.
+mkdir -p .specify/specs/{NNN}-{module-name}/docs
+[ -f .specify/specs/{NNN}-{module-name}/docs/initial.dbml ] \
+  || cp /tmp/.dbml-extracted.dbml .specify/specs/{NNN}-{module-name}/docs/initial.dbml
+```
+
+`docs/initial.dbml` contains only the raw DBML — no markdown wrapper, no narrative,
+no Data Dictionary. This is the frozen baseline the module launched with.
+If the file already exists from a previous run, leave it alone.
+
 The validation script is NOT included in this output. It remains in the skill bundle only.
 
 Then verify the full semantic gate (things the script cannot check automatically):
@@ -256,6 +285,8 @@ Then verify the full semantic gate (things the script cannot check automatically
 DBML COMPLETENESS GATE
 ──────────────────────────────────────────────────────
 [ ] Script exited with code 0 (syntax + quality pass)
+[ ] data-model.md written
+[ ] docs/initial.dbml written on first run (or preserved if already present)
 [ ] Every Entity artifact from spec.md has a corresponding DBML table
 [ ] No technical, UI, or config entities present
 [ ] tenant_id present on every table if TENANT_AWARE is yes

@@ -29,6 +29,36 @@ development lifecycle.
 
 ## Prerequisites
 
+### Project context — MUST be a Laravel/PHP project
+
+`opscale-init` **assumes the current working directory is already an existing
+PHP/Laravel project**. It does not bootstrap a Laravel app from scratch. Before
+doing anything else, verify:
+
+```bash
+# Required: composer.json must exist
+test -f composer.json || echo "MISSING — not a PHP project"
+
+# Strongly preferred: the project should be Laravel-based
+# (laravel/framework for apps, or laravel/nova/orchestra/testbench for packages)
+grep -qE '"laravel/(framework|nova)"|"orchestra/testbench"' composer.json \
+  || echo "WARNING — Laravel/Nova not detected in composer.json"
+
+# Required: PHP available
+php --version
+```
+
+If `composer.json` is missing, **stop and refuse to proceed** — instruct the
+user to first create the Laravel project (`composer create-project laravel/laravel .`
+or `composer init` for a package) and then re-run `/opscale-init`.
+
+If Laravel is not detected but `composer.json` exists, ask the user to confirm
+the project type (`app` / `module` / `package` / `library`) and proceed only if
+they explicitly confirm — `opscale-*` skills only produce useful output in
+Laravel contexts.
+
+### Tooling
+
 Before running, verify the following are installed in the environment:
 
 ```bash
@@ -245,7 +275,45 @@ The following commands must be available:
 
 ---
 
-### Step 6 — Map the Opscale sequence to spec-kit commands
+### Step 6 — Establish the per-module `docs/` convention
+
+Every module folder under `.specify/specs/{NNN}-{module-name}/` MUST contain a
+`docs/` subfolder that captures the human-readable history of the module:
+
+```
+.specify/specs/{NNN}-{module-name}/
+├── spec.md             ← structured business spec (live)
+├── data-model.md       ← DBML wrapped in narrative (live)
+├── process.md          ← BPMN process map (live)
+├── plan.md             ← tech decisions (live)
+├── tasks.md            ← ordered task breakdown (live)
+└── docs/               ← human-readable history (append-only narrative)
+    ├── process.md      ← original narrative description from opscale-process
+    ├── initial.dbml    ← frozen DBML snapshot from first run of opscale-dbml
+    ├── initial.bpmn    ← frozen BPMN snapshot from first run of opscale-bpmn
+    └── iterations/
+        └── YYYY-MM-DD-<slug>.md   ← one file per iteration, date-prefixed
+```
+
+**Live vs. frozen artifacts:**
+
+| Folder | Lifecycle | Read by |
+|--------|-----------|---------|
+| `.specify/specs/{NNN}/*.md` (top level) | **Live** — updated by every skill and iteration | Downstream skills (domain, ui, logic, test) |
+| `.specify/specs/{NNN}/docs/` | **Frozen + append-only** — initial snapshots never change; iterations are written once and never edited | Humans onboarding to the module |
+
+**Iteration file naming:** `YYYY-MM-DD-<short-kebab-slug>.md`. The date is
+always absolute (resolve "today" to a concrete ISO date). `opscale-iterate`
+writes these files; no other skill writes into `docs/iterations/`.
+
+When initializing the project, do NOT pre-create empty `docs/` folders — they
+appear naturally the first time `opscale-process`, `opscale-dbml`,
+`opscale-bpmn`, or `opscale-iterate` run for a given module. This step just
+documents the convention so every downstream skill follows it.
+
+---
+
+### Step 7 — Map the Opscale sequence to spec-kit commands
 
 Explain to the user how the Opscale skill sequence maps to spec-kit's workflow:
 
@@ -277,7 +345,7 @@ Each module gets its own numbered folder: `001-membership`, `002-kyc`, `003-loan
 
 ---
 
-### Step 7 — Existing project assessment (existing projects only)
+### Step 8 — Existing project assessment (existing projects only)
 
 When running on an existing project that already has code, perform an assessment
 before proceeding to the next skill:
@@ -340,8 +408,9 @@ After completing this skill, the project contains:
 - ✅ `.specify/memory/constitution.md` with Opscale principles
 - ✅ User understands the module folder naming convention
 - ✅ User knows which Opscale skill maps to which spec-kit artifact
+- ✅ Per-module `docs/` convention established (process narrative, frozen DBML/BPMN snapshots, dated iteration log)
 - ✅ (Existing projects) Entry point identified based on current code state
 
 The next step depends on project state:
 - **New projects**: `opscale-process` for the first module
-- **Existing projects**: The step identified in the assessment (Step 7)
+- **Existing projects**: The step identified in the assessment (Step 8)

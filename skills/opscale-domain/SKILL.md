@@ -24,14 +24,17 @@ Output files are written to the package source directory and listed in
 
 ---
 
-## Input Requirements
+## Prerequisites — Plan phase MUST be complete
 
-Before starting, verify:
-- `.specify/specs/{NNN}-{module-name}/data-model.md` exists and passed completeness gate
-- `.specify/specs/{NNN}-{module-name}/spec.md` exists (for business rule context in repositories)
-- Constitution `TENANT_AWARE` value is known
+| # | Requirement | Check | If missing |
+|---|-------------|-------|-----------|
+| 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init` first. |
+| 2 | `opscale-process` has been run | `spec.md` exists and PASS | Stop. Run `/opscale-process`. |
+| 3 | `opscale-dbml` has been run | `data-model.md` exists and PASS | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `process.md` exists and PASS | Stop. Run `/opscale-bpmn`. |
+| 5 | Constitution `TENANT_AWARE` value is readable | Read `.specify/memory/constitution.md` | Fix constitution first. |
 
-If inputs are missing, stop and tell the user which skill to run first.
+This skill is **Step 1 of the Generate phase**. The full prerequisite chain `init → process → dbml → bpmn` must be PASS before this skill runs — partial Plan phase is not acceptable. After this skill, `opscale-ui` is next.
 
 ---
 
@@ -119,66 +122,155 @@ Repository is a **trait**, not a class or interface. It is mixed into the Eloque
 
 ### Phase 1 — Inventory
 
-Read `data-model.md` and present the full generation plan:
+Read `data-model.md` and present the full generation plan. **There is no cap on
+the number of entities, enums, or Value Objects** — generate every element the
+DBML declares, regardless of count. A 3-entity module and a 120-entity module
+are both valid inputs.
 
 ```
 Domain inventory for [Module Name]:
 
-Enums (generated first):
+Enums (generated first): [N]
   - [EnumName]: [value1, value2, ...]
+  - ... (continue listing every enum — do NOT truncate)
 
-Value Objects:
+Value Objects: [N]
   - [VOName]: columns [col1, col2]
+  - ... (every VO — do NOT truncate)
 
-Migrations + Models (in dependency order):
+Migrations + Models (in dependency order): [N]
   1. [table_a] → [ModelA]  (no FK dependencies)
   2. [table_b] → [ModelB]  (depends on table_a)
+  ... (every entity — do NOT truncate)
 
-Repository traits (mixed into their model):
-  - [ModelA]Repository (trait → used in [ModelA])
-  - [ModelB]Repository (trait → used in [ModelB])
+Repository traits (mixed into their model): [N]
+  - [ModelA]Repository
+  - ... (one per model — do NOT truncate)
+
+Total files to generate: [migrations] + [models] + [enums] + [VOs] + [repository traits]
 
 Confirm before generating?
 ```
 
 Wait for confirmation.
 
+#### Batching for large models
+
+When the inventory exceeds the practical parallel-spawn limit (≈ 20 agents per
+batch), split generation into sequential batches by phase. Within a phase, all
+agents run in parallel — across batches they run sequentially.
+
+| Inventory size | Strategy |
+|----------------|----------|
+| ≤ 20 entities | Single batch per phase — spawn all agents in parallel |
+| 21–60 entities | Split each phase into batches of ~20 (e.g. 3 batches × 20 entities for 60 models) |
+| 60+ entities | Split each phase into batches of ~20; consider running phases in chunks (enums → 20 migrations → 20 models → next 20 migrations → next 20 models …) to bound peak parallelism |
+
+Batching is a **performance** decision, never a **scope** decision — every
+entity in the DBML must be generated. Never drop or defer entities to reduce
+work. If a batch fails, retry the failed agents — do not silently skip.
+
 ---
 
-### Phase 2 — Generate Enums
+### Phase 2 — Drive spec-kit: one task per entity (bundle)
+
+Before generating any code, formalize the domain plan through spec-kit so every
+entity becomes a tracked task. This is what `opscale-test` later binds to (one
+Unit-test task per entity bundle) and what `/speckit.implement` checks against.
+
+**The atomic unit is the entity bundle** — one task per entity that covers
+**all the files generated for that entity**: migration + model + enums used
+exclusively by it + value objects used exclusively by it + repository trait.
+Shared enums and shared VOs (used by multiple entities) get their own small
+task. Do NOT split an entity into a "model task" + "migration task" + "repo
+task" — those always ship together.
+
+**2a. Run `/speckit.plan`** with the domain inventory from Phase 1:
+
+```
+/speckit.plan "Domain layer for {module-name}: [N] entities from data-model.md.
+Generate one task per entity covering its full bundle:
+  - 1 migration in src/Database/Migrations/
+  - 1 Eloquent model in src/Models/
+  - 1 repository trait in src/Models/Repositories/
+  - any enums declared exclusively for that entity in src/Models/Enums/
+  - any value objects declared exclusively for that entity in src/Models/ValueObjects/
+
+Plus separate tasks for shared building blocks:
+  - 1 task per shared Enum (used by ≥2 entities)
+  - 1 task per shared ValueObject (used by ≥2 entities)
+
+Dependency order from DBML FK graph: parents before children."
+```
+
+Confirm `plan.md` with the user.
+
+**2b. Run `/speckit.tasks`** with the bundle contract:
+
+| Task field | Value |
+|------------|-------|
+| Title | `Implement {EntityName}` (for entity bundles) or `Implement {EnumName} enum` / `Implement {VOName} value object` (for shared building blocks) |
+| Description | One sentence from the DBML entity Note |
+| Inputs | DBML table definition, columns, FK targets |
+| Outputs | List of files the bundle produces (migration + model + enums + VOs + repository) |
+| Acceptance | Schema matches DBML; status transitions defined (if status enum); tenant scoping (if TENANT_AWARE) |
+| Depends on | Task IDs of parent entities (FK targets) + shared enum/VO tasks the entity uses |
+
+```
+/speckit.tasks "Generate one task per entity bundle from plan.md, plus one task
+per shared Enum and shared ValueObject. Each entity task lists ALL bundle files
+in its Outputs. Dependency edges follow the FK graph (parent entities first).
+Precede every implementation task with a 'Test {Entity}' task (opscale-test
+fills it later). Do not split an entity into per-file tasks."
+```
+
+**Verify `tasks.md`:**
+
+```
+[ ] One bundle task per entity — count matches the inventory
+[ ] One task per shared Enum and shared ValueObject
+[ ] Each entity task lists migration + model + repository + owned enums + owned VOs in Outputs
+[ ] Each task has a matching 'Test ' task preceding it
+[ ] FK parents appear before children in the dependency edges
+[ ] No entity is split across multiple tasks
+```
+
+If any check fails, regenerate `tasks.md` before continuing.
+
+### Phase 3 — Generate Enums
 
 Generate all enum PHP files completely.
 Enums must exist before models reference them in `$casts`.
 
 ---
 
-### Phase 3 — Generate Value Objects
+### Phase 4 — Generate Value Objects
 
 Generate all VO PHP files completely.
 
 ---
 
-### Phase 4 — Generate Migrations
+### Phase 5 — Generate Migrations
 
 Generate migration files in dependency order (parents before children).
 
 ---
 
-### Phase 5 — Generate Models
+### Phase 6 — Generate Models
 
 Generate all Eloquent model files.
 
 ---
 
-### Phase 6 — Generate Repositories
+### Phase 7 — Generate Repositories
 
 Generate interface first, then implementation — one pair per model.
 
 ---
 
-### Phase 7 — Update plan.md
+### Phase 8 — Update plan.md
 
-Append the generated file list to `.specify/specs/{NNN}-{module-name}/plan.md`.
+Append the generated file list to `.specify/specs/{NNN}-{module-name}/plan.md`, including the `Task ID` from `tasks.md` for each entity bundle so the file → task mapping is traceable.
 
 ---
 
@@ -477,16 +569,18 @@ readonly class [VOName] implements CastsAttributes
 
 ## Domain Rules
 
-1. **Strict traceability** — every class maps to a DBML element. Nothing invented.
-2. **No logic in models** — only `$fillable`, `$casts`, relationships, `$validationRules`.
-3. **Repository is a trait** — mixed into the model, not a separate class. Scopes + boot method only.
-4. **Enum values are Title Cased** — `case InProgress = 'In Progress'`, never `'in_progress'`.
-5. **Status enums** — when the enum maps to a column named `status`, add `canTransitionTo(self $status): bool` with inline `match()`.
-6. **Models use Validatable** — `use Opscale\Validations\Validatable` and `public static $validationRules`.
-7. **@property docblocks** — every model column documented, ULID columns typed as `string`, not `int`.
-8. **ULID everywhere** — `$table->ulid('id')->primary()` in migrations; `HasUlids` trait in models.
-9. **Generate order** — enums → VOs → migrations → models (with repository trait) → repository traits.
-10. **Cross-subdomain = no FK** — logical reference columns get a comment, never `->foreign()`.
-11. **Tenant scoping in scopes** — if TENANT_AWARE, every scope method applies `->where('tenant_id', $tenantId)`.
-12. **Value Objects are immutable** — `readonly class`, constructor validation, no setters.
-13. **`declare(strict_types=1)`** — every PHP file without exception.
+1. **No entity cap — generate every element the DBML declares.** A module with 120 entities is just as valid as one with 3. If the inventory exceeds the parallel-spawn limit, split into sequential batches (see Workflow → Phase 1 → Batching). Never drop, defer, or "summarize" entities to reduce work; never ask the user to trim the DBML to fit a quota.
+2. **One entity = one bundle task in `tasks.md`.** Migration + Model + Repository trait + owned Enums + owned VOs always ship as a single task. Shared Enums and shared VOs are their own small tasks. Never split an entity across multiple tasks; never merge two entities into one task. spec-kit plan + tasks runs BEFORE any generator agent is spawned.
+3. **Strict traceability** — every class maps to a DBML element. Nothing invented.
+4. **No logic in models** — only `$fillable`, `$casts`, relationships, `$validationRules`.
+5. **Repository is a trait** — mixed into the model, not a separate class. Scopes + boot method only.
+6. **Enum values are Title Cased** — `case InProgress = 'In Progress'`, never `'in_progress'`.
+7. **Status enums** — when the enum maps to a column named `status`, add `canTransitionTo(self $status): bool` with inline `match()`.
+8. **Models use Validatable** — `use Opscale\Validations\Validatable` and `public static $validationRules`.
+9. **@property docblocks** — every model column documented, ULID columns typed as `string`, not `int`.
+10. **ULID everywhere** — `$table->ulid('id')->primary()` in migrations; `HasUlids` trait in models.
+11. **Generate order** — enums → VOs → migrations → models (with repository trait) → repository traits.
+12. **Cross-subdomain = no FK** — logical reference columns get a comment, never `->foreign()`.
+13. **Tenant scoping in scopes** — if TENANT_AWARE, every scope method applies `->where('tenant_id', $tenantId)`.
+14. **Value Objects are immutable** — `readonly class`, constructor validation, no setters.
+15. **`declare(strict_types=1)`** — every PHP file without exception.

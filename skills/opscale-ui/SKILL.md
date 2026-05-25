@@ -24,12 +24,18 @@ Output files are written to `src/Nova/` and listed in
 
 ---
 
-## Input Requirements
+## Prerequisites — Plan phase + opscale-domain MUST be complete
 
-Before starting, verify:
-- `data-model.md` exists and passed completeness gate
-- `spec.md` exists (for authorization context and field visibility rules)
-- Domain classes exist (`src/Models/`)
+| # | Requirement | Check | If missing |
+|---|-------------|-------|-----------|
+| 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
+| 2 | `opscale-process` has been run | `spec.md` exists and PASS | Stop. Run `/opscale-process`. |
+| 3 | `opscale-dbml` has been run | `data-model.md` exists and PASS | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `process.md` exists and PASS | Stop. Run `/opscale-bpmn`. |
+| 5 | `opscale-domain` has been run | `src/Models/` contains one model per DBML aggregate root | Stop. Run `/opscale-domain`. |
+| 6 | `tasks.md` entries for all domain bundles marked complete | Check `tasks.md` for unchecked `Implement {Entity}` items | Finish pending domain tasks before starting UI. |
+
+This skill is **Step 2 of the Generate phase**. Order is strict: `domain → ui → logic`. After this skill, `opscale-logic` is next.
 
 ---
 
@@ -47,6 +53,89 @@ src/
 
 One Resource per aggregate root. Child entities (accessed via `HasMany`) do not need
 their own Resource unless they appear as standalone menu items.
+
+---
+
+## Workflow
+
+### Phase 1 — Inventory
+
+Walk `src/Models/` and identify every aggregate root (model not consumed only as a
+HasMany child). Cross-reference with `data-model.md` to confirm. Present the
+inventory and confirm with the user:
+
+```
+Nova UI inventory for [Module Name]:
+
+Aggregate roots ([N]):
+  1. [ModelA]  →  Resource + Repeatable + {ModelA}Fields trait
+  2. [ModelB]  →  Resource + Repeatable + {ModelB}Fields trait
+  ...
+
+Confirm before generating?
+```
+
+### Phase 2 — Drive spec-kit: one task per aggregate (bundle)
+
+Like `opscale-domain`, the UI layer formalizes its plan through spec-kit so each
+aggregate becomes a tracked task. The atomic unit is **the Nova bundle per
+aggregate**: Resource + Repeatable + shared Fields trait, plus any field
+customizations (`Concerns/`).
+
+**2a. Run `/speckit.plan`** with the aggregate list:
+
+```
+/speckit.plan "Nova UI layer for {module-name}: [N] aggregate roots from src/Models/.
+Generate one task per aggregate, each covering its full Nova bundle:
+  - 1 Resource at src/Nova/{ModelName}.php
+  - 1 Repeatable at src/Nova/Repeatables/{ModelName}.php
+  - 1 shared Fields trait at src/Nova/Concerns/{ModelName}Fields.php
+
+Plus separate tasks for cross-aggregate concerns when needed:
+  - 1 task per Nova Menu / Dashboard / shared Filter (only if defined in spec)."
+```
+
+Confirm `plan.md` with the user.
+
+**2b. Run `/speckit.tasks`** with the bundle contract:
+
+| Task field | Value |
+|------------|-------|
+| Title | `Implement {AggregateName} Nova bundle` |
+| Description | "Expose {AggregateName} in the Nova admin panel" |
+| Outputs | `src/Nova/{Name}.php` + `src/Nova/Repeatables/{Name}.php` + `src/Nova/Concerns/{Name}Fields.php` |
+| Acceptance | Resource registered, no `ID` field exposed, FKs use BelongsTo/MorphTo, all labels via `__()`, Tabs used if model has HasOne/HasMany |
+| Depends on | The domain task for the same aggregate (must be complete) |
+
+```
+/speckit.tasks "Generate one task per aggregate Nova bundle from plan.md.
+Each task lists Resource + Repeatable + Fields trait in Outputs. Dependency
+edges link each Nova bundle task to its corresponding domain bundle task.
+Precede every implementation task with a 'Test {Aggregate} Resource' task
+(opscale-test fills it with a Browser smoke test later). Do not split Resource,
+Repeatable, and Fields trait into separate tasks — they always ship together."
+```
+
+**Verify `tasks.md`:**
+
+```
+[ ] One bundle task per aggregate — count matches the inventory
+[ ] Each task lists Resource + Repeatable + Fields trait in Outputs
+[ ] Each task has a matching 'Test ' task preceding it
+[ ] Each task depends_on its domain bundle counterpart
+[ ] Resource/Repeatable/Fields trait never split across tasks
+```
+
+If any check fails, regenerate `tasks.md` before continuing.
+
+### Phase 3 — Spawn resource generators
+
+For each bundle task in `tasks.md`, spawn `resource-generator`, `repeatable-generator`,
+and `field-trait-generator` agents in parallel. One agent set per aggregate.
+
+### Phase 4 — Update plan.md
+
+Append the Nova layer table to `plan.md` with the `Task ID` column tying each file back to its `tasks.md` entry.
 
 ---
 
@@ -146,9 +235,10 @@ public function authorizedToUpdate(Request $request): bool
 ### Fields
 
 **Layout:**
-- Use `Tab::group()` + `Tab::make()` when the resource has relationships to show (e.g. HasMany)
-- Use a flat `fields()` array for simple resources with no relationship tabs
-- Use `Panel::make()->collapsible()->collapsedByDefault()` for optional/advanced settings
+- **MANDATORY**: if the model has **any** `HasOne` or `HasMany` relationship, fields MUST be wrapped in `Tab::group()` with at least one `Tab::make(__('Details'), [...])` for own fields plus one `Tab::make(__('[Relation]'), [...])` per relationship. This is non-negotiable — no flat array when relationships exist.
+- Use a flat `fields()` array ONLY for simple resources with zero HasOne/HasMany relationships.
+- Use `Panel::make()->collapsible()->collapsedByDefault()` for optional/advanced settings inside a Tab.
+- **Never expose `id` as a Nova field** — no `ID::make()`, no `Text::make('ID', 'id')`. ULIDs are not user-meaningful. Exception: if the `id` is a human-meaningful business identifier (e.g. ticket number, invoice number), expose it via its own column, never the primary `id`.
 
 **Field selection per column type:**
 
@@ -161,10 +251,11 @@ public function authorizedToUpdate(Request $request): bool
 | `timestamp` / `date` | `DateTime::make()` | Always `->displayUsing(fn ($v) => $v?->diffForHumans())->exceptOnForms()` |
 | `enum` (status) | `Badge::make()` | Use `->map()` + `->labels()` with enum values |
 | `enum` (other) | `Select::make()` | Use `->options()` built from enum cases |
-| FK (belongs to) | `BelongsTo::make()` | Add `->searchable()` for ULIDs |
-| Has many | `HasMany::make()` | Place inside a Tab |
+| FK (belongs to) | `BelongsTo::make()` | **MANDATORY** for any `*_id` column. Add `->searchable()` for ULIDs. Never use `Text` or `Number` for a FK |
+| Has one | `HasOne::make()` | Place inside a Tab (see Tabs rule below) |
+| Has many | `HasMany::make()` | Place inside a Tab (see Tabs rule below) |
 | JSON / array | `KeyValue::make()` | |
-| Polymorphic | `MorphTo::make()` | |
+| Polymorphic | `MorphTo::make()` | **MANDATORY** for polymorphic FKs. Never use `Text` |
 
 **Standard field modifiers:**
 - `->rules(...)` — reference `Model::$validationRules['column']` with spread operator instead of duplicating inline: `->rules(...Model::$validationRules['col'])`
@@ -620,15 +711,19 @@ class [ModelName] extends Resource
 
 ## Domain Rules
 
-1. **One Resource per aggregate root** — child entities shown via `HasMany` inside tabs do not get their own standalone Resource unless they appear independently in the sidebar.
-2. **No business logic** — Nova Resources are pure UI. No calculations, no service calls, no Eloquent queries inline.
-3. **All strings translatable** — every user-visible string is wrapped in `__()`.
-4. **Badge for status** — status columns always use `Badge`, never `Select` or `Text`. Color convention: success/warning/danger/info.
-5. **DateTime always diffForHumans** — `->displayUsing(fn ($v) => $v?->diffForHumans())->exceptOnForms()`.
-6. **Authorization from spec** — only override `authorizedTo*` when the spec defines restrictions (read-only records, state-locked editing).
-7. **`fieldsForCreate()` when needed** — extract create/edit fields when they differ from the display view, or when a collapsible advanced panel exists.
-8. **Actions only from BPMN** — only add `actions()` when the BPMN has `businessRuleTask` or `sendTask` nodes for this entity. No speculative actions.
-9. **`@extends Resource<Model>`** — always add the generic docblock for IDE type inference.
-10. **Every aggregate = Resource + Repeatable + shared trait** — always generate all three files per aggregate root.
-11. **Shared fields trait** — `Nova/Concerns/{ModelName}Fields.php` holds `coreFields()`. Both the Resource and Repeatable use it via `use {ModelName}Fields` — zero field duplication.
-12. **Rules via `Model::$validationRules`** — never duplicate rules inline. Use spread: `->rules(...Model::$validationRules['col'])`.
+1. **One aggregate = one bundle task in `tasks.md`** — Resource + Repeatable + Fields trait always ship together as a single tracked task. Never split into per-file tasks; never merge two aggregates into one task. spec-kit plan + tasks runs BEFORE any generator agent is spawned. Each Nova bundle task `depends_on` its corresponding `opscale-domain` bundle task.
+2. **One Resource per aggregate root** — child entities shown via `HasMany` inside tabs do not get their own standalone Resource unless they appear independently in the sidebar.
+3. **No business logic** — Nova Resources are pure UI. No calculations, no service calls, no Eloquent queries inline.
+4. **All strings translatable — zero exceptions** — every user-visible string MUST be wrapped in `__()`. This includes: `label()`, `singularLabel()`, every Field label (first argument of `::make()`), every `Tab::make()` label, every `Tab::group()` label, every `Panel::make()` label, every Action display name, every `->help()` text, every `->options([...])` value label, every `->labels([...])` entry for Badge. Only technical identifiers (column names, uri keys, attribute names) stay untranslated.
+5. **Never expose `id` as a Nova field** — no `ID::make()`, no `Text::make('ID', 'id')`. ULIDs are not user-meaningful. Exception: human-meaningful business identifiers (ticket number, invoice number) live in their own column, not `id`.
+6. **Foreign keys MUST use relationship fields** — any column ending in `_id` or marked as `ref:` in the DBML MUST be exposed via `BelongsTo::make()` (or `MorphTo::make()` for polymorphic). Never `Text::make()` or `Number::make()` for a FK. Always add `->searchable()` since FKs are ULIDs.
+7. **Tabs MANDATORY for HasOne/HasMany** — if the model has any `HasOne` or `HasMany` relationship, fields MUST be wrapped in `Tab::group()` with `Tab::make(__('Details'), [...])` for own fields plus one `Tab::make` per relationship. Flat `fields()` array is only allowed when the model has zero HasOne/HasMany.
+8. **Badge for status** — status columns always use `Badge`, never `Select` or `Text`. Color convention: success/warning/danger/info.
+9. **DateTime always diffForHumans** — `->displayUsing(fn ($v) => $v?->diffForHumans())->exceptOnForms()`.
+10. **Authorization from spec** — only override `authorizedTo*` when the spec defines restrictions (read-only records, state-locked editing).
+11. **`fieldsForCreate()` when needed** — extract create/edit fields when they differ from the display view, or when a collapsible advanced panel exists.
+12. **Actions only from BPMN** — only add `actions()` when the BPMN has `businessRuleTask` or `sendTask` nodes for this entity. No speculative actions.
+13. **`@extends Resource<Model>`** — always add the generic docblock for IDE type inference.
+14. **Every aggregate = Resource + Repeatable + shared trait** — always generate all three files per aggregate root.
+15. **Shared fields trait** — `Nova/Concerns/{ModelName}Fields.php` holds `coreFields()`. Both the Resource and Repeatable use it via `use {ModelName}Fields` — zero field duplication.
+16. **Rules via `Model::$validationRules`** — never duplicate rules inline. Use spread: `->rules(...Model::$validationRules['col'])`.

@@ -12,6 +12,15 @@ description: >
 
 # opscale-debug
 
+## Prerequisites — flexible
+
+| # | Requirement | Check | If missing |
+|---|-------------|-------|-----------|
+| 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
+| 2 | Inside a PHP/Laravel project | `composer.json` exists | Stop. Re-run `/opscale-init`. |
+
+**Review-phase skills (`opscale-debug`, `opscale-test`, `opscale-release`) can be invoked at any point after `opscale-init`** — they do not require Plan or Generate phases to be complete. You can configure debug tooling on day 1 of an empty Laravel project. The only ordering constraint inside Review is: **`opscale-release` requires `opscale-test` to have produced test files first** (semantic-release will not gate a release without a test suite).
+
 ## Purpose
 
 Configure Xdebug and Laravel Telescope for local and staging environments.

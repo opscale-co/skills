@@ -35,13 +35,16 @@ You receive:
 2. `$model` — full class-string of the Eloquent model
 3. `$title` — column that identifies the record (name, subject, title — never id)
 4. `$search` — only text columns meaningful for lookup, never include `id` (ULIDs aren't human-searchable)
-5. Always override `uriKey()`, `label()`, `singularLabel()` — all strings use `__()`
-6. Authorization overrides only when `authorization_rules` defines restrictions
-7. Use `Tab::group()` + `Tab::make()` when HasMany relationships exist
-8. Status columns always use `Badge` with color convention: success/warning/danger/info
-9. DateTime always `->displayUsing(fn ($v) => $v?->diffForHumans())->exceptOnForms()`
-10. Rules via `Model::$validationRules['col']` spread — never duplicate inline
-11. `@extends Resource<Model>` docblock for IDE type inference
+5. **Never expose `id` as a Nova field** — no `ID::make()`, no `Text::make('ID', 'id')`. ULIDs are not user-meaningful. Exception: human-meaningful business identifiers live in their own column, not `id`
+6. **Foreign keys MUST use relationship fields** — any column ending in `_id` (or marked `ref:` in DBML) MUST use `BelongsTo::make()` or `MorphTo::make()`. Never `Text::make()` or `Number::make()` for a FK. Add `->searchable()` for ULIDs
+7. **Tabs MANDATORY for HasOne/HasMany** — if `relationships` includes any HasOne or HasMany, wrap fields in `Tab::group()` with `Tab::make(__('Details'), [...])` + one `Tab::make` per relationship. Flat array is only allowed when zero HasOne/HasMany relationships exist
+8. Always override `uriKey()`, `label()`, `singularLabel()` — all strings use `__()`
+9. **All user-visible strings MUST be wrapped in `__()` — zero exceptions**. Includes Field labels, `Tab::make` labels, `Tab::group` labels, `Panel::make` labels, Action display names, `->help()` text, every `->options([...])` value label, every Badge `->labels([...])` entry. Only column names, uri keys, attribute names stay untranslated
+10. Authorization overrides only when `authorization_rules` defines restrictions
+11. Status columns always use `Badge` with color convention: success/warning/danger/info
+12. DateTime always `->displayUsing(fn ($v) => $v?->diffForHumans())->exceptOnForms()`
+13. Rules via `Model::$validationRules['col']` spread — never duplicate inline
+14. `@extends Resource<Model>` docblock for IDE type inference
 
 ## Field Type Mapping
 
@@ -54,7 +57,9 @@ You receive:
 | timestamp/date | `DateTime::make()` with diffForHumans |
 | enum (status) | `Badge::make()` with map + labels |
 | enum (other) | `Select::make()` with options from cases |
-| FK (belongs to) | `BelongsTo::make()->searchable()` |
+| FK (belongs to) | `BelongsTo::make()->searchable()` — MANDATORY for any `*_id` column |
+| FK polymorphic | `MorphTo::make()->searchable()` — MANDATORY for polymorphic FKs |
+| Has one | `HasOne::make()` inside a Tab |
 | Has many | `HasMany::make()` inside a Tab |
 
 ## Badge Color Convention

@@ -15,6 +15,15 @@ description: >
 
 # opscale-process
 
+## Prerequisites — MUST be satisfied before this skill runs
+
+| Requirement | Check | If missing |
+|-------------|-------|-----------|
+| `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Tell the user: "Run `/opscale-init` first — `.specify/memory/constitution.md` is missing." |
+| Inside a PHP/Laravel project | `composer.json` exists | Stop. `opscale-init` should have caught this — re-run it. |
+
+This skill is **Step 1 of the Plan phase**. It does not run standalone.
+
 ## Purpose
 
 Turn a rough, casual description of a module into two things:
@@ -31,11 +40,18 @@ The user will rarely speak in technical terms. *"we need something to track over
 ## Output Location
 
 ```
-.specify/specs/{NNN}-{module-name}/spec.md
+.specify/specs/{NNN}-{module-name}/
+├── spec.md             ← structured business spec (this skill's primary output)
+└── docs/
+    └── process.md      ← original narrative description, as supplied by the user
 ```
 
 Where `{NNN}` is the next available three-digit number in `.specify/specs/` (e.g. `001`, `002`).
 Where `{module-name}` is a short kebab-case name derived from the module description (e.g. `order-management`, `invoice-processing`).
+
+**Two artifacts, two purposes:**
+- `spec.md` — the structured spec used by every downstream Opscale skill (DBML, BPMN, domain, ...). Tables, business rules, actors, pre/post conditions.
+- `docs/process.md` — the original informal description the user provided (or the cleaned-up narrative of it). This is the human-readable story of "what is this module"; downstream skills do not parse it, but it is what humans read first when onboarding to the module. Preserve the user's wording when possible — minimal editing.
 
 If `.specify/` does not exist, ask the user if they want to initialize it now.
 If yes, run the `opscale-init` workflow inline before continuing.
@@ -118,11 +134,47 @@ Adjust based on feedback, then proceed.
 
 ---
 
-### Step 5 — Write the spec
+### Step 5 — Write the spec AND the narrative
 
-Write the full document to `.specify/specs/{NNN}-{module-name}/spec.md`.
-Language must be **plain and business-focused** — no PHP, no Laravel, no database terms.
-Scale detail to the complexity level identified in Step 4.
+Write **two files** in this order:
+
+**5a. `.specify/specs/{NNN}-{module-name}/docs/process.md`** — the narrative.
+
+This file preserves the original informal description that started the module.
+Structure:
+
+```markdown
+# [Module Name] — Process Narrative
+
+> Captured: [YYYY-MM-DD]
+> Source: [user conversation / pasted doc / Slack thread / etc.]
+
+## Original description
+
+[The user's input verbatim, lightly cleaned for readability — fix obvious typos
+and split walls-of-text into paragraphs, but keep their wording, their
+priorities, and any informal phrasing. Do NOT rewrite as a developer spec —
+that is what spec.md is for.]
+
+## Inferred business domain
+
+[Domain from Step 1 — Sales / Finance / HR / etc.]
+
+## Identified actors (from the narrative)
+
+- [Actor 1] — [how they appeared in the description]
+
+## Open questions left for spec.md
+
+- [Question 1 — anything the user did not answer that the structured spec had
+  to assume or flag]
+```
+
+**5b. `.specify/specs/{NNN}-{module-name}/spec.md`** — the structured spec.
+
+Write the full structured document. Language must be **plain and
+business-focused** — no PHP, no Laravel, no database terms. Scale detail to the
+complexity level identified in Step 4.
 
 ---
 
@@ -211,6 +263,8 @@ Before closing, verify every item. This gate must pass before `opscale-dbml` can
 ```
 SPEC COMPLETENESS GATE
 ──────────────────────────────────────────────────────
+[ ] docs/process.md written (narrative preserved)
+[ ] spec.md written
 [ ] Bounded context has slug, Business domain, complexity, responsibility, independence confirmed
 [ ] Every actor has at least one action
 [ ] Every artifact has its type and operations defined

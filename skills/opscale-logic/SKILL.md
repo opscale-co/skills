@@ -1,11 +1,13 @@
 ---
 name: opscale-logic
 description: >
-  Generates complete Opscale Action classes. Determines mode by project type:
+  Generates complete Opscale Action classes AND drives spec-kit to produce the
+  execution plan and per-Action tasks. Determines mode by project type:
   (1) BPMN-driven (app/module) — one Action per businessRuleTask from process.md.
   Step 6 in the Opscale sequence — runs AFTER opscale-ui and BEFORE opscale-outputs.
   (2) Standalone (package) — Actions defined directly without BPMN/DBML.
-  In both modes, spawns action-generator agents for parallel generation.
+  In both modes, runs /speckit.plan and /speckit.tasks so every Action lands as
+  its own task in tasks.md, then spawns action-generator agents in parallel.
   Trigger when the user says "generate the actions", "implement the business logic",
   "create the Opscale Actions", or "build the logic layer".
 ---
@@ -36,18 +38,24 @@ Output files are written to `src/Services/Actions/` and listed in
 
 ---
 
-## Input Requirements
+## Prerequisites
 
 ### BPMN-driven mode (app/module projects)
 
-Before starting, verify:
-- `.specify/specs/{NNN}-{module-name}/process.md` exists and passed completeness gate
-- `.specify/specs/{NNN}-{module-name}/spec.md` exists (for Business Rules context)
-- `.specify/specs/{NNN}-{module-name}/data-model.md` exists (for parameter types)
+| # | Requirement | Check | If missing |
+|---|-------------|-------|-----------|
+| 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
+| 2 | `opscale-process` has been run | `spec.md` exists and PASS | Stop. Run `/opscale-process`. |
+| 3 | `opscale-dbml` has been run | `data-model.md` exists and PASS | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `process.md` exists and PASS | Stop. Run `/opscale-bpmn`. |
+| 5 | `opscale-domain` has been run | `src/Models/` populated, domain bundle tasks in `tasks.md` complete | Stop. Run `/opscale-domain`. |
+| 6 | `opscale-ui` has been run | `src/Nova/` populated, Nova bundle tasks in `tasks.md` complete | Stop. Run `/opscale-ui`. |
+
+This skill is **Step 3 (last) of the Generate phase**. Order is strict: `domain → ui → logic`. After this skill, the module is feature-complete and ready for the Review phase (`debug → test → release`).
 
 ### Standalone mode (package projects)
 
-No spec files are required. The user provides:
+Prerequisite 1 (`opscale-init`) still applies. Spec files are not required — the user provides:
 - Action names and purposes
 - Parameter definitions (types, validation rules)
 - Business logic description
@@ -312,26 +320,98 @@ Confirm?
 
 Wait for confirmation.
 
-#### Phase 3 — Generate Actions
+#### Phase 3 — Drive spec-kit to plan + produce per-Action tasks
 
-For each task in dependency order:
+Before generating any code, formalize the plan through spec-kit so that every
+Action becomes a tracked task. This is what makes the implementation phase
+auditable and what feeds `opscale-test` (which generates one Feature test per
+task in `tasks.md`).
+
+**3a. Build the spec-kit plan input.** Compose a brief that lists every Action
+to be generated, in dependency order, with its source BPMN task, lane,
+parameters (from BPMN + DBML), and Business Rules from `spec.md`. Pass this as
+the seed for `/speckit.plan`:
+
+```
+/speckit.plan "Logic layer for {module-name}: [N] Opscale Actions derived from
+process.md. Generate one Action class per businessRuleTask. Each Action:
+- extends Opscale\\Actions\\Action
+- declares identifier(), name(), description(), parameters(), handle()
+- lives in src/Services/Actions/{ClassName}.php
+
+Dependency order:
+  1. [LeafAction1] (no deps)
+  2. [LeafAction2] (no deps)
+  3. [CompositeAction] (calls LeafAction1, LeafAction2)
+  ...
+
+Source BPMN tasks: [list of logic ids]
+Source Business Rules: [BR-01, BR-02, ...]"
+```
+
+Read the resulting `plan.md` and confirm with the user before continuing.
+
+**3b. Generate per-Action tasks with `/speckit.tasks`.** Each Action MUST land
+as exactly one task in `tasks.md`. The task contract is:
+
+| Task field | Value |
+|------------|-------|
+| Title | `Implement {ActionClassName}` |
+| Description | First line of the Action's `description()` |
+| Inputs | DBML entities + scalars from `parameters()` |
+| Outputs | Return-array keys |
+| Acceptance | Business Rules (BR-NN) the Action enforces |
+| Depends on | Task IDs of leaf Actions this composes |
+| Test task | `Test {ActionClassName}` — precedes the implementation task |
+
+```
+/speckit.tasks "Generate one implementation task per Opscale Action from plan.md.
+Each Action gets exactly one task with: title 'Implement {ClassName}', acceptance
+criteria mapped to Business Rules (BR-NN), and depends_on edges matching the
+composition graph. Precede every implementation task with a 'Test {ClassName}'
+task (opscale-test will fill it). Do not merge two Actions into one task."
+```
+
+Verify `tasks.md`:
+
+```
+[ ] One task per Action — count matches the inventory
+[ ] Each task title starts with 'Implement '
+[ ] Each task has a matching 'Test ' task preceding it
+[ ] Dependency edges match the composition graph from Phase 2
+[ ] Every Action's Business Rules appear in its task's acceptance criteria
+```
+
+If any check fails, regenerate tasks.md before continuing — do NOT generate
+code from an incomplete task list.
+
+#### Phase 4 — Generate Actions
+
+For each task in `tasks.md` (dependency order):
 
 - **Class name**: PascalCase from task name (`AssignTask`, `CalculatePriority`)
 - **`identifier()`**: BPMN `logic.id` value (`assign-task`, `calculate-priority`)
 - **`parameters()`**: derived from BPMN task inputs + DBML entity types
-- **`handle()` body**: implement Business Rules from `spec.md`
+- **`handle()` body**: implement Business Rules from `spec.md` referenced in the
+  task's acceptance criteria
 
-#### Phase 4 — Update plan.md
+Spawn `action-generator` agents in parallel within each dependency level —
+leaves first, composites next.
+
+#### Phase 5 — Update plan.md
 
 Append to `.specify/specs/{NNN}-{module-name}/plan.md`:
 
 ```markdown
 ## Logic Layer
 
-| File | Class | BPMN task | Rules |
-|------|-------|-----------|-------|
-| src/Services/Actions/[Class].php | [Class] | [task] | BR-01 |
+| File | Class | BPMN task | Task ID | Rules |
+|------|-------|-----------|---------|-------|
+| src/Services/Actions/[Class].php | [Class] | [task] | T-NN | BR-01 |
 ```
+
+The `Task ID` column ties each generated file back to its `tasks.md` entry so
+`opscale-test` and `/speckit.implement` can verify completeness.
 
 ---
 
@@ -358,18 +438,42 @@ Wait for confirmation.
 
 Same as BPMN-driven — if an Action composes others, generate leaves first.
 
-#### Phase 3 — Generate Actions
+#### Phase 3 — Drive spec-kit to plan + produce per-Action tasks
 
-For each action in dependency order:
+Standalone mode still uses spec-kit when the project has been initialized with
+`opscale-init` (i.e. `.specify/` exists). The plan + tasks pair gives the rest
+of the pipeline (especially `opscale-test`) something concrete to bind to.
+
+If `.specify/` does NOT exist (rare — package was never run through
+`opscale-init`), skip this phase and proceed to Phase 4 directly. Otherwise:
+
+**3a. Build a synthetic spec folder for this Action batch.** Standalone mode
+has no `process.md`, so create a minimal `.specify/specs/{NNN}-actions-{date}/`
+folder and seed it with the Action definitions the user provided.
+
+**3b. Run `/speckit.plan`** with the same payload structure as the BPMN-driven
+mode (action list, dependency order, parameters, purpose).
+
+**3c. Run `/speckit.tasks`** with the same contract: one task per Action,
+each preceded by a corresponding `Test {ClassName}` task.
+
+The verification checklist is identical to BPMN-driven Phase 3 — one task per
+Action, dependency edges match, no merging.
+
+#### Phase 4 — Generate Actions
+
+For each task in `tasks.md` (or each action from the user's input if Phase 3
+was skipped), in dependency order:
 
 - **Class name**: PascalCase from action name
 - **`identifier()`**: kebab-case from class name (e.g. `CalculateInterest` → `calculate-interest`)
 - **`parameters()`**: from provided parameter definitions
 - **`handle()` body**: implement the described logic
 
-#### Phase 4 — Update plan.md (if specs exist)
+#### Phase 5 — Update plan.md (if specs exist)
 
-If `.specify/specs/` directory exists, append to plan.md. Otherwise skip.
+If `.specify/specs/` exists, append the same Logic Layer table as in BPMN-driven
+Phase 5 (including the `Task ID` column). Otherwise skip.
 
 ---
 
@@ -498,13 +602,15 @@ class [ActionClassName] extends Action
 
 ## Domain Rules
 
-1. **One task = one Action** — never merge two BPMN tasks or two standalone requests into one class.
-2. **Always `fill()` then `validate()`** — access all values via `$this->get('property')`, never from `$attributes` directly.
-3. **Always return array with `success: bool`** — callers depend on this contract.
-4. **Soft failures return, hard failures throw** — missing optional data returns `['success' => false]`; truly invalid state throws.
-5. **Override context methods only when needed** — `asNovaAction()`, `asController()`, `asCommand()`, `asMCPTool()` are optional. Add only when the default return behavior must be customized.
-6. **Compose via `::run()`** — generate leaf actions before composite actions.
-7. **handle() is context-free** — no `request()`, no `redirect()`, no HTTP assumptions.
-8. **`identifier()` derivation** — from BPMN `logic.id` when available, otherwise kebab-case from class name.
-9. **`description()` is for AI** — write it as if explaining to an AI agent what the tool does and when to invoke it.
-10. **`declare(strict_types=1)`** — every PHP file.
+1. **One BPMN task = one Action class = one spec-kit task** — never merge two BPMN tasks or two standalone requests into one class, and never let a single Action span more than one entry in `tasks.md`. The chain is 1:1:1 across BPMN → code → tasks.md.
+2. **Spec-kit plan + tasks before code** — `/speckit.plan` and `/speckit.tasks` run BEFORE any `action-generator` agent is spawned. Code generation reads from `tasks.md`; if a planned Action has no task entry, do not generate it — fix the task list first.
+3. **Every implementation task has a preceding test task** — `tasks.md` lists `Test {ClassName}` immediately before `Implement {ClassName}`. `opscale-test` fills the test task body later; this skill just ensures the slot exists.
+4. **Always `fill()` then `validate()`** — access all values via `$this->get('property')`, never from `$attributes` directly.
+5. **Always return array with `success: bool`** — callers depend on this contract.
+6. **Soft failures return, hard failures throw** — missing optional data returns `['success' => false]`; truly invalid state throws.
+7. **Override context methods only when needed** — `asNovaAction()`, `asController()`, `asCommand()`, `asMCPTool()` are optional. Add only when the default return behavior must be customized.
+8. **Compose via `::run()`** — generate leaf actions before composite actions.
+9. **handle() is context-free** — no `request()`, no `redirect()`, no HTTP assumptions.
+10. **`identifier()` derivation** — from BPMN `logic.id` when available, otherwise kebab-case from class name.
+11. **`description()` is for AI** — write it as if explaining to an AI agent what the tool does and when to invoke it.
+12. **`declare(strict_types=1)`** — every PHP file.

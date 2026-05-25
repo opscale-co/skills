@@ -1,20 +1,40 @@
 ---
 name: opscale-test
 description: >
-  Configures the complete testing and code quality stack for an Opscale/Laravel Nova
-  package: Pest PHP with Orchestra Testbench, Laravel Dusk with Nova DevTool for
-  browser testing, and the full static analysis suite (PHPStan, Duster, Rector).
-  Use this skill whenever a module needs its testing infrastructure set up, or when
-  the user says "configure tests", "set up testing", "add linting", "configure
+  Configures the complete testing and code quality stack AND generates the actual
+  Unit, Feature, and Browser tests for an Opscale/Laravel Nova package. Configures
+  Pest PHP with Orchestra Testbench, Laravel Dusk with Nova DevTool, and the full
+  static analysis suite (PHPStan, Duster, Rector). Then walks src/Models, src/Services/Actions,
+  and src/Nova and spawns unit-test-generator, feature-test-generator, and
+  web-test-generator agents in parallel to produce the actual test files. Use this
+  skill whenever a module needs its testing layer built, or when the user says
+  "configure tests", "set up testing", "generate tests", "add linting", "configure
   static analysis", or "set up the quality stack". This is Step 9 in the Opscale
   sequence, runs after opscale-debug and before opscale-release.
 ---
 
 # opscale-test
 
+## Prerequisites — flexible
+
+| # | Requirement | Check | If missing |
+|---|-------------|-------|-----------|
+| 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
+| 2 | Inside a PHP/Laravel project | `composer.json` exists | Stop. Re-run `/opscale-init`. |
+| 3 | (To generate Unit tests) `src/Models/` populated | List files | Run `/opscale-domain` first OR proceed and the Unit-test generator will produce zero files. |
+| 4 | (To generate Feature tests) `src/Services/Actions/` populated | List files | Run `/opscale-logic` first OR proceed without Feature tests. |
+| 5 | (To generate Browser tests) `src/Nova/` populated | List files | Run `/opscale-ui` first OR proceed without Browser tests. |
+
+This skill belongs to the **Review phase**. The Review phase (`debug`, `test`, `release`) can be invoked at any point after `opscale-init`. You can:
+- Configure the stack early (no source files) and generate tests later as Generate-phase output appears.
+- Or run after the full Generate phase to configure and generate in one shot — recommended for new modules.
+
+The strict order **inside** Review is: `test` MUST run before `release`.
+
 ## Purpose
 
-Configure the complete testing and code quality stack for an Opscale package:
+Configure the complete testing and code quality stack AND generate the actual
+test files for an Opscale package:
 
 | Tool | Purpose |
 |------|---------|
@@ -81,11 +101,18 @@ tests/
     └── console/          ← Browser console logs on failure
 ```
 
-| Suite | What it tests | Runner | DB |
-|-------|--------------|--------|-----|
-| **Unit** | Components in isolation — models, events, repositories, action metadata | Pest | In-memory SQLite |
-| **Feature** | Integration — Actions execution, API endpoints, token abilities, validation, commands | Pest | In-memory SQLite |
-| **Browser** | Nova UI via real browser — login, resource CRUD, form validation | Pest + Dusk | Workbench SQLite file |
+| Suite | Layer | What it tests | Runner | DB | Source dir |
+|-------|-------|--------------|--------|-----|------------|
+| **Unit** | **Domain** | Models, Enums, Value Objects, Repositories, Migrations/Schema | Pest | In-memory SQLite | `src/Models/`, `src/Models/Enums/`, `src/Models/ValueObjects/`, `src/Models/Repositories/`, `database/migrations/` |
+| **Feature** | **Actions** | Each Action class executed end-to-end with real DB, real events, real side effects (no DB mocks) | Pest | In-memory SQLite | `src/Services/Actions/` |
+| **Browser** | **UI (Nova)** | Smoke test per Nova Resource: navigate index, open create form, open detail of a seeded record — verify no exceptions / no 500 | Pest + Dusk | Workbench SQLite file | `src/Nova/` |
+
+**Strict layer assignment — no overlap:**
+- Domain logic (model methods, VO immutability, enum transitions, schema) → **Unit only**
+- Business operations (Action::handle, events, persistence) → **Feature only**
+- Nova UI smoke (resource pages render without throwing) → **Browser only**
+
+A test belongs to exactly one suite. Do not write Feature tests for models, Unit tests for Actions, or Browser tests with business assertions.
 
 ---
 
@@ -311,6 +338,9 @@ declare(strict_types=1);
 
 namespace [PackageNamespace]\Tests;
 
+use Facebook\WebDriver\Chrome\ChromeOptions;
+use Facebook\WebDriver\Remote\DesiredCapabilities;
+use Facebook\WebDriver\Remote\RemoteWebDriver;
 use Illuminate\Foundation\Application;
 use Laravel\Dusk\Browser;
 use Orchestra\Testbench\Concerns\WithWorkbench;
@@ -323,6 +353,42 @@ abstract class DuskTestCase extends BaseTestCase
 
     // Change port if default 8001 conflicts (e.g., Docker)
     protected static $baseServePort = 8089;
+
+    /**
+     * Create the RemoteWebDriver instance.
+     *
+     * Headless by default. To run with a visible Chrome window (for debugging
+     * a failing Browser test), set DUSK_HEADLESS=false in the environment:
+     *
+     *     DUSK_HEADLESS=false composer run test:web
+     */
+    #[Override]
+    protected function driver(): RemoteWebDriver
+    {
+        $headless = filter_var(
+            $_ENV['DUSK_HEADLESS'] ?? getenv('DUSK_HEADLESS') ?? 'true',
+            FILTER_VALIDATE_BOOLEAN
+        );
+
+        $args = [
+            '--window-size=1920,1080',
+            '--disable-gpu',
+            '--no-sandbox',
+            '--disable-dev-shm-usage',
+        ];
+
+        if ($headless) {
+            $args[] = '--headless=new';
+            $args[] = '--disable-search-engine-choice-screen';
+        }
+
+        $options = (new ChromeOptions())->addArguments($args);
+
+        return RemoteWebDriver::create(
+            $_ENV['DUSK_DRIVER_URL'] ?? 'http://localhost:9515',
+            DesiredCapabilities::chrome()->setCapability(ChromeOptions::CAPABILITY, $options)
+        );
+    }
 
     /**
      * Login to Nova via browser using a seeded admin user.
@@ -363,7 +429,16 @@ abstract class DuskTestCase extends BaseTestCase
 }
 ```
 
-### Browser Test Example — Nova Resource
+### Browser Test Example — Nova Resource (Smoke Test ONLY)
+
+Browser tests are **smoke tests only**. Their single job: verify the page renders
+without throwing. No business assertions, no validation flows, no CRUD round-trips.
+Two tests per Resource — create form and detail page. Both assert the page renders
+without 500/exception markers.
+
+**Why so minimal:** business correctness lives in Feature tests (Actions). The UI
+layer only needs to prove "the resource is wired correctly — fields render, no
+missing relations, no enum mismatches, no provider/binding errors".
 
 ```php
 <?php
@@ -373,66 +448,48 @@ declare(strict_types=1);
 namespace [PackageNamespace]\Tests\Browser;
 
 use Laravel\Dusk\Browser;
+use [PackageNamespace]\Models\[ModelName];
 use [PackageNamespace]\Tests\DuskTestCase;
 use PHPUnit\Framework\Attributes\Test;
 
 final class [ResourceName]ResourceTest extends DuskTestCase
 {
     #[Test]
-    final public function can_navigate_to_resource(): void
-    {
-        $this->browse(function (Browser $browser): void {
-            $this->loginToNova($browser)
-                ->visit('/nova/resources/[uri-key]')
-                ->waitForText('[Resource Label]')
-                ->assertSee('[Resource Label]');
-        });
-    }
-
-    #[Test]
-    final public function can_see_create_form(): void
+    final public function create_page_renders_without_exceptions(): void
     {
         $this->browse(function (Browser $browser): void {
             $this->loginToNova($browser)
                 ->visit('/nova/resources/[uri-key]/new')
                 ->waitForText('Create [Singular Label]')
-                ->assertSee('[Field Name 1]')
-                ->assertSee('[Field Name 2]');
+                ->assertDontSee('SERVER ERROR')
+                ->assertDontSee('Whoops')
+                ->assertDontSee('Exception')
+                ->assertSee('Create [Singular Label]');
         });
     }
 
     #[Test]
-    final public function create_validates_required_fields(): void
+    final public function detail_page_renders_without_exceptions(): void
     {
-        $this->browse(function (Browser $browser): void {
-            $this->loginToNova($browser)
-                ->visit('/nova/resources/[uri-key]/new')
-                ->waitForText('Create [Singular Label]')
-                ->press('Create [Singular Label]')
-                ->waitForText('The [field] field is required')
-                ->assertSee('The [field] field is required');
-        });
-    }
+        $record = [ModelName]::factory()->create();
 
-    #[Test]
-    final public function can_create_resource(): void
-    {
-        $this->browse(function (Browser $browser): void {
+        $this->browse(function (Browser $browser) use ($record): void {
             $this->loginToNova($browser)
-                ->visit('/nova/resources/[uri-key]/new')
-                ->waitForText('Create [Singular Label]')
-                ->type('@[field-attribute]', '[value]')
-                // For MorphTo fields, use the Dusk selectors:
-                // ->select('@[relation]-type', '[resource-uri-key]')
-                // ->pause(500)
-                // ->select('@[relation]-select', '[id]')
-                ->press('Create [Singular Label]')
-                ->waitForText('[expected text after creation]')
-                ->assertSee('[expected text]');
+                ->visit('/nova/resources/[uri-key]/' . $record->getKey())
+                ->waitFor('[dusk="[uri-key]-detail-component"]', 10)
+                ->assertDontSee('SERVER ERROR')
+                ->assertDontSee('Whoops')
+                ->assertDontSee('Exception');
         });
     }
 }
 ```
+
+**Anti-patterns — do NOT do this in Browser tests:**
+- ❌ Typing into fields and pressing Create (that's a Feature test concern)
+- ❌ Asserting validation error messages (that's a Feature test concern)
+- ❌ Asserting business outcomes after submit (that's a Feature test concern)
+- ❌ Multiple test methods per page (one smoke per page is enough)
 
 ### Nova Dusk Selectors Reference
 
@@ -457,6 +514,82 @@ Nova components expose these Dusk selectors:
 | Update button | `Update [Singular Label]` |
 | Delete modal trigger | `@open-delete-modal-button` |
 | Delete confirm button | `Delete` |
+
+---
+
+---
+
+## Seeders — Required for Browser Tests
+
+Browser tests run against the **workbench** (Nova DevTool skeleton). Since Browser
+tests are smoke tests against detail pages, they need at least one persisted record
+per Resource. **A minimal seeder per aggregate root is REQUIRED.**
+
+### workbench/database/seeders/DatabaseSeeder.php
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace Workbench\Database\Seeders;
+
+use Illuminate\Database\Seeder;
+use [PackageNamespace]\Models\[ModelName];
+
+final class DatabaseSeeder extends Seeder
+{
+    public function run(): void
+    {
+        // Admin user — used by loginToNova()
+        \Workbench\Database\Seeders\UserSeeder::run();
+
+        // One record per aggregate root — minimum for Browser smoke tests
+        [ModelName]::factory()->count(3)->create();
+        // ... one factory call per aggregate
+    }
+}
+```
+
+**Rules:**
+- Seed 1–3 records per aggregate root — enough to render a detail page
+- Always seed an `admin@laravel.com / password` user (matches `loginToNova()` helper)
+- Use factories, never raw inserts — factories are part of the domain
+- Do NOT seed business-correctness data here — that belongs in Feature test setup
+
+---
+
+## Test Generation — After Configuration
+
+Once the configuration above is in place, the skill **walks `src/` and spawns
+generator agents in parallel** to produce the actual test files.
+
+### Generation walk
+
+| Source directory | Agent | Suite | One agent per |
+|------------------|-------|-------|---------------|
+| `src/Models/*.php` (non-enum, non-VO) | `unit-test-generator` (type=model) | Unit | Model class |
+| `src/Models/Enums/*.php` | `unit-test-generator` (type=enum) | Unit | Enum class |
+| `src/Models/ValueObjects/*.php` | `unit-test-generator` (type=value_object) | Unit | VO class |
+| `src/Models/Repositories/*.php` | `unit-test-generator` (type=repository) | Unit | Repository trait |
+| `database/migrations/*.php` | `unit-test-generator` (type=migration) | Unit | Table |
+| `src/Services/Actions/*.php` | `feature-test-generator` | Feature | Action class |
+| `src/Nova/*.php` (Resources only — not Concerns/, not Repeatables/, not Actions/, not Metrics/) | `web-test-generator` | Browser | Nova Resource |
+
+### Invocation order
+
+1. Configure stack (Pest, Dusk, PHPStan, Duster, Rector) — sections above
+2. Generate `workbench/database/seeders/DatabaseSeeder.php` with one factory call per aggregate root
+3. Spawn all agents **in parallel** (single message, multiple Agent tool calls)
+4. After agents finish, run `composer run build` then `composer run test` to validate
+
+### What each agent produces
+
+- **`unit-test-generator`** → one or more `tests/Unit/{Type}/{Name}Test.php` files testing domain in isolation (no Action calls, no Nova)
+- **`feature-test-generator`** → one `tests/Feature/{ActionName}Test.php` per Action, calling `Action::run()` against real DB, asserting events dispatched and state persisted
+- **`web-test-generator`** → one `tests/Browser/{Resource}ResourceTest.php` per Nova Resource with exactly two tests: `create_page_renders_without_exceptions`, `detail_page_renders_without_exceptions`
+
+**Do NOT generate cross-suite tests** — no Feature test for a model, no Unit test for an Action, no Browser test with business asserts.
 
 ---
 
@@ -581,11 +714,25 @@ Use the existing rector.php if present. The standard Opscale configuration uses:
 
 ---
 
-## package.json scripts
+## composer.json scripts — REQUIRED per module
+
+Every Opscale module/package MUST define `build` and `serve` composer scripts so any
+contributor (or CI) can recreate the Browser test environment and inspect the workbench
+Nova UI locally without remembering the multi-step incantation.
 
 ```json
 {
     "scripts": {
+        "build": [
+            "@php vendor/bin/testbench workbench:build",
+            "@php vendor/bin/testbench package:discover --ansi",
+            "cp -R vendor/orchestra/testbench-core/laravel/public/vendor vendor/orchestra/testbench-dusk/laravel/public/vendor",
+            "cp vendor/orchestra/testbench-core/laravel/database/database.sqlite vendor/orchestra/testbench-dusk/laravel/database/database.sqlite",
+            "rm -rf vendor/orchestra/testbench-core/laravel/storage/framework/views/*",
+            "rm -rf vendor/orchestra/testbench-dusk/laravel/storage/framework/views/*",
+            "@php vendor/bin/testbench dusk:chrome-driver --detect"
+        ],
+        "serve": "@php vendor/bin/testbench serve",
         "lint": "./vendor/bin/duster lint --dirty",
         "fix": "./vendor/bin/duster fix --dirty",
         "refactor": "./vendor/bin/rector process",
@@ -593,18 +740,44 @@ Use the existing rector.php if present. The standard Opscale configuration uses:
         "test": "./vendor/bin/pest --testsuite=Unit,Feature",
         "test:unit": "./vendor/bin/pest --testsuite=Unit",
         "test:feature": "./vendor/bin/pest --testsuite=Feature",
-        "test:web": "./vendor/bin/pest -c phpunit.dusk.xml",
+        "test:web": "@composer build && ./vendor/bin/pest -c phpunit.dusk.xml",
         "test:coverage": "XDEBUG_MODE=coverage ./vendor/bin/pest --testsuite=Unit,Feature --coverage --min=80",
-        "check": "npm run fix && npm run refactor && npm run lint && npm run analyse && npm run test"
+        "check": "@composer fix && @composer refactor && @composer lint && @composer analyse && @composer test"
     }
 }
 ```
 
 **Key design decisions**:
-- `test` runs Unit+Feature only (no ChromeDriver dependency for CI fast path)
-- `test:web` runs Browser tests with separate `phpunit.dusk.xml` config
-- `check` is the full pipeline: fix → refactor → lint → analyse → test
-- `analyse` includes `--memory-limit=512M` to prevent OOM with strict-rules
+- `composer run build` — single command that **recreates the entire test/workbench environment**: builds workbench, runs seeders, publishes Nova assets to BOTH skeletons, copies the SQLite DB, clears view caches in both skeletons, syncs ChromeDriver. **MUST be runnable from a clean clone after `composer install`.**
+- `composer run serve` — runs Testbench's built-in PHP server with the workbench mounted. Lets the developer browse the actual Nova UI at `http://localhost:8000/nova` to manually verify Resources outside of Dusk.
+- `test:web` chains `build` so Browser tests always run against a freshly rebuilt workbench — eliminates "works on my machine" caused by stale skeletons.
+- **Browser tests run headless by default** — `DUSK_HEADLESS=true` is the default (configured in `DuskTestCase::driver()`). CI never sees a visible browser. To debug a failing Browser test locally with a visible Chrome window, override per-invocation:
+  ```bash
+  DUSK_HEADLESS=false composer run test:web
+  ```
+- `test` runs Unit+Feature only (no ChromeDriver dependency for CI fast path).
+- `check` is the full pipeline: fix → refactor → lint → analyse → test.
+- `analyse` includes `--memory-limit=512M` to prevent OOM with strict-rules.
+
+### package.json scripts (mirror)
+
+For consistency, mirror the same names in `package.json` (delegating to composer):
+
+```json
+{
+    "scripts": {
+        "build": "composer run build",
+        "serve": "composer run serve",
+        "lint": "composer run lint",
+        "fix": "composer run fix",
+        "refactor": "composer run refactor",
+        "analyse": "composer run analyse",
+        "test": "composer run test",
+        "test:web": "composer run test:web",
+        "check": "composer run check"
+    }
+}
+```
 
 ---
 
@@ -703,34 +876,53 @@ if ($browser->element('input[name="email"]')) {
 ## Completeness Checklist
 
 ```
-TEST CONFIGURATION GATE
+TEST CONFIGURATION + GENERATION GATE
 ──────────────────────────────────────────────────────
+CONFIGURATION
 [ ] Pest installed with pest-plugin-laravel
 [ ] composer allow-plugins.pestphp/pest-plugin set to true
-[ ] Orchestra Testbench Dusk installed
+[ ] Orchestra Testbench Dusk installed (Nova DevTool present)
 [ ] mockery/mockery installed
 [ ] tests/TestCase.php created (Unit + Feature base)
-[ ] tests/DuskTestCase.php created (Browser base, extends Testbench Dusk)
+[ ] tests/DuskTestCase.php created (Browser base, extends Testbench Dusk, headless-by-default driver() override)
 [ ] tests/Pest.php bootstraps TestCase for Unit + Feature only
 [ ] phpunit.xml configured with Unit + Feature + Browser suites
 [ ] phpunit.dusk.xml configured with Browser suite only (minimal env)
 [ ] testbench.yaml includes ALL required providers for Nova + Dusk
 [ ] ChromeDriver installed matching local Chrome version
-[ ] workbench:build run (DB, migrations, seeders, assets)
-[ ] Nova assets copied to testbench-dusk skeleton
-[ ] View cache cleared in both skeletons
-[ ] Unit test exists for every Opscale Action in src/Services/Actions/
-[ ] Feature test exists for API endpoints, abilities, validation
-[ ] Browser test exists for Nova resource UI (login, list, create, validate)
+
+WORKBENCH + SEEDERS
+[ ] workbench/database/seeders/DatabaseSeeder.php created
+[ ] Admin user seeded (admin@laravel.com / password) for loginToNova()
+[ ] One factory call per aggregate root in seeder (1–3 records each)
+[ ] composer run build executes end-to-end on a clean clone
+[ ] composer run serve serves /nova at http://localhost:8000/nova
+[ ] Nova assets present in testbench-dusk skeleton (build script copies them)
+[ ] View cache cleared in both skeletons (build script clears them)
+
+GENERATED TESTS — STRICT LAYER ASSIGNMENT
+[ ] Unit test exists for every Model in src/Models/
+[ ] Unit test exists for every Enum in src/Models/Enums/
+[ ] Unit test exists for every Value Object in src/Models/ValueObjects/
+[ ] Unit test exists for every Repository in src/Models/Repositories/
+[ ] Unit (schema) test exists for every migration
+[ ] Feature test exists for every Action in src/Services/Actions/ (real DB, real events)
+[ ] Browser smoke test exists for every Nova Resource in src/Nova/ (create + detail render, no exceptions)
+[ ] NO cross-suite tests: no Feature tests for models, no Unit tests for Actions, no Browser tests with business asserts
+
+STATIC ANALYSIS + LINT
 [ ] phpstan.neon configured at level 9 with all four strict-rules sets
 [ ] PHPStan passes with zero errors (--memory-limit=512M)
 [ ] pint.json configured with declare_strict_types
 [ ] duster.json configured with phpstan disabled in lint/fix scripts
 [ ] Duster lint passes clean (including TLint — no \Namespace prefixes)
 [ ] rector.php configured
-[ ] npm scripts: test, test:unit, test:feature, test:web, analyse, check
-[ ] npm run check passes (fix → refactor → lint → analyse → test)
-[ ] npm run test:web passes (Browser tests)
+
+SCRIPTS
+[ ] composer scripts: build, serve, lint, fix, refactor, analyse, test, test:unit, test:feature, test:web, test:coverage, check
+[ ] package.json mirrors the same names (build, serve, test, test:web, check, ...)
+[ ] composer run check passes (fix → refactor → lint → analyse → test)
+[ ] composer run test:web passes (Browser tests, headless by default)
 ──────────────────────────────────────────────────────
 STATUS: [ ] PASS — opscale-release may proceed
         [ ] FAIL — list blocking items below
@@ -740,13 +932,21 @@ STATUS: [ ] PASS — opscale-release may proceed
 
 ## Domain Rules
 
-1. **Three test suites** — Unit (isolated components), Feature (integration with DB/HTTP/events), Browser (Dusk tests against Nova UI via real browser).
-2. **Browser tests use Nova DevTool + Testbench Dusk** — NOT standard Laravel Dusk. The DuskTestCase extends `Orchestra\Testbench\Dusk\TestCase` with `WithWorkbench` trait.
-3. **Browser tests run separately** — via `npm run test:web` with `phpunit.dusk.xml`. They are NOT included in `npm run test` or `npm run check` because they require ChromeDriver.
-4. **Login via browser form** — use the `loginToNova()` helper that types credentials into the Nova login form. Avoid `loginAs()` as it requires the user to exist in the server's DB (not the test's in-memory DB).
-5. **Workbench data is shared** — Browser tests use the seeded workbench database. Use `firstOrCreate` or reference seeded users instead of creating new records with factories.
-6. **PHPStan level 9** — all four `strict-rules` rule sets active. Documented ignores for tests (DIP, helpers), Nova (`__()` translations), controllers (try-catch at HTTP boundary), and service providers (Laravel patterns).
-7. **`declare(strict_types=1)`** enforced by Pint via `duster fix`.
-8. **TLint compliance** — always use `use` imports, never `\Fully\Qualified\Class` in code.
-9. **Event listeners must specify method** — `[Action::class, 'asListener']` not `Action::class`.
-10. **`npm run check`** runs fix + refactor + lint + analyse + test — this is the CI entry point.
+1. **The skill configures AND generates** — configuration without generated tests is incomplete. After configuring the stack, the skill MUST walk `src/` and spawn `unit-test-generator`, `feature-test-generator`, and `web-test-generator` agents in parallel to produce real test files.
+2. **Strict layer assignment — no overlap:**
+   - Unit (`tests/Unit/`) → **Domain only**: Models, Enums, Value Objects, Repositories, Migrations/Schema. One test class per domain component.
+   - Feature (`tests/Feature/`) → **Actions only**: one test per class in `src/Services/Actions/`. Hits real DB, asserts events, asserts state. **No DB mocks.**
+   - Browser (`tests/Browser/`) → **Nova UI smoke only**: one test class per Resource in `src/Nova/`, exactly two methods (create page renders, detail page renders), assert no exceptions / no 500. **No business asserts.**
+3. **Browser tests use Nova DevTool + Testbench Dusk + Workbench** — `DuskTestCase` extends `Orchestra\Testbench\Dusk\TestCase` with `WithWorkbench`. Tests run against the workbench skeleton, not against the host app.
+4. **Workbench seeders are mandatory** — `workbench/database/seeders/DatabaseSeeder.php` MUST seed: (a) the `admin@laravel.com / password` user used by `loginToNova()`, and (b) 1–3 records per aggregate root so detail-page smoke tests can resolve a real record.
+5. **`composer run build` is the single environment-recreation command** — builds workbench, copies Nova assets to both skeletons, copies SQLite DB, clears view caches, syncs ChromeDriver. MUST work from a clean clone.
+6. **`composer run serve` is mandatory** — runs `testbench serve` so any developer can browse the workbench Nova UI at `http://localhost:8000/nova` outside of Dusk.
+7. **Browser tests run headless by default** — `DUSK_HEADLESS=true` is configured in `DuskTestCase::driver()`. CI never sees a visible browser. Override with `DUSK_HEADLESS=false composer run test:web` to debug locally.
+8. **`test:web` always rebuilds the workbench** — `composer run test:web` chains `composer run build` first. Stale skeletons are the #1 cause of flaky Browser tests.
+9. **Browser tests run separately from `test` / `check`** — via `composer run test:web` with `phpunit.dusk.xml`. They are NOT included in `composer run test` because they require ChromeDriver.
+10. **Login via browser form** — use the `loginToNova()` helper that types credentials into the Nova login form. Avoid `loginAs()` as it requires the user to exist in the server's DB.
+11. **PHPStan level 9** — all four `strict-rules` rule sets active. Documented ignores for tests (DIP, helpers), Nova (`__()` translations), controllers (try-catch at HTTP boundary), service providers (Laravel patterns).
+12. **`declare(strict_types=1)`** enforced by Pint via `duster fix`.
+13. **TLint compliance** — always use `use` imports, never `\Fully\Qualified\Class` in code.
+14. **Event listeners must specify method** — `[Action::class, 'asListener']` not `Action::class`.
+15. **`composer run check`** runs fix + refactor + lint + analyse + test — this is the CI entry point.

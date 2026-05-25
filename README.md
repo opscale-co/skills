@@ -24,45 +24,66 @@ This workflow is built around Claude Code harness best practices: dividing work 
 
 ## How It Works
 
-The harness splits every project into three phases. Each phase is a group of skills that orchestrate specialized subagents. No phase starts until the previous one is validated.
+The harness splits every project into three phases plus an iteration loop. Each phase is a group of skills that orchestrate specialized subagents. No phase starts until the previous one is validated.
 
 ```
-Plan → Generate → Review
+init  →  Plan  →  Generate  →  Review
+                                   ↺ Iterate (after the loop is complete)
 ```
 
-### Plan — understand before building
+### init — once per project
+
+Skill: `opscale-init`
+
+Assumes you are inside an **existing PHP/Laravel project** (refuses if `composer.json` is missing). Installs spec-kit, configures MCP servers, writes the Opscale constitution, and establishes the per-module `docs/` convention. Every other skill checks `.specify/memory/constitution.md` exists before running.
+
+### Plan — understand before building (strict order)
 
 Skills: `opscale-process` → `opscale-dbml` → `opscale-bpmn`
 
-The planning phase produces validated spec artifacts — not code. Each skill takes informal input, structures it, spawns validator subagents, and only advances when the artifact passes.
+The planning phase produces validated spec artifacts — not code. Each skill takes informal input, structures it, spawns validator subagents, and only advances when the artifact passes. The three skills run **in order**; each declares its predecessor as a hard prerequisite.
 
-- **Process** — business spec from informal input (actors, rules, triggers, conditions)
-- **DBML** — DDD-aligned data model from the spec (entities, enums, relationships)
-- **BPMN** — process map from the spec and data model (task classification, data flow)
+- **Process** — business spec from informal input. Writes `spec.md` (structured) AND `docs/process.md` (the original narrative, preserved verbatim).
+- **DBML** — DDD-aligned data model. Writes `data-model.md` (live) AND `docs/initial.dbml` (frozen snapshot, never overwritten).
+- **BPMN** — process map. Writes `process.md` (live) AND `docs/initial.bpmn` (frozen snapshot).
 
 Every artifact is cross-validated: the BPMN references only entities from the DBML, the DBML traces back to the spec. Nothing is invented.
 
-### Generate — deterministic code from validated artifacts
+### Generate — deterministic code from validated artifacts (strict order)
 
 Skills: `opscale-domain` → `opscale-ui` → `opscale-logic`
 
-With validated artifacts as input, each skill spawns parallel subagents — one per unit of work. Generation is deterministic: same input always produces the same output.
+Each Generate skill first drives **spec-kit `/speckit.plan` + `/speckit.tasks`** to record one task per unit, then spawns parallel agents to produce the code. Generation is deterministic and traceable: every generated file maps back to a tasks.md entry.
 
-- **Domain** — models, migrations, enums, value objects, repositories (one subagent per entity)
-- **UI** — Nova resources, field traits, repeatables (one subagent per aggregate)
-- **Logic** — Opscale Actions (one subagent per business rule)
+| Skill | Unit | One task per | Bundle contents |
+|-------|------|--------------|-----------------|
+| **Domain** | Entity bundle | DBML entity | migration + model + repository trait + owned enums + owned VOs |
+| **UI** | Aggregate bundle | Aggregate root | Resource + Repeatable + shared Fields trait |
+| **Logic** | Action | BPMN `businessRuleTask` | one Opscale Action class |
+
+Every implementation task is preceded by a `Test {X}` task — `opscale-test` later fills the test body. There is no cap on entities/aggregates/Actions; large modules split into sequential batches of ~20 agents.
 
 Package projects enter directly here — the user provides definitions instead of spec artifacts. The same subagents run with the same contracts.
 
-### Review — quality gates before shipping
+### Review — quality gates before shipping (flexible order, except test → release)
 
-Skills: `opscale-debug` → `opscale-test` → `opscale-release`
+Skills: `opscale-debug`, `opscale-test`, `opscale-release`
 
-The review phase runs enforcement and testing subagents sequentially. Nothing merges without passing all gates.
+Review skills can be invoked at **any point after `opscale-init`** — you don't have to finish Plan or Generate first. The only ordering constraint inside Review is: `release` always runs after `test`.
 
-- **Debug** — development tooling configuration
-- **Test** — Pest tests (unit, feature, web), PHPStan level 8, Duster lint, Rector
-- **Release** — Semantic Release, CI/CD workflows, SonarQube
+- **Debug** — Xdebug + Telescope for local/staging only (never production)
+- **Test** — configures the stack (Pest, Dusk, PHPStan, Duster, Rector) AND **generates the tests**: Unit (domain), Feature (Actions, real DB), Browser (Nova UI smoke). Headless by default. `composer run build` + `composer run serve` mandatory.
+- **Release** — Semantic Release, commitlint, Husky, SonarQube, four GitHub Actions workflows. Refuses to run unless `tests/` is populated.
+
+### Iterate — adding the next feature once the module is complete
+
+Skill: `opscale-iterate`
+
+Single command that takes a **user story** (`As X / I want Y / So that Z` + Given/When/Then), drives spec-kit through specify/clarify/plan/tasks/analyze, surgically invokes only the Opscale skills the diff requires, runs the quality gates, and closes with **one Conventional Commits commit** compatible with semantic-release.
+
+Strict gate: refuses to run unless the **initial pipeline is complete** (Plan + Generate done) AND **zero pending tasks** in `tasks.md`. Iteration extends a finished module; it does not finish a half-built one.
+
+Every iteration is archived as `docs/iterations/YYYY-MM-DD-<slug>.md` inside the target module's spec folder — a permanent dated record alongside the frozen `docs/initial.dbml` / `docs/initial.bpmn` snapshots.
 
 ## Project Types
 
@@ -76,12 +97,14 @@ The review phase runs enforcement and testing subagents sequentially. Nothing me
 ### Development Sequences
 
 ```
-app / module    init → plan → generate → review
-package         init → generate → review
+app / module    init → plan → generate → review → (iterate)*
+package         init → generate → review → (iterate)*
 library         init → review
 ```
 
 **app/module** get the full pipeline: plan the spec artifacts, generate code from them, review with quality gates. **package** skips the planning phase — definitions are provided directly. **library** has no generation phase — just code, tests, and release.
+
+`iterate` is the loop that runs after the initial pipeline closes — only valid when every prior task is complete and the tree is clean.
 
 ## New and Existing Projects
 
@@ -126,11 +149,49 @@ When a consumer installs the package, instead of reading the README they invoke 
 ## Architecture
 
 ```
-skills/        → 11 skills (orchestrators — own workflow and user dialogue)
+skills/        → 12 skills (orchestrators — own workflow and user dialogue)
 agents/        → 24 agents (execution units — own parallelizable work)
 ```
 
 Skills manage the sequence, interact with the user, and spawn agents. Agents do the actual work — generating files, running validators, checking gates — in parallel where possible. Agents receive normalized input from the skill and generate code independently.
+
+### Per-module `docs/` convention
+
+Every module folder under `.specify/specs/{NNN}-{slug}/` contains a `docs/` subfolder that captures the human-readable history of the module:
+
+```
+.specify/specs/{NNN}-{module-name}/
+├── spec.md             ← structured spec (live, evolves)
+├── data-model.md       ← DBML wrapped in narrative (live)
+├── process.md          ← BPMN process map (live)
+├── plan.md             ← tech decisions (live)
+├── tasks.md            ← ordered task ledger (live)
+└── docs/               ← human-readable history (frozen + append-only)
+    ├── process.md      ← original narrative from opscale-process
+    ├── initial.dbml    ← frozen DBML snapshot — never overwritten
+    ├── initial.bpmn    ← frozen BPMN snapshot — never overwritten
+    └── iterations/
+        └── YYYY-MM-DD-<slug>.md   ← one file per opscale-iterate run
+```
+
+**Live vs. frozen:** the top-level artifacts evolve with every iteration. `docs/` is the historical baseline — initial snapshots never change, iteration files are written once and never edited. This is what future maintainers read to understand how the module grew.
+
+### Orchestration gates
+
+| Skill | Required before it runs | Order |
+|-------|------------------------|:-----:|
+| `opscale-init` | composer.json + Laravel detected | Bootstrap |
+| `opscale-process` | init | Plan #1 (strict) |
+| `opscale-dbml` | init + process | Plan #2 (strict) |
+| `opscale-bpmn` | init + process + dbml | Plan #3 (strict) |
+| `opscale-domain` | init + Plan complete | Generate #1 (strict) |
+| `opscale-ui` | init + Plan + domain | Generate #2 (strict) |
+| `opscale-logic` | init + Plan + domain + ui | Generate #3 (strict) |
+| `opscale-debug` | init | Review (any order) |
+| `opscale-test` | init | Review (any order) |
+| `opscale-release` | init + opscale-test produced test files | Review (after test) |
+| `opscale-iterate` | init + Plan + Generate + **0 pending tasks** + clean git | After full pipeline |
+| `opscale-ai` | init + at least one shipped package | Independent |
 
 ### MCP Servers
 
@@ -148,16 +209,22 @@ Agents use three MCP servers configured by `opscale-init`:
 
 | Step | Skill | Purpose | app | module | package | library |
 |------|-------|---------|:---:|:------:|:-------:|:-------:|
-| 0 | `opscale-init` | Bootstrap scaffold, constitution + MCP servers | Yes | Yes | Yes | Yes |
-| 1 | `opscale-process` | Business spec from informal input | Per module | Yes | -- | -- |
-| 2 | `opscale-dbml` | DDD-aligned DBML data model | Per module | Yes | -- | -- |
-| 3 | `opscale-bpmn` | BPMN 2.0 process map | Per module | Yes | -- | -- |
-| 4 | `opscale-domain` | Models, migrations, enums, repos, VOs | Per module | Yes | Yes | -- |
-| 5 | `opscale-ui` | Resources, Repeatables, field traits | Per module | Yes | Yes | -- |
-| 6 | `opscale-logic` | Opscale Actions | Per module | Yes | Yes | -- |
-| 7 | `opscale-debug` | Xdebug, Telescope, Debugbar, MCP | Yes | Yes | Yes | Optional |
-| 8 | `opscale-test` | Pest, PHPStan, Duster, Rector | Yes | Yes | Yes | Yes |
-| 9 | `opscale-release` | Semantic Release, CI/CD workflows | deploy-app | publish-package | publish-package | publish-package |
+| 0 | `opscale-init` | Bootstrap scaffold, constitution, MCP servers, `docs/` convention. Refuses if not inside a Laravel/PHP project | Yes | Yes | Yes | Yes |
+| 1 | `opscale-process` | Business spec from informal input + narrative in `docs/process.md` | Per module | Yes | -- | -- |
+| 2 | `opscale-dbml` | DDD-aligned DBML + frozen `docs/initial.dbml` snapshot | Per module | Yes | -- | -- |
+| 3 | `opscale-bpmn` | BPMN 2.0 process map + frozen `docs/initial.bpmn` snapshot | Per module | Yes | -- | -- |
+| 4 | `opscale-domain` | Spec-kit plan + tasks (one per entity bundle), then models/migrations/enums/VOs/repos. No entity cap | Per module | Yes | Yes | -- |
+| 5 | `opscale-ui` | Spec-kit plan + tasks (one per aggregate bundle), then Resources + Repeatables + Field traits | Per module | Yes | Yes | -- |
+| 6 | `opscale-logic` | Spec-kit plan + tasks (one per Action), then Opscale Actions | Per module | Yes | Yes | -- |
+| 7 | `opscale-debug` | Xdebug + Telescope (local/staging only) | Yes | Yes | Yes | Optional |
+| 8 | `opscale-test` | Stack config (Pest, Dusk, PHPStan, Duster, Rector) + workbench seeders + **generates Unit/Feature/Browser tests**. Headless by default. `composer build`/`serve` | Yes | Yes | Yes | Yes |
+| 9 | `opscale-release` | Semantic Release, commitlint, Husky, SonarQube, GitHub Actions. Refuses without test files | deploy-app | publish-package | publish-package | publish-package |
+
+#### Iterative
+
+| Skill | Purpose | app | module | package | library |
+|-------|---------|:---:|:------:|:-------:|:-------:|
+| `opscale-iterate` | User-story → spec-kit plan/tasks → surgical re-run of affected skills → quality gates → one Conventional Commits commit. Archives every iteration as `docs/iterations/YYYY-MM-DD-<slug>.md`. Refuses on incomplete modules or pending tasks | Per module | Yes | Yes | -- |
 
 #### Independent
 
@@ -241,7 +308,8 @@ Agents receive normalized input from the skill. All parallelizable.
 
 ```
 opscale-domain (skill — orchestrates)
-  ├─ Reads DBML, presents inventory, confirms with user
+  ├─ Reads DBML, presents inventory (no cap on entity count)
+  ├─ Drives /speckit.plan + /speckit.tasks → 8 entity bundle tasks (1 per entity)
   ├─ Spawns 4x enum-generator              (parallel)
   ├─ Spawns 2x value-object-generator      (parallel)
   ├─ Spawns 8x migration-generator         (dependency order)
@@ -249,6 +317,22 @@ opscale-domain (skill — orchestrates)
   ├─ Spawns 8x repository-generator        (parallel)
   ├─ Spawns 1x gate-checker                (sequential)
   └─ Spawns 1x constitution-enforcer       (sequential)
+```
+
+For very large models (>20 entities), each phase splits into sequential batches of ~20 parallel agents — no entity is ever dropped.
+
+#### Iteration — `opscale-iterate` adds a feature to a finished module
+
+```
+opscale-iterate (skill — orchestrates)
+  ├─ Gate: init + Plan + Generate complete + 0 pending tasks + clean git
+  ├─ Collects user story (As X / I want Y / So that Z + Given/When/Then)
+  ├─ Archives docs/iterations/YYYY-MM-DD-<slug>.md
+  ├─ Drives /speckit.specify → clarify → plan → tasks → analyze
+  ├─ Reads tasks.md and invokes ONLY the Opscale skills the diff requires
+  │     (e.g. dbml + domain + ui + test — never the full pipeline)
+  ├─ Runs composer run check (+ test:web if Nova changed)
+  └─ Creates one Conventional Commits commit on iter/<slug> branch
 ```
 
 #### library — `opscale-test` with 6 classes
@@ -279,14 +363,21 @@ Skills are discovered automatically — no `settings.json` changes needed. Symli
 Each skill is invoked as a Claude Code slash command inside the target project directory:
 
 ```
-/opscale-init          # bootstrap a new or existing project
-/opscale-process       # generate business spec from informal input
-/opscale-domain        # generate domain layer from DBML or direct definitions
-/opscale-logic         # generate Opscale Actions
-/opscale-test          # generate tests and run quality gates
+/opscale-init          # bootstrap an existing Laravel/PHP project
+/opscale-process       # generate business spec + docs/process.md from informal input
+/opscale-dbml          # generate data model + frozen docs/initial.dbml
+/opscale-bpmn          # generate process map + frozen docs/initial.bpmn
+/opscale-domain        # plan + tasks per entity, then generate domain layer
+/opscale-ui            # plan + tasks per aggregate, then generate Nova layer
+/opscale-logic         # plan + tasks per Action, then generate Opscale Actions
+/opscale-debug         # Xdebug + Telescope (local/staging)
+/opscale-test          # configure stack AND generate Unit/Feature/Browser tests
+/opscale-release       # semantic-release + CI/CD + SonarQube
+/opscale-iterate       # add the next feature via user story → spec-kit → one commit
+/opscale-ai            # generate installer skill for consumers
 ```
 
-Skills are executed in sequence — each step validates its prerequisites before starting. For package and library projects, skip the spec steps and start directly with the relevant generation skill.
+Skills validate their prerequisites and refuse to run if missing — `opscale-iterate` requires the initial pipeline complete and zero pending tasks; `opscale-release` requires test files to exist; etc. For package projects, skip the Plan phase (`process`/`dbml`/`bpmn`) and start at `opscale-domain` with direct definitions. For library projects, skip both Plan and Generate — go straight to `opscale-test` and `opscale-release`.
 
 ## Testing
 

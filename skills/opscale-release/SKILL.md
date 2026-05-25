@@ -12,6 +12,16 @@ description: >
 
 # opscale-release
 
+## Prerequisites — tests MUST exist
+
+| # | Requirement | Check | If missing |
+|---|-------------|-------|-----------|
+| 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
+| 2 | `opscale-test` has been run | `tests/Unit/`, `tests/Feature/`, and `tests/Browser/` contain at least one test class each (for `app`/`module`/`package`); `tests/` populated for `library` | Stop. Run `/opscale-test` first — semantic-release will not gate a release without a test suite. |
+| 3 | `composer run check` passes locally | Run it | Fix failures before configuring release pipeline. |
+
+This skill belongs to the **Review phase**. The Review phase (`debug`, `test`, `release`) can be invoked at any point after `opscale-init`, but inside Review the order is fixed: **`release` always runs after `test`**.
+
 ## Purpose
 
 Configure automated versioning, changelog generation, Packagist publishing, and code
