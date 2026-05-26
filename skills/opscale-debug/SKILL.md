@@ -229,9 +229,19 @@ class TelescopeServiceProvider extends TelescopeApplicationServiceProvider
 
 ### Prevent Telescope from loading in production
 
-In `app/Providers/AppServiceProvider.php`:
+**The registration location depends on `PROJECT_TYPE` (read from
+`.specify/memory/constitution.md`):**
+
+| Project type | Register Telescope here | Why |
+|--------------|-------------------------|-----|
+| `app` | `app/Providers/AppServiceProvider.php` | Standard Laravel app — has its own AppServiceProvider |
+| `module` / `package` | `workbench/app/Providers/WorkbenchServiceProvider.php` | A Nova package has NO `app/Providers/` of its own; Telescope is a workbench-only concern — host apps consuming the package register their own Telescope if they want it |
+| `library` | Not applicable — libraries skip this skill | |
+
+**For `app` projects:**
 
 ```php
+// app/Providers/AppServiceProvider.php
 public function register(): void
 {
     if ($this->app->environment(['local', 'staging'])) {
@@ -240,15 +250,31 @@ public function register(): void
 }
 ```
 
-And in `bootstrap/providers.php` — remove `TelescopeServiceProvider` from the
-auto-registered list if it was added during install:
+And remove `App\Providers\TelescopeServiceProvider::class` from
+`bootstrap/providers.php` if it was auto-added by `telescope:install`.
+
+**For `module` / `package` projects:**
 
 ```php
-// Remove this line from providers.php if present:
-// App\Providers\TelescopeServiceProvider::class,
+// workbench/app/Providers/WorkbenchServiceProvider.php
+use Laravel\Telescope\TelescopeServiceProvider as BaseTelescopeServiceProvider;
 
-// It is manually registered in AppServiceProvider above
+public function register(): void
+{
+    if ($this->app->environment(['local', 'staging', 'testing'])) {
+        $this->app->register(BaseTelescopeServiceProvider::class);
+    }
+
+    \Illuminate\Support\Facades\Gate::define('viewTelescope', fn ($user = null): bool =>
+        in_array($this->app->environment(), ['local', 'testing', 'staging'], true)
+    );
+}
 ```
+
+Packages do NOT publish their own `TelescopeServiceProvider.php` (no
+`app/Providers/` exists). They wire Telescope directly from the workbench
+provider so it only runs when a developer is hacking on the package via
+`testbench serve`. Consuming applications register their own.
 
 ### .gitignore
 
@@ -546,7 +572,7 @@ DEBUG CONFIGURATION GATE
 [ ] Telescope installed via composer require --dev
 [ ] telescope:install and migrate run
 [ ] TelescopeServiceProvider NOT in providers.php auto-load
-[ ] Telescope manually registered in AppServiceProvider with env check
+[ ] Telescope registered in the project-type-appropriate provider (app → AppServiceProvider; module/package → WorkbenchServiceProvider) with env check
 [ ] Gate restricts access to local + staging only
 [ ] Sensitive headers and params hidden on staging
 [ ] Staging filter limits recording to errors, slow queries, failures
@@ -568,7 +594,7 @@ STATUS: [ ] PASS — opscale-test may proceed
 ## Domain Rules
 
 1. **Never production** — all three tools are `--dev` dependencies and environment-gated. Any config touching `APP_ENV=production` is a violation.
-2. **Telescope via AppServiceProvider** — never auto-registered in `providers.php`. Always conditional on `app()->environment(['local', 'staging'])`.
+2. **Telescope registration is project-type-aware** — `app` projects register in `AppServiceProvider`; `module`/`package` projects have no `app/Providers/`, so register in `workbench/app/Providers/WorkbenchServiceProvider.php` instead. Never auto-registered in `bootstrap/providers.php`. Always conditional on `app()->environment(['local', 'staging'])` (plus `testing` for packages).
 3. **Staging filter** — on staging, Telescope only records exceptions, failed requests, failed jobs, and slow queries. Full recording is local only.
 4. **Sensitive data hidden on staging** — passwords, tokens, authorization headers always hidden outside local.
 5. **Xdebug port 9003** — always 9003 (Xdebug 3 default). Never 9000 (conflicts with php-fpm).

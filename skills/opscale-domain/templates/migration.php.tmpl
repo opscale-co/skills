@@ -1,0 +1,54 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('{{table_name}}', function (Blueprint $table) {
+            $table->ulid('id')->primary();
+{{#if tenant_aware}}
+            $table->ulid('tenant_id')->index();
+{{/if}}
+
+            // --- Business columns ---
+{{#each column_lines}}
+            {{.}}
+{{/each}}
+
+{{#if has_intra_fks}}
+            // --- Intra-subdomain foreign keys ---
+{{#each fk_lines}}
+            {{.}}
+{{/each}}
+
+{{/if}}
+{{#if has_cross_refs}}
+            // --- Cross-subdomain logical references ---
+{{#each cross_ref_lines}}
+            {{.}}
+{{/each}}
+
+{{/if}}
+            $table->timestamps();
+{{#if soft_deletes}}
+            $table->softDeletes();
+{{/if}}
+
+{{#if has_indexes}}
+            // --- Indexes ---
+{{#each index_lines}}
+            {{.}}
+{{/each}}
+{{/if}}
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('{{table_name}}');
+    }
+};

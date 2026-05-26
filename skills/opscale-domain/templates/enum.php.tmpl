@@ -1,0 +1,34 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{package_namespace}}\Models\Enums;
+
+/**
+ * {{description}}
+ */
+enum {{enum_name}}: string
+{
+{{#each cases}}
+    /** {{meaning}} */
+    case {{case_name}} = '{{value}}';
+
+{{/each}}
+{{#if is_status_enum}}
+    /**
+     * Check if the current status can transition to the given status.
+     */
+    public function canTransitionTo(self $status): bool
+    {
+        return match ($this) {
+{{#each transitions}}
+{{#if is_terminal}}
+            self::{{case_name}} => false, // terminal state
+{{else}}
+            self::{{case_name}} => in_array($status, [{{#each allowed}}self::{{.}}{{#unless @last}}, {{/unless}}{{/each}}], true),
+{{/if}}
+{{/each}}
+        };
+    }
+{{/if}}
+}

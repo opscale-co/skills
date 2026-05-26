@@ -226,26 +226,29 @@ Never generate without explicit confirmation.
 
 Assemble the complete BPMN 2.0 XML in memory — **do not write the file yet**.
 
-Write to a temp file and validate with the bundled script:
+The validator accepts EITHER a raw `.bpmn` file OR a markdown file that wraps
+the XML in a ```` ```xml ... ``` ```` fenced block (which is exactly what
+`process.md` looks like). Either form works:
 
 ```bash
-# Install bpmn-lint into skill directory (one-time)
-cd {SKILL_DIR}/opscale-bpmn && npm install bpmnlint --no-save 2>/dev/null
+# bpmn-moddle is already bundled in this skill's node_modules — no install needed
 
-# Write assembled XML to temp file
+# Option A — validate the assembled process.md directly (recommended)
+node {SKILL_DIR}/opscale-bpmn/scripts/validate-bpmn.mjs /tmp/.process.tmp.md
+
+# Option B — write the raw XML to a .bpmn temp file and validate that
 cat > /tmp/.bpmn-validate.tmp.bpmn << 'TMPEOF'
 [assembled BPMN XML]
 TMPEOF
-
-# Run validator — temp file auto-deleted after validation
 node {SKILL_DIR}/opscale-bpmn/scripts/validate-bpmn.mjs /tmp/.bpmn-validate.tmp.bpmn
 ```
 
 **exit 1** — XML/BPMN structure error: fix and re-run.
-**exit 2** — Quality warnings: fix and re-run until exit 0.
+**exit 2** — Quality warnings (forbidden task types, missing docs, unlabelled
+gateway branches, orphan tasks, missing start/end events): fix and re-run.
 **exit 0** — Proceed to Phase 7.
 
-The script never gets copied to the project.
+The script never gets copied to the project — it stays in the skill bundle.
 
 ---
 

@@ -128,10 +128,43 @@ Repeatable, and Fields trait into separate tasks — they always ship together."
 
 If any check fails, regenerate `tasks.md` before continuing.
 
-### Phase 3 — Spawn resource generators
+### Phase 3 — Generate Nova bundles
 
-For each bundle task in `tasks.md`, spawn `resource-generator`, `repeatable-generator`,
-and `field-trait-generator` agents in parallel. One agent set per aggregate.
+Generation is **always deterministic**. The skill normalizes each aggregate
+into the JSON contract for each script, then spawns the wrapper agents in
+parallel — one of each per aggregate root.
+
+| Script | Template | Agent |
+|--------|----------|-------|
+| `scripts/generate-field-trait.mjs` | `templates/field-trait.php.tmpl` | field-trait-generator |
+| `scripts/generate-resource.mjs` | `templates/resource.php.tmpl` | resource-generator |
+| `scripts/generate-repeatable.mjs` | `templates/repeatable.php.tmpl` | repeatable-generator |
+
+Ordering inside an aggregate's bundle: field-trait first (so the Resource and
+Repeatable can consume it), then the Resource and Repeatable in parallel.
+Aggregate bundles themselves run fully in parallel — there are no
+cross-aggregate dependencies in this phase.
+
+The JSON contract for each script lives in its header comment. The skill is
+responsible for picking the right Nova field per column (`Text` / `Select` /
+`BelongsTo` / `Boolean` / `Number` / `DateTime` …) and emitting the
+`status_badge` map and `has_many_relationships` list — the script does not
+look at the Eloquent model.
+
+**Three invariants the JSON normalization must enforce** (the scripts assume
+they hold):
+
+- Every label that the user sees is provided in human form — the script wraps
+  every label, `Tab::make`, `Badge::labels` entry, `Select::options` value
+  label, and `->help()` text in `__()` automatically. The skill just supplies
+  the strings.
+- Foreign keys with real Eloquent relationships are emitted as
+  `BelongsTo::make` fields. Logical cross-subdomain refs (no FK) become
+  `Text::make(...)->help('Logical reference…')` instead — the skill decides
+  per-column, the script renders whatever it's told.
+- Resources with HasMany **must** have `has_many_relationships` populated —
+  the script applies `Tab::group(...)` automatically when this list is
+  non-empty. Skip it and you ship orphaned children in the UI.
 
 ### Phase 4 — Update plan.md
 
@@ -546,6 +579,20 @@ class [ModelName] extends Repeatable
 
 ## Code Template
 
+The authoritative templates now live on disk:
+
+- `templates/resource.php.tmpl` — Nova Resource
+- `templates/field-trait.php.tmpl` — shared `{ModelName}Fields` trait
+- `templates/repeatable.php.tmpl` — Nova Repeatable
+
+The JSON contract for each is documented at the top of the matching
+`scripts/generate-*.mjs` file. The big inline template below is preserved as a
+reference for what the rendered output looks like, but the skill should never
+edit it — change the `.tmpl` file instead.
+
+<details>
+<summary>Legacy inline template (reference only — `templates/resource.php.tmpl` is authoritative)</summary>
+
 ```php
 <?php
 
@@ -706,6 +753,45 @@ class [ModelName] extends Resource
     // }
 }
 ```
+
+</details>
+
+---
+
+## Smoke gate (MANDATORY before marking the skill complete)
+
+Resource templates that compile fine often fail at runtime — missing imports,
+wrong namespace for a referenced HasMany child, `__()` on a non-string, enum
+referenced before existing. The auto-reported checkboxes don't catch any of
+this. Run these two checks; any failure means the skill is NOT done:
+
+```bash
+# 1. Every generated PHP file parses
+find src/Nova -name '*.php' -print0 \
+  | xargs -0 -n1 php -l > /dev/null \
+  || { echo "❌ php -l failed"; exit 1; }
+
+# 2. Every Resource class loads via reflection (catches missing imports,
+#    bad namespaces, references to non-existent enums/models)
+composer dump-autoload --no-scripts > /dev/null
+php -r 'require "vendor/autoload.php";
+  $bad = [];
+  foreach (glob("src/Nova/*.php") as $f) {
+    $class = "[PackageNamespace]\\\\Nova\\\\" . basename($f, ".php");
+    try { new ReflectionClass($class); }
+    catch (Throwable $e) { $bad[$class] = $e->getMessage(); }
+  }
+  if ($bad) { foreach ($bad as $c => $m) fwrite(STDERR, "$c: $m\n"); exit(1); }
+  echo "OK ".count(glob("src/Nova/*.php"))." resources loaded\n";'
+
+# 3. The workbench actually boots with Nova mounted (catches Resource
+#    constructor errors, NovaServiceProvider issues, missing menu entries)
+vendor/bin/testbench workbench:build --ansi > /dev/null
+```
+
+Do NOT mark the gate `PASS` based on file count or "Resources generated"
+messages — reflection-load is the cheapest way to catch the bugs that hide
+behind syntactically valid PHP.
 
 ---
 

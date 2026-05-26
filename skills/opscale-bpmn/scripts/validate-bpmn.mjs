@@ -41,12 +41,22 @@ if (!filePath) {
 const absolutePath = resolve(filePath);
 const isTmp = filePath.includes('.tmp.');
 
-let xml;
+let raw;
 try {
-  xml = readFileSync(absolutePath, 'utf-8');
+  raw = readFileSync(absolutePath, 'utf-8');
 } catch (err) {
   console.error(`❌  Cannot read file: ${filePath}\n    ${err.message}`);
   process.exit(1);
+}
+
+// Accept either raw .bpmn or a markdown file with a ```xml ... ``` fenced block
+// (process.md from opscale-bpmn wraps the XML in such a block).
+let xml;
+if (filePath.endsWith('.bpmn')) {
+  xml = raw;
+} else {
+  const block = raw.match(/```xml\n([\s\S]*?)\n```/);
+  xml = block ? block[1] : raw; // fall back to raw if no fence found
 }
 
 console.log(`\n📄  File  : ${filePath}${isTmp ? ' (draft)' : ''}\n`);
@@ -192,13 +202,17 @@ if (!xml.includes('<bpmn:endEvent'))
   warnings.push('Missing end event');
 
 // ── 5. Gateway branch labels ─────────────────────────────────────────────────
+// Capture the FULL <bpmn:sequenceFlow .../> element so `name=` placed before
+// `sourceRef=` is detected. Previous implementation only inspected the slice
+// starting at `sourceRef=`, producing false positives for every well-labelled
+// flow whose name appeared earlier in the attribute list.
 
 const gatewayIds = [...xml.matchAll(/<bpmn:exclusiveGateway\s+id="([^"]+)"/gi)].map(m => m[1]);
 gatewayIds.forEach(gwId => {
-  // Find outgoing flows from this gateway — check they have a name attribute
-  const outgoingFlows = [...xml.matchAll(new RegExp(`sourceRef="${gwId}"[^>]*>`, 'gi'))];
-  outgoingFlows.forEach((flow, i) => {
-    if (!flow[0].includes('name='))
+  const allFlows = [...xml.matchAll(/<bpmn:sequenceFlow\b[^>]*\/?>/gi)].map(m => m[0]);
+  const outgoing = allFlows.filter(f => f.includes(`sourceRef="${gwId}"`));
+  outgoing.forEach((flow, i) => {
+    if (!/\bname="/.test(flow))
       warnings.push(`Gateway [${gwId}] — outgoing flow ${i + 1} has no label (must describe condition)`);
   });
 });

@@ -156,8 +156,23 @@ tables.forEach(t => {
   if (!t.note)
     warnings.push(`[${t.name}] Missing table Note block`);
 
+  // Boilerplate columns (ULID PK, timestamps, active flag, sort order) carry
+  // standardized semantics across every Opscale table and do NOT need an
+  // inline note. Flagging them produced ~80% noise in real modules.
+  const boilerplate = new Set([
+    'id', 'created_at', 'updated_at', 'deleted_at',
+    'is_active', 'sort_order',
+  ]);
+
+  // Opscale is single-tenant by design — domain tables MUST NOT carry a
+  // `tenant_id` column. Flag it as a quality warning so the user catches the
+  // anti-pattern at validation time.
+  if (t.fields.some(f => f.name === 'tenant_id')) {
+    warnings.push(`[${t.name}] has a 'tenant_id' column — Opscale is single-tenant by design (one database per implementation). Remove it.`);
+  }
+
   t.fields.forEach(f => {
-    if (!f.note)
+    if (!f.note && !boilerplate.has(f.name))
       warnings.push(`[${t.name}.${f.name}] Missing inline note`);
 
     if (techPatterns.some(p => f.name.startsWith(p)))
@@ -186,7 +201,7 @@ if (warnings.length > 0) {
 } else {
   console.log('   ✅  All tables have id, created_at, updated_at');
   console.log('   ✅  All tables have Note blocks');
-  console.log('   ✅  All columns have inline notes');
+  console.log('   ✅  All business columns have inline notes (boilerplate exempt)');
   console.log('   ✅  All enum values have notes');
   console.log('   ✅  No suspicious technical column names');
   console.log('\n────────────────────────────────────────────────────────────');

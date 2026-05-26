@@ -1,0 +1,32 @@
+<?php
+
+namespace {{package_namespace}}\Nova\Concerns;
+
+{{#each imports}}
+use {{.}};
+{{/each}}
+use Laravel\Nova\Http\Requests\NovaRequest;
+use {{package_namespace}}\Models\{{model_name}} as {{model_name}}Model;
+{{#each enum_imports}}
+use {{.}};
+{{/each}}
+{{#each related_resource_imports}}
+use {{.}};
+{{/each}}
+
+trait {{model_name}}Fields
+{
+    /**
+     * The core fields shared between Resource and Repeatable.
+     *
+     * @return array<mixed>
+     */
+    protected function coreFields(NovaRequest $request): array
+    {
+        return [
+{{#each field_blocks}}
+            {{.}}{{#unless @last}},{{/unless}}
+{{/each}}
+        ];
+    }
+}

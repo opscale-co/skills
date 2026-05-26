@@ -3,7 +3,6 @@
 **Project:** [PROJECT_NAME]
 **Project Type:** [PROJECT_TYPE]
 **Module Prefix:** [MODULE_PREFIX]
-**Tenant Aware:** [TENANT_AWARE]
 **Created:** [DATE]
 
 > This constitution is the architectural DNA of every Opscale project.
@@ -387,8 +386,6 @@ external API call — is an Output class. Never inline in an Action or Controlle
 - Each Output class handles exactly one delivery channel.
   Multi-channel delivery uses separate Output classes, one per channel.
 - Outputs are dispatched as queued jobs whenever the operation could take more than 200ms.
-- When `[TENANT_AWARE]` is `yes`, channel configuration (addresses, API keys, preferences)
-  is resolved per tenant at dispatch time.
 - One BPMN `output` task = one Output class.
 
 ---
@@ -424,20 +421,31 @@ All dependencies are injected via constructor. The service container resolves th
 
 ---
 
-## IX. Multi-Tenancy
+## IX. Single-Tenant Deployment Model
 
-**Tenant Aware: [TENANT_AWARE]**
+Opscale modules are designed for **one independent database per implementation**.
+There is no multi-tenancy column, no per-row tenant scoping, no shared-database
+isolation strategy.
 
-When `yes`:
-- Every domain table includes a `tenant_id` column: non-nullable, indexed, no FK constraint.
-- Tenant scoping is enforced at the Repository layer — every query method applies a
-  `where('tenant_id', ...)` condition. This is never skipped silently.
-- Nova Resources scope `indexQuery` and `detailQuery` by tenant.
-- Cross-tenant administrative queries are explicit, documented, and restricted to
-  system-level commands — never exposed through Nova or API endpoints.
+- **No `tenant_id` columns.** Domain tables do NOT carry a tenant discriminator.
+- **No tenant scopes on repositories.** Repository traits filter by business
+  state, not by tenant.
+- **Isolation is at the database level.** Each customer / cooperative /
+  consuming application provisions its own database (or schema). Cross-customer
+  data sharing is impossible by construction, not by application-layer filtering.
+- **No "system admin" cross-tenant queries.** Operating across customer
+  boundaries is an infrastructure concern (replication, BI warehouse, regulator
+  reporting pipelines) and lives outside the module.
 
-When `no`:
-- Document the business reason this module does not require tenant isolation.
+The rationale: a tenant column is an attack surface (one missing `where` clause
+leaks every tenant), an indexing tax (every query carries an extra predicate),
+and a complexity tax (every Action, Resource, scope and seeder has to remember
+to apply it). A separate database is cheap with modern infrastructure and
+removes the entire class of bugs.
+
+When a customer needs the module, they install it into their own Laravel
+application against their own database. The module exposes the same surface
+in every installation; only the data differs.
 
 ---
 

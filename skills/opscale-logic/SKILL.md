@@ -395,8 +395,35 @@ For each task in `tasks.md` (dependency order):
 - **`handle()` body**: implement Business Rules from `spec.md` referenced in the
   task's acceptance criteria
 
-Spawn `action-generator` agents in parallel within each dependency level —
-leaves first, composites next.
+Choose the strategy based on count:
+
+| Action count | Strategy | Why |
+|--------------|----------|-----|
+| ≤ 10 | `action-generator` agents in parallel within dependency level (leaves first, composites next) | Per-Action judgment matters; agents can encode business-rule nuance per BPMN task. |
+| 11+ | **Deterministic generator script** that reads the BPMN logic tasks + `spec.md` rules and emits one `Action` per task in one pass | Faster, consistent escape handling, consistent parameter shape, consistent `handle()` skeleton. |
+
+**Generator pattern** — the Teller module (26 Actions) used this approach.
+The script defines:
+
+```python
+ACTIONS = [{
+  'id': 'open-agency-operating-day',
+  'class': 'OpenAgencyOperatingDay',
+  'name': 'Open Agency Operating Day',
+  'description': 'Open the operating day for an agency...',  # apostrophes WILL break
+  'rules': ['BR-01', 'BR-02'],
+  'params': [(name, desc, type, rules), ...],
+  'imports': [fq_class, ...],
+  'body': '...PHP snippet between fill+validate and return...',
+  'return_extras': "'agency_operating_day' => \$day, 'message' => '...'",
+}, ...]
+```
+
+**Critical generator invariant** — every string that lands inside a single-quoted
+PHP literal MUST be escaped: `str_replace("'", "\\'", $value)` on every value
+that flows into `identifier()`, `name()`, `description()`, parameter `name` and
+`description`. Skipping this is the #1 cause of action-files that pass `composer
+install` but fatal at autoload.
 
 #### Phase 5 — Update plan.md
 
@@ -470,6 +497,10 @@ was skipped), in dependency order:
 - **`parameters()`**: from provided parameter definitions
 - **`handle()` body**: implement the described logic
 
+Same generator-vs-agents decision as BPMN-driven Phase 4: ≤ 10 actions → agents;
+11+ → deterministic generator script. Same single-quote escape invariant
+applies to every string that lands in a PHP single-quoted literal.
+
 #### Phase 5 — Update plan.md (if specs exist)
 
 If `.specify/specs/` exists, append the same Logic Layer table as in BPMN-driven
@@ -478,6 +509,19 @@ Phase 5 (including the `Task ID` column). Otherwise skip.
 ---
 
 ## Code Template
+
+The authoritative template is `templates/action.php.tmpl` and the renderer is
+`scripts/generate-action.mjs`. The skill normalizes each Action into the JSON
+contract documented at the top of that script, then spawns
+`action-generator` (a thin wrapper that just runs the script) in parallel —
+one instance per Action.
+
+The skill is responsible for assembling `handle_body` as ready-to-run PHP
+(including any `OtherAction::run([...])` composition calls). The script
+indents and inserts it verbatim — it does not transform business logic.
+
+<details>
+<summary>Legacy inline template (reference only — `templates/action.php.tmpl` is authoritative)</summary>
 
 ```php
 <?php
@@ -508,6 +552,16 @@ class [ActionClassName] extends Action
         return '[Human Readable Name]';
     }
 
+    /**
+     * NOTE — apostrophes (`'`) in the description string MUST be escaped
+     * with a backslash (`\'`) or the file will fail to parse. Generators
+     * that emit Action descriptions from natural-language sources (e.g.
+     * "Operating day's business date") must run `str_replace("'", "\\'", $s)`
+     * on every value that lands inside a single-quoted PHP literal —
+     * including identifier(), name(), description(), and every parameter
+     * `name`/`description`. Alternative: emit with double quotes and escape
+     * `$` and `\`. Pick ONE convention and apply it everywhere.
+     */
     public function description(): string
     {
         return '[One sentence for AI/MCP: what this action does and when to use it]';
@@ -598,6 +652,49 @@ class [ActionClassName] extends Action
 }
 ```
 
+</details>
+
+---
+
+## Smoke gate (MANDATORY before marking the skill complete)
+
+Action templates fail at parse time when apostrophes leak into PHP string
+literals, and at runtime when `identifier()` / `parameters()` return
+non-string values. Always run these checks:
+
+```bash
+# 1. Every Action file parses
+find src/Services/Actions -name '*.php' -print0 \
+  | xargs -0 -n1 php -l > /dev/null \
+  || { echo "❌ php -l failed"; exit 1; }
+
+# 2. Every Action instantiates and honors the Opscale Action contract
+composer dump-autoload --no-scripts > /dev/null
+php -r 'require "vendor/autoload.php";
+  $bad = [];
+  foreach (glob("src/Services/Actions/*.php") as $f) {
+    $class = "[PackageNamespace]\\\\Services\\\\Actions\\\\" . basename($f, ".php");
+    try {
+      $a = new $class();
+      if (! is_string($a->identifier()) || ! preg_match("/^[a-z][a-z0-9-]*$/", $a->identifier()))
+        throw new RuntimeException("identifier() not kebab-case");
+      if (! is_string($a->name()) || ! is_string($a->description()))
+        throw new RuntimeException("name() / description() must return string");
+      if (! is_array($a->parameters()))
+        throw new RuntimeException("parameters() must return array");
+      foreach ($a->parameters() as $p) {
+        if (! isset($p["name"], $p["description"], $p["type"], $p["rules"]))
+          throw new RuntimeException("parameter missing keys");
+      }
+    } catch (Throwable $e) { $bad[$class] = $e->getMessage(); }
+  }
+  if ($bad) { foreach ($bad as $c => $m) fwrite(STDERR, "$c: $m\n"); exit(1); }
+  echo "OK ".count(glob("src/Services/Actions/*.php"))." Actions loaded\n";'
+```
+
+Do NOT mark the gate `PASS` based on file count — Actions with apostrophes
+in their description compile clean until the moment Laravel autoloads them.
+
 ---
 
 ## Domain Rules
@@ -614,3 +711,4 @@ class [ActionClassName] extends Action
 10. **`identifier()` derivation** — from BPMN `logic.id` when available, otherwise kebab-case from class name.
 11. **`description()` is for AI** — write it as if explaining to an AI agent what the tool does and when to invoke it.
 12. **`declare(strict_types=1)`** — every PHP file.
+13. **Single-quote hygiene** — every string emitted into `identifier()`, `name()`, `description()`, and parameter `name`/`description` is wrapped in single quotes by the template. Generators MUST escape apostrophes (`'` → `\'`) on every value. Strings like `"Operating day's business date"` parse-fail otherwise. Alternative: emit with double quotes and escape `$` + `\`. One convention, applied everywhere.

@@ -1,0 +1,71 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{package_namespace}}\Models\Repositories;
+
+use Illuminate\Database\Eloquent\Builder;
+{{#if has_status}}
+use {{package_namespace}}\Models\Enums\{{status_enum}};
+{{/if}}
+
+/**
+ * Repository trait for {{model_name}}.
+ *
+ * Mixed into the model via `use {{model_name}}Repository;`.
+ * Contains scopes, boot hooks, and domain-specific query methods.
+ */
+trait {{model_name}}Repository
+{
+{{#if has_boot}}
+    /**
+     * Boot the repository trait — register model event hooks.
+     */
+    public static function boot{{model_name}}Repository(): void
+    {
+{{#if has_status}}
+        static::updating(function ($model) {
+            if ($model->isDirty('status')) {
+                $original = $model->getOriginal('status');
+                $current = $original instanceof {{status_enum}}
+                    ? $original
+                    : {{status_enum}}::from($original);
+
+                $new = $model->status;
+                $next = $new instanceof {{status_enum}}
+                    ? $new
+                    : {{status_enum}}::from($new);
+
+                if (! $current->canTransitionTo($next)) {
+                    abort(422, __('Invalid status transition from :current to :new.', [
+                        'current' => $current->value,
+                        'new'     => $next->value,
+                    ]));
+                }
+            }
+        });
+{{/if}}
+    }
+
+{{/if}}
+{{#each scopes}}
+    /**
+     * {{description}}
+     */
+    public function scope{{name}}(Builder $query{{#each params}}, {{type}} ${{name}}{{/each}}): Builder
+    {
+        {{body}}
+    }
+
+{{/each}}
+{{#each write_methods}}
+    /**
+     * {{description}}
+     */
+    public static function {{name}}({{#each params}}{{type}} ${{name}}{{#unless @last}}, {{/unless}}{{/each}}): {{return_type}}
+    {
+        {{body}}
+    }
+
+{{/each}}
+}

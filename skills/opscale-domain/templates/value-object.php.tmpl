@@ -1,0 +1,46 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{package_namespace}}\Models\ValueObjects;
+
+use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Database\Eloquent\Model;
+
+/**
+ * {{description}}
+ */
+readonly class {{vo_name}} implements CastsAttributes
+{
+    public function __construct(
+{{#each properties}}
+        public {{type}} ${{name}}{{#unless @last}},{{/unless}}
+{{/each}}
+    ) {
+{{#each validations}}
+        if ({{condition}}) {
+            throw new \InvalidArgumentException('{{message}}');
+        }
+{{/each}}
+    }
+
+    /** Reconstruct from stored database value(s). */
+    public function get(Model $model, string $key, mixed $value, array $attributes): self
+    {
+        return new self(
+{{#each property_column_map}}
+            {{property}}: $attributes['{{column}}']{{#unless @last}},{{/unless}}
+{{/each}}
+        );
+    }
+
+    /** Prepare for storage. */
+    public function set(Model $model, string $key, mixed $value, array $attributes): array
+    {
+        return [
+{{#each property_column_map}}
+            '{{column}}' => $value->{{property}}{{#unless @last}},{{/unless}}
+{{/each}}
+        ];
+    }
+}

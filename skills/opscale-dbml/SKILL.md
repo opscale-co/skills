@@ -176,10 +176,13 @@ Apply standard columns automatically:
 | Column | Type | Rule |
 |--------|------|------|
 | `id` | `varchar(26)` | ULID — always first |
-| `tenant_id` | `varchar(26)` | Only if constitution `TENANT_AWARE: yes` |
 | `created_at` | `timestamp` | Always |
 | `updated_at` | `timestamp` | Always |
 | `deleted_at` | `timestamp` | Only if spec requires recovery of deleted records |
+
+**Single-tenant deployment:** Opscale modules use one independent database per
+implementation. Domain tables do NOT carry a `tenant_id` column. Cross-customer
+isolation is at the database level, not the row level.
 
 Present per entity:
 
@@ -206,7 +209,6 @@ Repeat for each entity. Wait for confirmation after each.
 
 For each table, define indexes following these rules:
 
-- `tenant_id` — always indexed if present
 - All enum/status/type columns — indexed
 - FK columns — indexed automatically by FK definition
 - Columns flagged in spec as frequent search targets — indexed
@@ -289,7 +291,7 @@ DBML COMPLETENESS GATE
 [ ] docs/initial.dbml written on first run (or preserved if already present)
 [ ] Every Entity artifact from spec.md has a corresponding DBML table
 [ ] No technical, UI, or config entities present
-[ ] tenant_id present on every table if TENANT_AWARE is yes
+[ ] No `tenant_id` columns anywhere (single-tenant deployment model)
 [ ] All intra-subdomain relationships have real FK constraints
 [ ] All cross-subdomain references are logical only (no FK constraint)
 [ ] Data dictionary section is complete for all tables
@@ -332,6 +334,19 @@ Project [SubdomainName] {
   - Main aggregates: [AggregateRoot → owned entities]
   - Depends on: [other subdomains, or "none"]
   - Notifies: [other subdomains via events, or "none"]
+
+  ## Key Business Rules
+  - [BR-01]: [condition → consequence]
+  - [BR-02]: ...
+
+  ## Relationship Summary
+  - [table_a] → [table_b]: 1:N, FK constraint (within subdomain)
+  - [table_c] → [other_subdomain.table]: logical reference, no FK
+
+  ## Entity Sources
+  - [SPEC: Artifacts]: [entity1], [entity2]
+  - [SPEC: Actions]: [entity3]
+  - [SPEC: Rules]: [entity4]
   '''
 }
 
@@ -354,7 +369,6 @@ Enum [TablePrefix]Status {
 
 Table [plural_entity_name] {
   id              varchar(26)   [pk, note: 'ULID generated at application layer before insert']
-  tenant_id       varchar(26)   [not null, note: 'Logical tenant scope — no FK constraint']
 
   // --- Business attributes ---
   [column]        [type]        [not null, note: 'Business meaning of this value']
@@ -371,9 +385,7 @@ Table [plural_entity_name] {
   // deleted_at   timestamp     [null]  // uncomment only if soft deletes required by spec
 
   indexes {
-    tenant_id                       [name: 'idx_[table]_tenant']
     status                          [name: 'idx_[table]_status']
-    (tenant_id, status)             [name: 'idx_[table]_tenant_status']
     // [search_column]              [name: 'idx_[table]_[column]']
   }
 
@@ -400,33 +412,11 @@ Table [entity_a]_[entity_b] {
   '''
 }
 
-//=====================================
-// MODEL NOTES
-//=====================================
-
-// Note model — supplemental, may not render in all tools.
-// Prefer adding aggregate/rule info to the Project Note block above.
-Note model {
-  '''
-  # Domain Model: [Module Name]
-
-  ## Aggregates
-  - [AggregateRoot] Aggregate: [Root] (root) + [owned entities]
-
-  ## Key Business Rules
-  - [BR-01]: [condition → consequence]
-  - [BR-02]: ...
-
-  ## Relationship Summary
-  - [table_a] → [table_b]: 1:N, FK constraint (within subdomain)
-  - [table_c] → [other_subdomain.table]: logical reference, no FK
-
-  ## Entity Sources
-  - [SPEC: Artifacts]: [entity1], [entity2]
-  - [SPEC: Actions]: [entity3]
-  - [SPEC: Rules]: [entity4]
-  '''
-}
+// Aggregates, business rules, relationships and entity sources go into the
+// Project block's Note: above — NOT into a separate `Note model { }` block.
+// Current versions of @dbml/core REJECT `Note model { }` at the top level
+// with: «Expected Table Group, comment, end of input, enum, project, references,
+// table, or whitespace but "N" found.» Do not add it.
 ```
 
 ---
@@ -447,7 +437,6 @@ Note model {
 | Column | Type | Required | Description |
 |--------|------|----------|-------------|
 | `id` | varchar(26) | Yes | ULID primary key, generated at application layer |
-| `tenant_id` | varchar(26) | Yes | Scopes record to a tenant — not a FK constraint |
 | `[column]` | [type] | Yes/No | [Full business description — what this means, valid range if applicable, where it comes from] |
 | `status` | enum | Yes | Current lifecycle state — see [EnumName] for valid values |
 | `created_at` | timestamp | Yes | Set at insert, never modified |

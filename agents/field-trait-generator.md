@@ -1,119 +1,64 @@
 ---
 name: field-trait-generator
 description: >
-  Generates a shared Nova fields trait for a model, used by both the Resource
-  and Repeatable classes. Spawned by opscale-ui in parallel — one instance
-  per aggregate root. Eliminates field duplication between Resource and Repeatable.
-tools: Read, Write, Glob, sequential-thinking, memory
-model: sonnet
-maxTurns: 5
+  Generates exactly one shared Nova fields trait by invoking the deterministic
+  generator script in opscale-ui. Spawned by opscale-ui in parallel — one
+  instance per aggregate root. The trait is consumed by both the Resource and
+  the Repeatable to eliminate field duplication.
+tools: Bash, Read, Write
+model: haiku
+maxTurns: 3
 ---
 
-# Nova Field Trait Generator
+# Field Trait Generator (deterministic wrapper)
 
-You generate exactly one shared fields trait that holds `coreFields()` used by
-both the Nova Resource and the Nova Repeatable for the same entity.
+Generation is fully deterministic. You do not write PHP. You execute the
+generator script and report its output.
 
 ## Input
 
-You receive:
-- `model_name` — PascalCase model name
-- `model_path` — path to the Eloquent model file
-- `columns` — list of columns with name, type, nullable, description
-- `enums` — enum classes used
-- `package_namespace` — PHP namespace
-- `output_dir` — target directory (e.g. `src/Nova/Concerns/`)
+JSON payload from the parent skill, schema at the top of
+`~/.claude/skills/opscale-ui/scripts/generate-field-trait.mjs`.
 
-## What Goes in coreFields() vs Resource-Only
+Required: `model_name`, `package_namespace`, `output_dir`, `fields`.
 
-| Shared (coreFields) | Resource-only |
-|---------------------|---------------|
-| Business input fields (Text, Select, Boolean, Number) | Badge (status display) |
-| BelongsTo relationship fields | HasMany tabs |
-| Rules, sortable, filterable modifiers | DateTime (created_at, updated_at) |
-| | Authorization logic |
-| | Metrics / cards |
-| | Actions |
+Each field declares `field` (Nova field class name), `label`, `attribute`,
+and `modifiers` (string for simple chains like `sortable`, object for
+parameterized chains like `{rules: 'code'}` or `{help: 'Use uppercase'}`).
+`Select` fields require `enum_class`; `BelongsTo`/`MorphTo` require
+`related_resource`.
 
-## Generation Rules
+The script:
+- Maps every Nova field name to its FQCN import.
+- Adds enum and related-resource imports automatically.
+- Threads `->rules(...{ModelName}Model::$validationRules['col'])` through the
+  `rules: col` modifier.
 
-1. Trait name: `{ModelName}Fields`
-2. File location: `Nova/Concerns/{ModelName}Fields.php`
-3. Single method: `protected function coreFields(NovaRequest $request): array`
-4. Rules always via `Model::$validationRules['col']` spread operator
-5. All strings wrapped in `__()`
-6. Import the model as `{ModelName}Model` to avoid class name collision with Nova Resource
+## Procedure
 
-## Code Template
+1. Extract the JSON block from the prompt.
+2. Write to temp:
+   ```bash
+   TMP="$(mktemp -t opscale-fieldtrait-XXXXXX.json)"
+   cat > "$TMP" <<'JSON'
+   { ...payload... }
+   JSON
+   ```
+3. Run:
+   ```bash
+   node ~/.claude/skills/opscale-ui/scripts/generate-field-trait.mjs --input "$TMP"
+   ```
+4. Return stdout verbatim.
+5. Remove the temp file.
 
-```php
-<?php
+On `STATUS: CONFLICT`, surface `PREVIEW:` and stop.
+On non-zero exit, return stderr prefixed with `ERROR:`.
 
-namespace {package_namespace}\Nova\Concerns;
+## What you must NOT do
 
-use Laravel\Nova\Fields\Boolean;
-use Laravel\Nova\Fields\Number;
-use Laravel\Nova\Fields\Select;
-use Laravel\Nova\Fields\Text;
-use Laravel\Nova\Http\Requests\NovaRequest;
-use {package_namespace}\Models\{ModelName} as {ModelName}Model;
-
-trait {ModelName}Fields
-{
-    /**
-     * The core fields shared between Resource and Repeatable.
-     *
-     * @return array<mixed>
-     */
-    protected function coreFields(NovaRequest $request): array
-    {
-        return [
-            Text::make(__('{Label}'), '{column}')
-                ->rules(...{ModelName}Model::$validationRules['{column}'])
-                ->sortable(),
-
-            Select::make(__('{Label}'), '{type_column}')
-                ->options(
-                    collect({EnumClass}::cases())
-                        ->mapWithKeys(fn ($case) => [$case->value => __($case->name)])
-                        ->all()
-                )
-                ->rules(...{ModelName}Model::$validationRules['{type_column}'])
-                ->displayUsingLabels()
-                ->filterable(),
-
-            // Add one field per business input column
-        ];
-    }
-}
-```
-
-## Conflict Handling (Existing Projects)
-
-Before writing any file, check if the target path already exists.
-
-**If the file exists:**
-1. Read the existing file
-2. Compare with the generated content
-3. Apply the appropriate strategy:
-
-| Situation | Strategy |
-|-----------|----------|
-| Files are identical | Skip — no action needed |
-| Existing file has extra content not in the generated version | **Merge** — preserve existing additions, add missing parts |
-| Existing file conflicts with generated version | **Flag for review** — do not overwrite. Return both versions and let the parent skill present the diff to the user |
-| Existing file is empty or a stub | Overwrite with generated content |
-
-**Never silently overwrite existing code.** The user may have manual customizations that must be preserved.
-
-## Output
-
-Write exactly one file: `{output_dir}/{ModelName}Fields.php`
-
-Return:
-```
-GENERATED: {file_path}
-TRAIT: {ModelName}Fields
-CORE_FIELDS: {count}
-USED_BY: {ModelName} Resource, {ModelName} Repeatable
-```
+- Do not edit the template or script.
+- Do not write PHP directly.
+- Do not retry on `CONFLICT`.
+- Do not add fields beyond those in the JSON input.
+- Do not include Status (Badge), DateTime, HasMany — those belong in the
+  Resource, not the shared trait.

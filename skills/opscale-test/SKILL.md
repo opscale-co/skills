@@ -85,6 +85,37 @@ After installing `orchestra/testbench-dusk`, install ChromeDriver matching the l
 **IMPORTANT**: ChromeDriver version must match the installed Chrome browser version exactly.
 If Chrome auto-updates, re-run this command.
 
+#### macOS arm gotcha — verified
+
+On Apple Silicon (M1/M2/M3/M4), `testbench dusk:chrome-driver --detect` may
+create an empty directory at `vendor/laravel/dusk/bin/chromedriver-mac-arm64/`
+alongside the actual binary at `vendor/laravel/dusk/bin/chromedriver-mac-arm`
+(no suffix). The empty directory is the `--detect` glitch; the binary is
+correct.
+
+To run ChromeDriver manually for debugging Dusk:
+
+```bash
+# Strip macOS quarantine (binary downloaded over the network is quarantined)
+xattr -dr com.apple.quarantine vendor/laravel/dusk/bin/chromedriver-mac-arm
+
+# Make sure it's executable
+chmod 755 vendor/laravel/dusk/bin/chromedriver-mac-arm
+
+# Verify version matches Chrome
+vendor/laravel/dusk/bin/chromedriver-mac-arm --version
+
+# Start it on the default port
+vendor/laravel/dusk/bin/chromedriver-mac-arm --port=9515
+```
+
+Common error symptoms and fixes:
+- `Permission denied` running chromedriver → `chmod 755` + `xattr -dr` (above)
+- Tests time out with no error → wrong binary path (`chromedriver-mac-arm64/`
+  is the empty dir, not the binary; use `chromedriver-mac-arm`)
+- `session not created: Chrome version mismatch` → re-run
+  `vendor/bin/testbench dusk:chrome-driver {major-version}`
+
 ---
 
 ## Three Test Suites

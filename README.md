@@ -24,11 +24,13 @@ This workflow is built around Claude Code harness best practices: dividing work 
 
 ## How It Works
 
-The harness splits every project into three phases plus an iteration loop. Each phase is a group of skills that orchestrate specialized subagents. No phase starts until the previous one is validated.
+The harness splits every project into three phases plus an iteration loop. Each phase is a group of skills that orchestrate specialized subagents. No phase starts until the previous one is validated. A handful of **finishing skills** can be invoked alongside any phase to polish the workbench experience.
 
 ```
 init  →  Plan  →  Generate  →  Review
                                    ↺ Iterate (after the loop is complete)
+
+Finishing (invoke as needed): opscale-seed · opscale-menu · opscale-showcase
 ```
 
 ### init — once per project
@@ -74,6 +76,16 @@ Review skills can be invoked at **any point after `opscale-init`** — you don't
 - **Debug** — Xdebug + Telescope for local/staging only (never production)
 - **Test** — configures the stack (Pest, Dusk, PHPStan, Duster, Rector) AND **generates the tests**: Unit (domain), Feature (Actions, real DB), Browser (Nova UI smoke). Headless by default. `composer run build` + `composer run serve` mandatory.
 - **Release** — Semantic Release, commitlint, Husky, SonarQube, four GitHub Actions workflows. Refuses to run unless `tests/` is populated.
+
+### Finishing — polish the workbench experience (invoke any time)
+
+Skills: `opscale-seed`, `opscale-menu`, `opscale-showcase`
+
+Finishing skills are independent of the strict sequence — invoke whichever you need, whenever you need it, as long as their own prerequisites are met.
+
+- **Seed** — generates a coherent workbench `DatabaseSeeder` (catalogs + one tenant + one agency + one open day + one funded drawer + one demo transaction). Required before Browser tests can open detail pages. Runs after `opscale-domain`.
+- **Menu** — introspects `src/Nova/` and groups aggregate Resources into sections (Day Lifecycle, Operations, Control, Catalogs…) by writing the `MenuSection` block into `workbench/app/Providers/NovaServiceProvider.php`. Runs after `opscale-ui`.
+- **Showcase** — generates a **non-headless** guided Dusk test that walks the whole Nova flow (login → dashboard → every aggregate → seeded detail → create form) with a configurable pause before each main action. Stakeholder-ready visual validation. Runs after `opscale-test` + `opscale-seed`.
 
 ### Iterate — adding the next feature once the module is complete
 
@@ -149,11 +161,37 @@ When a consumer installs the package, instead of reading the README they invoke 
 ## Architecture
 
 ```
-skills/        → 12 skills (orchestrators — own workflow and user dialogue)
+skills/        → 15 skills (orchestrators — own workflow and user dialogue)
+  └─ opscale-{domain,ui,logic}/
+       scripts/   → deterministic Node.js generators (.mjs)
+       templates/ → mustache-lite PHP templates (.php.tmpl)
 agents/        → 24 agents (execution units — own parallelizable work)
 ```
 
 Skills manage the sequence, interact with the user, and spawn agents. Agents do the actual work — generating files, running validators, checking gates — in parallel where possible. Agents receive normalized input from the skill and generate code independently.
+
+### Deterministic code generation
+
+For the Generate phase (`domain`, `ui`, `logic`), file generation is fully deterministic. Each generator agent (`enum-generator`, `model-generator`, `resource-generator`, `action-generator`, etc.) is a thin wrapper that runs a Node.js script (`scripts/generate-*.mjs`) which renders a PHP template (`templates/*.php.tmpl`) from a JSON payload the skill normalized.
+
+| What the skill does | What the script does |
+|---------------------|---------------------|
+| Normalizes DBML/BPMN into the JSON contract for each generator | Renders the matching template with a tiny mustache-lite engine |
+| Resolves naming, ordering, conflict-free relation method names | Maps Nova field types, Eloquent relation return types, enum imports |
+| Decides what gets a Tab, what's a Badge, what's a Repeatable | Wraps every user-visible string in `__()` automatically |
+| Picks the JSON `field` per column (Text/Select/BelongsTo/…) | Writes the file with a uniform conflict policy |
+
+The JSON contract for each generator lives in the header comment of its `.mjs` file. The PHP grammar lives in the matching `.tmpl` file. Nothing else.
+
+**Conflict policy (uniform across all 9 generators):**
+
+| Situation | Outcome |
+|-----------|---------|
+| Target file missing | `WRITTEN` |
+| Target exists and is byte-identical (after newline normalization) | `SKIPPED` |
+| Target exists and differs | `CONFLICT` — writes `<target>.opscale-preview` next to it, leaves the real file untouched. The skill surfaces the diff to the user. |
+
+No silent overwrites. No automatic merging.
 
 ### Per-module `docs/` convention
 
@@ -190,6 +228,9 @@ Every module folder under `.specify/specs/{NNN}-{slug}/` contains a `docs/` subf
 | `opscale-debug` | init | Review (any order) |
 | `opscale-test` | init | Review (any order) |
 | `opscale-release` | init + opscale-test produced test files | Review (after test) |
+| `opscale-seed` | init + domain + workbench User model | Finishing (any time after Generate #1) |
+| `opscale-menu` | init + ui + workbench NovaServiceProvider | Finishing (any time after Generate #2) |
+| `opscale-showcase` | init + ui + seed + test (Dusk infra) | Finishing (after Review test) |
 | `opscale-iterate` | init + Plan + Generate + **0 pending tasks** + clean git | After full pipeline |
 | `opscale-ai` | init + at least one shipped package | Independent |
 
@@ -220,6 +261,16 @@ Agents use three MCP servers configured by `opscale-init`:
 | 8 | `opscale-test` | Stack config (Pest, Dusk, PHPStan, Duster, Rector) + workbench seeders + **generates Unit/Feature/Browser tests**. Headless by default. `composer build`/`serve` | Yes | Yes | Yes | Yes |
 | 9 | `opscale-release` | Semantic Release, commitlint, Husky, SonarQube, GitHub Actions. Refuses without test files | deploy-app | publish-package | publish-package | publish-package |
 
+#### Finishing
+
+Independent of the strict sequence — invoke whenever the workbench needs polishing.
+
+| Skill | Purpose | app | module | package | library |
+|-------|---------|:---:|:------:|:-------:|:-------:|
+| `opscale-seed` | Coherent workbench `DatabaseSeeder`: catalogs + tenant + agency + open day + funded drawer + demo transaction. Unblocks Browser tests and gives `testbench serve` something to render | Per module | Yes | Yes | -- |
+| `opscale-menu` | Groups `src/Nova/*` aggregates into `MenuSection`s inside `workbench/app/Providers/NovaServiceProvider.php` so the sidebar reads the way an operator would navigate | Per module | Yes | Yes | -- |
+| `opscale-showcase` | Non-headless guided Dusk test that walks the whole Nova flow with configurable pauses — stakeholder-ready visual validation | Per module | Yes | Yes | -- |
+
 #### Iterative
 
 | Skill | Purpose | app | module | package | library |
@@ -246,29 +297,29 @@ Require spec documentation artifacts (spec.md, data-model.md, process.md).
 
 #### Domain Generation (app, module, package)
 
-Agents receive normalized input from the skill. All parallelizable.
+All deterministic wrappers — each runs the matching `scripts/generate-*.mjs` against `templates/*.php.tmpl`. Parallelizable.
 
-| Agent | Spawned by | Unit |
-|-------|-----------|------|
-| `enum-generator` | opscale-domain | One per enum |
-| `value-object-generator` | opscale-domain | One per VO |
-| `migration-generator` | opscale-domain | One per entity |
-| `model-generator` | opscale-domain | One per entity |
-| `repository-generator` | opscale-domain | One per model (trait with scopes + boot hooks) |
+| Agent | Spawned by | Script | Unit |
+|-------|-----------|--------|------|
+| `enum-generator` | opscale-domain | `generate-enum.mjs` | One per enum |
+| `value-object-generator` | opscale-domain | `generate-value-object.mjs` | One per VO |
+| `migration-generator` | opscale-domain | `generate-migration.mjs` | One per entity |
+| `model-generator` | opscale-domain | `generate-model.mjs` | One per entity |
+| `repository-generator` | opscale-domain | `generate-repository.mjs` | One per model (trait with scopes + boot hooks) |
 
 #### Nova Generation (app, module, package)
 
-| Agent | Spawned by | Unit |
-|-------|-----------|------|
-| `resource-generator` | opscale-ui | One per aggregate root |
-| `field-trait-generator` | opscale-ui | One per aggregate |
-| `repeatable-generator` | opscale-ui | One per nested collection |
+| Agent | Spawned by | Script | Unit |
+|-------|-----------|--------|------|
+| `resource-generator` | opscale-ui | `generate-resource.mjs` | One per aggregate root |
+| `field-trait-generator` | opscale-ui | `generate-field-trait.mjs` | One per aggregate |
+| `repeatable-generator` | opscale-ui | `generate-repeatable.mjs` | One per nested collection |
 
 #### Logic Generation (app, module, package)
 
-| Agent | Spawned by | Unit |
-|-------|-----------|------|
-| `action-generator` | opscale-logic | One per Action — receives normalized input from skill |
+| Agent | Spawned by | Script | Unit |
+|-------|-----------|--------|------|
+| `action-generator` | opscale-logic | `generate-action.mjs` | One per Action |
 
 #### Test Generation
 
@@ -373,6 +424,9 @@ Each skill is invoked as a Claude Code slash command inside the target project d
 /opscale-debug         # Xdebug + Telescope (local/staging)
 /opscale-test          # configure stack AND generate Unit/Feature/Browser tests
 /opscale-release       # semantic-release + CI/CD + SonarQube
+/opscale-seed          # workbench DatabaseSeeder (catalogs + happy-path instance)
+/opscale-menu          # group Nova Resources into sidebar sections
+/opscale-showcase      # non-headless guided Dusk walkthrough of the module
 /opscale-iterate       # add the next feature via user story → spec-kit → one commit
 /opscale-ai            # generate installer skill for consumers
 ```

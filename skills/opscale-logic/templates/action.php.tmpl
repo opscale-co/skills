@@ -1,0 +1,56 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{package_namespace}}\Services\Actions;
+
+use Opscale\Actions\Action;
+{{#each entity_imports}}
+use {{.}};
+{{/each}}
+{{#each dependency_imports}}
+use {{.}};
+{{/each}}
+
+/**
+ * {{description}}
+ */
+class {{action_class_name}} extends Action
+{
+    public function identifier(): string
+    {
+        return '{{identifier}}';
+    }
+
+    public function name(): string
+    {
+        return '{{name}}';
+    }
+
+    public function description(): string
+    {
+        return '{{description}}';
+    }
+
+    public function parameters(): array
+    {
+        return [
+{{#each parameters}}
+            [
+                'name'        => '{{name}}',
+                'description' => '{{description}}',
+                'type'        => {{type_expr}},
+                'rules'       => [{{rules}}],
+            ],
+{{/each}}
+        ];
+    }
+
+    public function handle(array $attributes = []): array
+    {
+        $this->fill($attributes);
+        $this->validate();
+
+        {{handle_body}}
+    }
+}
