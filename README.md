@@ -41,15 +41,16 @@ Assumes you are inside an **existing PHP/Laravel project** (refuses if `composer
 
 ### Plan — understand before building (strict order)
 
-Skills: `opscale-process` → `opscale-dbml` → `opscale-bpmn`
+Skills: `opscale-process` → `opscale-dbml` → `opscale-bpmn` → `opscale-sipoc`
 
-The planning phase produces validated spec artifacts — not code. Each skill takes informal input, structures it, spawns validator subagents, and only advances when the artifact passes. The three skills run **in order**; each declares its predecessor as a hard prerequisite.
+The planning phase produces validated spec artifacts — not code. Each skill takes informal input, structures it, spawns validator subagents, and only advances when the artifact passes. The four skills run **in order**; each declares its predecessor as a hard prerequisite.
 
 - **Process** — business spec from informal input. Writes `spec.md` (structured) AND `docs/process.md` (the original narrative, preserved verbatim).
 - **DBML** — DDD-aligned data model. Writes `data-model.md` (live) AND `docs/initial.dbml` (frozen snapshot, never overwritten).
 - **BPMN** — process map. Writes `process.md` (live) AND `docs/initial.bpmn` (frozen snapshot).
+- **SIPOC** — one Suppliers/Inputs/Process/Outputs/Customers document per `businessRuleTask` in the BPMN. Writes `docs/actions/{kebab-id}.sipoc.md` per Action. This is the contract that `opscale-logic` later materializes into PHP — `Inputs` → `parameters()`, `Process` → `handle()` body, `Outputs` → return-array keys.
 
-Every artifact is cross-validated: the BPMN references only entities from the DBML, the DBML traces back to the spec. Nothing is invented.
+Every artifact is cross-validated: the BPMN references only entities from the DBML, the DBML traces back to the spec, each SIPOC traces back to a BPMN task and the Business Rules it cites exist in the spec. Nothing is invented.
 
 ### Generate — deterministic code from validated artifacts (strict order)
 
@@ -61,7 +62,7 @@ Each Generate skill first drives **spec-kit `/speckit.plan` + `/speckit.tasks`**
 |-------|------|--------------|-----------------|
 | **Domain** | Entity bundle | DBML entity | migration + model + repository trait + owned enums + owned VOs |
 | **UI** | Aggregate bundle | Aggregate root | Resource + Repeatable + shared Fields trait |
-| **Logic** | Action | BPMN `businessRuleTask` | one SIPOC under `docs/actions/` + one Opscale Action class whose `handle()` materializes the SIPOC Process steps |
+| **Logic** | Action | BPMN `businessRuleTask` | one Opscale Action class whose `handle()` materializes the SIPOC Process steps (the SIPOC itself comes from Plan #4 / `opscale-sipoc`) |
 
 Every implementation task is preceded by a `Test {X}` task — `opscale-test` later fills the test body. There is no cap on entities/aggregates/Actions; large modules split into sequential batches of ~20 agents.
 
@@ -161,7 +162,7 @@ When a consumer installs the package, instead of reading the README they invoke 
 ## Architecture
 
 ```
-skills/        → 15 skills (orchestrators — own workflow and user dialogue)
+skills/        → 16 skills (orchestrators — own workflow and user dialogue)
   └─ opscale-{domain,ui,logic}/
        scripts/   → deterministic Node.js generators (.mjs)
        templates/ → mustache-lite PHP templates (.php.tmpl)
@@ -224,9 +225,10 @@ Every module folder under `.specify/specs/{NNN}-{slug}/` contains a `docs/` subf
 | `opscale-process` | init | Plan #1 (strict) |
 | `opscale-dbml` | init + process | Plan #2 (strict) |
 | `opscale-bpmn` | init + process + dbml | Plan #3 (strict) |
-| `opscale-domain` | init + Plan complete | Generate #1 (strict) |
-| `opscale-ui` | init + Plan + domain | Generate #2 (strict) |
-| `opscale-logic` | init + Plan + domain + ui | Generate #3 (strict) |
+| `opscale-sipoc` | init + process + dbml + bpmn | Plan #4 (strict, app/module only) |
+| `opscale-domain` | init + process + dbml + bpmn | Generate #1 (strict) |
+| `opscale-ui` | init + Plan-data + domain | Generate #2 (strict) |
+| `opscale-logic` | init + Plan + sipoc + domain + ui | Generate #3 (strict) |
 | `opscale-debug` | init | Review (any order) |
 | `opscale-test` | init | Review (any order) |
 | `opscale-release` | init + opscale-test produced test files | Review (after test) |
@@ -256,12 +258,13 @@ Agents use three MCP servers configured by `opscale-init`:
 | 1 | `opscale-process` | Business spec from informal input + narrative in `docs/process.md` | Per module | Yes | -- | -- |
 | 2 | `opscale-dbml` | DDD-aligned DBML + frozen `docs/initial.dbml` snapshot | Per module | Yes | -- | -- |
 | 3 | `opscale-bpmn` | BPMN 2.0 process map + frozen `docs/initial.bpmn` snapshot | Per module | Yes | -- | -- |
-| 4 | `opscale-domain` | Spec-kit plan + tasks (one per entity bundle), then models/migrations/enums/VOs/repos. No entity cap | Per module | Yes | Yes | -- |
-| 5 | `opscale-ui` | Spec-kit plan + tasks (one per aggregate bundle), then Resources + Repeatables + Field traits | Per module | Yes | Yes | -- |
-| 6 | `opscale-logic` | SIPOC per Action under `docs/actions/`, spec-kit plan + tasks (one per Action), then Opscale Actions whose `handle()` body is derived from the SIPOC Process section | Per module | Yes | Yes | -- |
-| 7 | `opscale-debug` | Xdebug + Telescope (local/staging only) | Yes | Yes | Yes | Optional |
-| 8 | `opscale-test` | Stack config (Pest, Dusk, PHPStan, Duster, Rector) + workbench seeders + **generates Unit/Feature/Browser tests**. Headless by default. `composer build`/`serve` | Yes | Yes | Yes | Yes |
-| 9 | `opscale-release` | Semantic Release, commitlint, Husky, SonarQube, GitHub Actions. Refuses without test files | deploy-app | publish-package | publish-package | publish-package |
+| 4 | `opscale-sipoc` | One SIPOC per `businessRuleTask` under `docs/actions/{kebab-id}.sipoc.md` — Suppliers/Inputs/Process/Outputs/Customers per Action. Consumed by `opscale-logic` | Per module | Yes | -- | -- |
+| 5 | `opscale-domain` | Spec-kit plan + tasks (one per entity bundle), then models/migrations/enums/VOs/repos. No entity cap | Per module | Yes | Yes | -- |
+| 6 | `opscale-ui` | Spec-kit plan + tasks (one per aggregate bundle), then Resources + Repeatables + Field traits | Per module | Yes | Yes | -- |
+| 7 | `opscale-logic` | Spec-kit plan + tasks (one per Action), then Opscale Actions. Reads `docs/actions/*.sipoc.md` (produced by `opscale-sipoc`) to derive `parameters()` and `handle()` body | Per module | Yes | Yes | -- |
+| 8 | `opscale-debug` | Xdebug + Telescope (local/staging only) | Yes | Yes | Yes | Optional |
+| 9 | `opscale-test` | Stack config (Pest, Dusk, PHPStan, Duster, Rector) + workbench seeders + **generates Unit/Feature/Browser tests**. Headless by default. `composer build`/`serve` | Yes | Yes | Yes | Yes |
+| 10 | `opscale-release` | Semantic Release, commitlint, Husky, SonarQube, GitHub Actions. Refuses without test files | deploy-app | publish-package | publish-package | publish-package |
 
 #### Finishing
 
@@ -420,9 +423,10 @@ Each skill is invoked as a Claude Code slash command inside the target project d
 /opscale-process       # generate business spec + docs/process.md from informal input
 /opscale-dbml          # generate data model + frozen docs/initial.dbml
 /opscale-bpmn          # generate process map + frozen docs/initial.bpmn
+/opscale-sipoc         # one SIPOC per Action under docs/actions/ (input for opscale-logic)
 /opscale-domain        # plan + tasks per entity, then generate domain layer
 /opscale-ui            # plan + tasks per aggregate, then generate Nova layer
-/opscale-logic         # plan + tasks per Action, then generate Opscale Actions
+/opscale-logic         # plan + tasks per Action, consumes SIPOCs to generate Opscale Actions
 /opscale-debug         # Xdebug + Telescope (local/staging)
 /opscale-test          # configure stack AND generate Unit/Feature/Browser tests
 /opscale-release       # semantic-release + CI/CD + SonarQube

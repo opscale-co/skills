@@ -48,8 +48,9 @@ Output files are written to `src/Services/Actions/` and listed in
 | 2 | `opscale-process` has been run | `spec.md` exists and PASS | Stop. Run `/opscale-process`. |
 | 3 | `opscale-dbml` has been run | `data-model.md` exists and PASS | Stop. Run `/opscale-dbml`. |
 | 4 | `opscale-bpmn` has been run | `process.md` exists and PASS | Stop. Run `/opscale-bpmn`. |
-| 5 | `opscale-domain` has been run | `src/Models/` populated, domain bundle tasks in `tasks.md` complete | Stop. Run `/opscale-domain`. |
-| 6 | `opscale-ui` has been run | `src/Nova/` populated, Nova bundle tasks in `tasks.md` complete | Stop. Run `/opscale-ui`. |
+| 5 | `opscale-sipoc` has been run | One `docs/actions/{kebab-id}.sipoc.md` per `businessRuleTask` | Stop. Run `/opscale-sipoc`. |
+| 6 | `opscale-domain` has been run | `src/Models/` populated, domain bundle tasks in `tasks.md` complete | Stop. Run `/opscale-domain`. |
+| 7 | `opscale-ui` has been run | `src/Nova/` populated, Nova bundle tasks in `tasks.md` complete | Stop. Run `/opscale-ui`. |
 
 This skill is **Step 3 (last) of the Generate phase**. Order is strict: `domain → ui → logic`. After this skill, the module is feature-complete and ready for the Review phase (`debug → test → release`).
 
@@ -70,19 +71,18 @@ src/
 └── Services/
     └── Actions/
         └── {ActionClassName}.php    (one per businessRuleTask or standalone action)
-
-.specify/specs/{NNN}-{module-name}/
-└── docs/
-    └── actions/                     (BPMN-driven mode only)
-        └── {kebab-id}.sipoc.md      (one per businessRuleTask)
 ```
 
-In **BPMN-driven mode**, every Action is preceded by a SIPOC document under
-`docs/actions/` that defines its Suppliers, Inputs, Process, Outputs, and
-Customers. The SIPOC is what the skill turns into `parameters()` and the
-`handle()` body — it is the contract, the code is the execution. In
-**Standalone mode** (packages) there is no SIPOC: the user supplies the same
-information directly as part of the Action definition.
+In **BPMN-driven mode**, this skill consumes the per-Action SIPOC documents
+that `opscale-sipoc` already produced under
+`.specify/specs/{NNN}-{module}/docs/actions/{kebab-id}.sipoc.md`. The SIPOC
+Inputs table feeds `parameters()`; the SIPOC Process section feeds the
+`handle()` body. This skill does NOT author SIPOCs — that's
+[opscale-sipoc](../opscale-sipoc/SKILL.md)'s job. If a SIPOC is missing, stop
+and run `/opscale-sipoc` first.
+
+In **Standalone mode** (packages) there is no SIPOC: the user supplies the
+same information directly as part of the Action definition.
 
 ---
 
@@ -332,116 +332,7 @@ Confirm?
 
 Wait for confirmation.
 
-#### Phase 3 — Write a SIPOC per Action (BPMN-driven mode only)
-
-Every `businessRuleTask` from the BPMN gets its own SIPOC document **before any
-code is generated**. The SIPOC is the bridge between the BPMN node (what the
-process expects) and the `handle()` body (what the code does). Without it the
-generator has no source of truth for the steps inside `handle()` — only the
-class shell.
-
-Each SIPOC lands at:
-
-```
-.specify/specs/{NNN}-{module-name}/docs/actions/{kebab-id}.sipoc.md
-```
-
-Use this exact structure — the skill consumes these sections by heading when
-it composes `handle_body` for `action-generator`:
-
-```markdown
-# SIPOC — {Action Name}
-
-**Identifier:** `{kebab-id}`
-**BPMN task:** {task name as it appears in process.md}
-**Lane / Actor:** {lane name}
-**Business Rules:** BR-NN, BR-NN
-**Composes:** {leaf Actions called via ::run(), or "none"}
-
-## Suppliers
-
-Who or what provides the inputs.
-
-- {Actor, upstream Action, system, or external service}
-- ...
-
-## Inputs
-
-What the Action receives — matches `parameters()` one-to-one.
-
-| Input | Source | Type | Validation rules | Description |
-|-------|--------|------|------------------|-------------|
-| {name} | {supplier} | {Model::class or scalar} | {required, ulid, ...} | {one line} |
-
-## Process
-
-The ordered steps that go inside `handle()`. Each step is one observable
-action. The skill will turn this list into the PHP body — keep it tight, no
-flourishes.
-
-1. Validate {entity} is in a state that allows {operation} (BR-NN)
-2. Compute {value} using {inputs}
-3. Persist {effect} / emit {event}
-4. Return the result envelope
-
-For any step that calls another Action, write it as:
-
-> Compose `OtherAction::run(['param' => $value])` and short-circuit on failure.
-
-## Outputs
-
-What `handle()` returns. Always includes `success: bool` as the first row.
-
-| Output key | Type | Description | Consumers |
-|------------|------|-------------|-----------|
-| success | bool | Whether the operation succeeded | All callers |
-| {key} | {type} | {one line} | {downstream Action / Nova UI / event listener} |
-
-## Customers
-
-Who or what consumes the outputs.
-
-- {Downstream Action / Nova page / event listener / external system}
-- ...
-
-## Business Rules enforced
-
-- **BR-NN** — {one-line restatement of the rule, as it appears in spec.md}
-- **BR-NN** — ...
-
-## Failure modes
-
-- **Soft failure** (return `['success' => false, 'message' => '...']`): {trigger}
-- **Hard failure** (throw): {invalid state, integrity violation, ...}
-```
-
-**Why per-Action SIPOC instead of a single doc:** every SIPOC stands alone so a
-reviewer can audit one Action without loading the whole module, and so future
-iterations (`opscale-iterate`) can update or replace a single SIPOC without
-touching siblings.
-
-**Authoring rule:** the SIPOC is written FROM `spec.md` + `process.md` +
-`data-model.md` — never invented. If the BPMN task implies a step the spec
-doesn't cover, stop and surface the gap to the user before continuing.
-
-**Validation gate before Phase 4:**
-
-```
-[ ] One SIPOC per businessRuleTask — count matches the Phase 1 inventory
-[ ] Every SIPOC has all 7 sections (Identifier block, Suppliers, Inputs,
-    Process, Outputs, Customers, Business Rules, Failure modes)
-[ ] Every Input row maps to an entry that will become parameters()
-[ ] Every Output row maps to a key that will appear in the return array
-[ ] Every Business Rule cited exists in spec.md
-[ ] Every "Composes" entry exists as another Action's SIPOC
-```
-
-If any check fails, regenerate or repair the affected SIPOC before continuing.
-**No SIPOC, no Action.**
-
----
-
-#### Phase 4 — Drive spec-kit to plan + produce per-Action tasks
+#### Phase 3 — Drive spec-kit to plan + produce per-Action tasks
 
 Before generating any code, formalize the plan through spec-kit so that every
 Action becomes a tracked task. This is what makes the implementation phase
@@ -506,24 +397,11 @@ Verify `tasks.md`:
 If any check fails, regenerate tasks.md before continuing — do NOT generate
 code from an incomplete task list.
 
-#### Phase 5 — Generate Actions
+#### Phase 4 — Generate Actions
 
-For each task in `tasks.md` (dependency order):
-
-- **Class name**: PascalCase from task name (`AssignTask`, `CalculatePriority`)
-- **`identifier()`**: BPMN `logic.id` value (`assign-task`, `calculate-priority`)
-- **`parameters()`**: derived from the SIPOC **Inputs** table (one row → one
-  parameter), with types reconciled against the DBML
-- **`handle()` body**: derived from the SIPOC **Process** section (one numbered
-  step → one block of PHP), composing other Actions where the step says
-  "Compose ...". Business Rules from the SIPOC's **Business Rules enforced**
-  block become guard clauses at the top of `handle()`
-- **Return array**: every row in the SIPOC **Outputs** table is a key in the
-  return array; `success: bool` is always the first
-
-The generation itself is **deterministic** — the skill normalizes each SIPOC +
-spec-kit task into the JSON contract documented at the top of
-`scripts/generate-action.mjs`, then spawns `action-generator` (a thin wrapper)
+For each task in `tasks.md` (dependency order), normalize the matching SIPOC
+(produced by `opscale-sipoc`) into the JSON contract documented at the top of
+`scripts/generate-action.mjs`, then spawn `action-generator` (a thin wrapper)
 in parallel within each dependency level (leaves first, composites next).
 
 **SIPOC → JSON contract mapping:**
@@ -541,7 +419,10 @@ The script handles all string escaping, parameter formatting, import ordering,
 and conflict detection. The skill never writes PHP — it just hands the
 generator the normalized JSON.
 
-#### Phase 6 — Update plan.md
+If the SIPOC file is missing for any Action in `tasks.md`, stop. Run
+`/opscale-sipoc` to author the missing SIPOC(s), then return here.
+
+#### Phase 5 — Update plan.md
 
 Append to `.specify/specs/{NNN}-{module-name}/plan.md`:
 
@@ -826,8 +707,8 @@ in their description compile clean until the moment Laravel autoloads them.
 
 ## Domain Rules
 
-1. **One BPMN task = one SIPOC = one Action class = one spec-kit task** — never merge two BPMN tasks or two standalone requests into one class, and never let a single Action span more than one entry in `tasks.md` or more than one SIPOC. The chain is 1:1:1:1 across BPMN → SIPOC → code → tasks.md.
-2. **SIPOC before code** (BPMN-driven mode) — every Action has a written SIPOC under `docs/actions/{kebab-id}.sipoc.md` BEFORE `action-generator` is spawned. The SIPOC's Process section is what becomes the `handle()` body; the Inputs table is what becomes `parameters()`. No SIPOC, no Action.
+1. **One BPMN task = one Action class = one spec-kit task** — never merge two BPMN tasks or two standalone requests into one class, and never let a single Action span more than one entry in `tasks.md`. The chain is 1:1:1 across BPMN → code → tasks.md.
+2. **SIPOC is an input, not an output** (BPMN-driven mode) — every Action depends on a SIPOC under `docs/actions/{kebab-id}.sipoc.md`. This skill consumes them; `opscale-sipoc` produces them. If a SIPOC is missing, stop and run `/opscale-sipoc` first.
 3. **Spec-kit plan + tasks before code** — `/speckit.plan` and `/speckit.tasks` run BEFORE any `action-generator` agent is spawned. Code generation reads from `tasks.md`; if a planned Action has no task entry, do not generate it — fix the task list first.
 3. **Every implementation task has a preceding test task** — `tasks.md` lists `Test {ClassName}` immediately before `Implement {ClassName}`. `opscale-test` fills the test task body later; this skill just ensures the slot exists.
 4. **Always `fill()` then `validate()`** — access all values via `$this->get('property')`, never from `$attributes` directly.
