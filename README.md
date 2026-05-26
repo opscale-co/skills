@@ -136,7 +136,8 @@ Run `opscale-init`, then follow the sequence from step 1. Each step produces a v
 | Nothing | Step 1: `opscale-process` |
 | Business docs but no code | Step 1: `opscale-process` (formalize into spec) |
 | Models + migrations but no spec | Step 1: `opscale-process` (reverse-document what exists) |
-| Full domain + Nova but no tests | Step 8: `opscale-test` |
+| Spec + DBML + BPMN but no Actions | Step 4: `opscale-sipoc` (then `opscale-logic`) |
+| Full domain + Nova but no tests | Step 9: `opscale-test` |
 | Everything, adopting conventions | Run `constitution-enforcer` to assess |
 
 Generation agents detect existing files at every target path:
