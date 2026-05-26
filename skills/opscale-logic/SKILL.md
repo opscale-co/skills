@@ -70,7 +70,19 @@ src/
 └── Services/
     └── Actions/
         └── {ActionClassName}.php    (one per businessRuleTask or standalone action)
+
+.specify/specs/{NNN}-{module-name}/
+└── docs/
+    └── actions/                     (BPMN-driven mode only)
+        └── {kebab-id}.sipoc.md      (one per businessRuleTask)
 ```
+
+In **BPMN-driven mode**, every Action is preceded by a SIPOC document under
+`docs/actions/` that defines its Suppliers, Inputs, Process, Outputs, and
+Customers. The SIPOC is what the skill turns into `parameters()` and the
+`handle()` body — it is the contract, the code is the execution. In
+**Standalone mode** (packages) there is no SIPOC: the user supplies the same
+information directly as part of the Action definition.
 
 ---
 
@@ -320,7 +332,116 @@ Confirm?
 
 Wait for confirmation.
 
-#### Phase 3 — Drive spec-kit to plan + produce per-Action tasks
+#### Phase 3 — Write a SIPOC per Action (BPMN-driven mode only)
+
+Every `businessRuleTask` from the BPMN gets its own SIPOC document **before any
+code is generated**. The SIPOC is the bridge between the BPMN node (what the
+process expects) and the `handle()` body (what the code does). Without it the
+generator has no source of truth for the steps inside `handle()` — only the
+class shell.
+
+Each SIPOC lands at:
+
+```
+.specify/specs/{NNN}-{module-name}/docs/actions/{kebab-id}.sipoc.md
+```
+
+Use this exact structure — the skill consumes these sections by heading when
+it composes `handle_body` for `action-generator`:
+
+```markdown
+# SIPOC — {Action Name}
+
+**Identifier:** `{kebab-id}`
+**BPMN task:** {task name as it appears in process.md}
+**Lane / Actor:** {lane name}
+**Business Rules:** BR-NN, BR-NN
+**Composes:** {leaf Actions called via ::run(), or "none"}
+
+## Suppliers
+
+Who or what provides the inputs.
+
+- {Actor, upstream Action, system, or external service}
+- ...
+
+## Inputs
+
+What the Action receives — matches `parameters()` one-to-one.
+
+| Input | Source | Type | Validation rules | Description |
+|-------|--------|------|------------------|-------------|
+| {name} | {supplier} | {Model::class or scalar} | {required, ulid, ...} | {one line} |
+
+## Process
+
+The ordered steps that go inside `handle()`. Each step is one observable
+action. The skill will turn this list into the PHP body — keep it tight, no
+flourishes.
+
+1. Validate {entity} is in a state that allows {operation} (BR-NN)
+2. Compute {value} using {inputs}
+3. Persist {effect} / emit {event}
+4. Return the result envelope
+
+For any step that calls another Action, write it as:
+
+> Compose `OtherAction::run(['param' => $value])` and short-circuit on failure.
+
+## Outputs
+
+What `handle()` returns. Always includes `success: bool` as the first row.
+
+| Output key | Type | Description | Consumers |
+|------------|------|-------------|-----------|
+| success | bool | Whether the operation succeeded | All callers |
+| {key} | {type} | {one line} | {downstream Action / Nova UI / event listener} |
+
+## Customers
+
+Who or what consumes the outputs.
+
+- {Downstream Action / Nova page / event listener / external system}
+- ...
+
+## Business Rules enforced
+
+- **BR-NN** — {one-line restatement of the rule, as it appears in spec.md}
+- **BR-NN** — ...
+
+## Failure modes
+
+- **Soft failure** (return `['success' => false, 'message' => '...']`): {trigger}
+- **Hard failure** (throw): {invalid state, integrity violation, ...}
+```
+
+**Why per-Action SIPOC instead of a single doc:** every SIPOC stands alone so a
+reviewer can audit one Action without loading the whole module, and so future
+iterations (`opscale-iterate`) can update or replace a single SIPOC without
+touching siblings.
+
+**Authoring rule:** the SIPOC is written FROM `spec.md` + `process.md` +
+`data-model.md` — never invented. If the BPMN task implies a step the spec
+doesn't cover, stop and surface the gap to the user before continuing.
+
+**Validation gate before Phase 4:**
+
+```
+[ ] One SIPOC per businessRuleTask — count matches the Phase 1 inventory
+[ ] Every SIPOC has all 7 sections (Identifier block, Suppliers, Inputs,
+    Process, Outputs, Customers, Business Rules, Failure modes)
+[ ] Every Input row maps to an entry that will become parameters()
+[ ] Every Output row maps to a key that will appear in the return array
+[ ] Every Business Rule cited exists in spec.md
+[ ] Every "Composes" entry exists as another Action's SIPOC
+```
+
+If any check fails, regenerate or repair the affected SIPOC before continuing.
+**No SIPOC, no Action.**
+
+---
+
+#### Phase 4 — Drive spec-kit to plan + produce per-Action tasks
 
 Before generating any code, formalize the plan through spec-kit so that every
 Action becomes a tracked task. This is what makes the implementation phase
@@ -385,47 +506,42 @@ Verify `tasks.md`:
 If any check fails, regenerate tasks.md before continuing — do NOT generate
 code from an incomplete task list.
 
-#### Phase 4 — Generate Actions
+#### Phase 5 — Generate Actions
 
 For each task in `tasks.md` (dependency order):
 
 - **Class name**: PascalCase from task name (`AssignTask`, `CalculatePriority`)
 - **`identifier()`**: BPMN `logic.id` value (`assign-task`, `calculate-priority`)
-- **`parameters()`**: derived from BPMN task inputs + DBML entity types
-- **`handle()` body**: implement Business Rules from `spec.md` referenced in the
-  task's acceptance criteria
+- **`parameters()`**: derived from the SIPOC **Inputs** table (one row → one
+  parameter), with types reconciled against the DBML
+- **`handle()` body**: derived from the SIPOC **Process** section (one numbered
+  step → one block of PHP), composing other Actions where the step says
+  "Compose ...". Business Rules from the SIPOC's **Business Rules enforced**
+  block become guard clauses at the top of `handle()`
+- **Return array**: every row in the SIPOC **Outputs** table is a key in the
+  return array; `success: bool` is always the first
 
-Choose the strategy based on count:
+The generation itself is **deterministic** — the skill normalizes each SIPOC +
+spec-kit task into the JSON contract documented at the top of
+`scripts/generate-action.mjs`, then spawns `action-generator` (a thin wrapper)
+in parallel within each dependency level (leaves first, composites next).
 
-| Action count | Strategy | Why |
-|--------------|----------|-----|
-| ≤ 10 | `action-generator` agents in parallel within dependency level (leaves first, composites next) | Per-Action judgment matters; agents can encode business-rule nuance per BPMN task. |
-| 11+ | **Deterministic generator script** that reads the BPMN logic tasks + `spec.md` rules and emits one `Action` per task in one pass | Faster, consistent escape handling, consistent parameter shape, consistent `handle()` skeleton. |
+**SIPOC → JSON contract mapping:**
 
-**Generator pattern** — the Teller module (26 Actions) used this approach.
-The script defines:
+| SIPOC section | JSON field | Notes |
+|---------------|-----------|-------|
+| `Identifier:` | `identifier` | kebab-case; matches BPMN `logic.id` |
+| `# SIPOC — {Name}` heading | `name`, `action_class_name` | name is human text; class is PascalCase |
+| First paragraph after heading | `description` | one sentence, for AI/MCP context |
+| Inputs table | `parameters[]` | each row → `{name, description, type, rules}` |
+| Composes line | `dependencies[]` | other Actions imported and called via `::run()` |
+| Process section (numbered list) | `handle_body` | ordered PHP corresponding to each step, plus guard clauses for Business Rules and the final return array assembled from Outputs |
 
-```python
-ACTIONS = [{
-  'id': 'open-agency-operating-day',
-  'class': 'OpenAgencyOperatingDay',
-  'name': 'Open Agency Operating Day',
-  'description': 'Open the operating day for an agency...',  # apostrophes WILL break
-  'rules': ['BR-01', 'BR-02'],
-  'params': [(name, desc, type, rules), ...],
-  'imports': [fq_class, ...],
-  'body': '...PHP snippet between fill+validate and return...',
-  'return_extras': "'agency_operating_day' => \$day, 'message' => '...'",
-}, ...]
-```
+The script handles all string escaping, parameter formatting, import ordering,
+and conflict detection. The skill never writes PHP — it just hands the
+generator the normalized JSON.
 
-**Critical generator invariant** — every string that lands inside a single-quoted
-PHP literal MUST be escaped: `str_replace("'", "\\'", $value)` on every value
-that flows into `identifier()`, `name()`, `description()`, parameter `name` and
-`description`. Skipping this is the #1 cause of action-files that pass `composer
-install` but fatal at autoload.
-
-#### Phase 5 — Update plan.md
+#### Phase 6 — Update plan.md
 
 Append to `.specify/specs/{NNN}-{module-name}/plan.md`:
 
@@ -663,6 +779,17 @@ literals, and at runtime when `identifier()` / `parameters()` return
 non-string values. Always run these checks:
 
 ```bash
+# 0. (BPMN-driven mode) Every generated Action has a matching SIPOC
+SPEC_DIR=$(ls -d .specify/specs/*/ 2>/dev/null | head -1)
+if [ -n "$SPEC_DIR" ] && [ -f "$SPEC_DIR/process.md" ]; then
+  for f in src/Services/Actions/*.php; do
+    id=$(grep -oP "return '\\K[a-z][a-z0-9-]*" "$f" | head -1)
+    [ -f "$SPEC_DIR/docs/actions/$id.sipoc.md" ] \
+      || { echo "❌ Missing SIPOC for $id"; exit 1; }
+  done
+  echo "OK every Action has a SIPOC under docs/actions/"
+fi
+
 # 1. Every Action file parses
 find src/Services/Actions -name '*.php' -print0 \
   | xargs -0 -n1 php -l > /dev/null \
@@ -699,8 +826,9 @@ in their description compile clean until the moment Laravel autoloads them.
 
 ## Domain Rules
 
-1. **One BPMN task = one Action class = one spec-kit task** — never merge two BPMN tasks or two standalone requests into one class, and never let a single Action span more than one entry in `tasks.md`. The chain is 1:1:1 across BPMN → code → tasks.md.
-2. **Spec-kit plan + tasks before code** — `/speckit.plan` and `/speckit.tasks` run BEFORE any `action-generator` agent is spawned. Code generation reads from `tasks.md`; if a planned Action has no task entry, do not generate it — fix the task list first.
+1. **One BPMN task = one SIPOC = one Action class = one spec-kit task** — never merge two BPMN tasks or two standalone requests into one class, and never let a single Action span more than one entry in `tasks.md` or more than one SIPOC. The chain is 1:1:1:1 across BPMN → SIPOC → code → tasks.md.
+2. **SIPOC before code** (BPMN-driven mode) — every Action has a written SIPOC under `docs/actions/{kebab-id}.sipoc.md` BEFORE `action-generator` is spawned. The SIPOC's Process section is what becomes the `handle()` body; the Inputs table is what becomes `parameters()`. No SIPOC, no Action.
+3. **Spec-kit plan + tasks before code** — `/speckit.plan` and `/speckit.tasks` run BEFORE any `action-generator` agent is spawned. Code generation reads from `tasks.md`; if a planned Action has no task entry, do not generate it — fix the task list first.
 3. **Every implementation task has a preceding test task** — `tasks.md` lists `Test {ClassName}` immediately before `Implement {ClassName}`. `opscale-test` fills the test task body later; this skill just ensures the slot exists.
 4. **Always `fill()` then `validate()`** — access all values via `$this->get('property')`, never from `$attributes` directly.
 5. **Always return array with `success: bool`** — callers depend on this contract.

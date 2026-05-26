@@ -61,7 +61,7 @@ Each Generate skill first drives **spec-kit `/speckit.plan` + `/speckit.tasks`**
 |-------|------|--------------|-----------------|
 | **Domain** | Entity bundle | DBML entity | migration + model + repository trait + owned enums + owned VOs |
 | **UI** | Aggregate bundle | Aggregate root | Resource + Repeatable + shared Fields trait |
-| **Logic** | Action | BPMN `businessRuleTask` | one Opscale Action class |
+| **Logic** | Action | BPMN `businessRuleTask` | one SIPOC under `docs/actions/` + one Opscale Action class whose `handle()` materializes the SIPOC Process steps |
 
 Every implementation task is preceded by a `Test {X}` task — `opscale-test` later fills the test body. There is no cap on entities/aggregates/Actions; large modules split into sequential batches of ~20 agents.
 
@@ -208,6 +208,8 @@ Every module folder under `.specify/specs/{NNN}-{slug}/` contains a `docs/` subf
     ├── process.md      ← original narrative from opscale-process
     ├── initial.dbml    ← frozen DBML snapshot — never overwritten
     ├── initial.bpmn    ← frozen BPMN snapshot — never overwritten
+    ├── actions/        ← SIPOC per Action (BPMN-driven only)
+    │   └── <kebab-id>.sipoc.md   ← Suppliers/Inputs/Process/Outputs/Customers
     └── iterations/
         └── YYYY-MM-DD-<slug>.md   ← one file per opscale-iterate run
 ```
@@ -256,7 +258,7 @@ Agents use three MCP servers configured by `opscale-init`:
 | 3 | `opscale-bpmn` | BPMN 2.0 process map + frozen `docs/initial.bpmn` snapshot | Per module | Yes | -- | -- |
 | 4 | `opscale-domain` | Spec-kit plan + tasks (one per entity bundle), then models/migrations/enums/VOs/repos. No entity cap | Per module | Yes | Yes | -- |
 | 5 | `opscale-ui` | Spec-kit plan + tasks (one per aggregate bundle), then Resources + Repeatables + Field traits | Per module | Yes | Yes | -- |
-| 6 | `opscale-logic` | Spec-kit plan + tasks (one per Action), then Opscale Actions | Per module | Yes | Yes | -- |
+| 6 | `opscale-logic` | SIPOC per Action under `docs/actions/`, spec-kit plan + tasks (one per Action), then Opscale Actions whose `handle()` body is derived from the SIPOC Process section | Per module | Yes | Yes | -- |
 | 7 | `opscale-debug` | Xdebug + Telescope (local/staging only) | Yes | Yes | Yes | Optional |
 | 8 | `opscale-test` | Stack config (Pest, Dusk, PHPStan, Duster, Rector) + workbench seeders + **generates Unit/Feature/Browser tests**. Headless by default. `composer build`/`serve` | Yes | Yes | Yes | Yes |
 | 9 | `opscale-release` | Semantic Release, commitlint, Husky, SonarQube, GitHub Actions. Refuses without test files | deploy-app | publish-package | publish-package | publish-package |
