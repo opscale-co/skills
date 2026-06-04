@@ -1,6 +1,6 @@
 ---
 name: opscale-menu
-description: Generates a user-friendly Nova menu for an Opscale module by introspecting src/Nova/ and grouping aggregate Resources into sections (e.g. Day Lifecycle, Operations, Control, Catalogs). Writes the MenuSection block into workbench/app/Providers/NovaServiceProvider.php so the workbench Nova UI presents the package the way an operator would navigate it. Trigger when the user says "generate the menu", "organize the Nova sidebar", "group the resources" or after opscale-ui finishes and the sidebar is still flat. This is a finishing skill — not part of the strict 1→10 sequence.
+description: Generates a user-friendly Nova menu for an Opscale module by introspecting src/Nova/ and grouping aggregate Resources into sections (e.g. Day Lifecycle, Operations, Control, Catalogs). Writes the MenuSection block into workbench/app/Providers/NovaServiceProvider.php so the workbench Nova UI presents the package the way an operator would navigate it during a demo. This is Step 2 of the Presentation phase — runs after `opscale-seed` and before `opscale-showcase` to give the seeded module a navigable sidebar that reads like an operator workflow. Trigger when the user says "generate the menu", "organize the Nova sidebar", "group the resources", or when continuing the Presentation phase after `opscale-seed`.
 ---
 
 # opscale-menu
@@ -11,11 +11,13 @@ description: Generates a user-friendly Nova menu for an Opscale module by intros
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
 | 2 | `opscale-ui` has been run | `src/Nova/*.php` contains at least one Resource | Stop. Run `/opscale-ui` first — there's nothing to put in a menu otherwise. |
-| 3 | Workbench provider exists | `workbench/app/Providers/NovaServiceProvider.php` | This is the file the skill writes into. Create it via `opscale-init` if absent. |
+| 3 | `opscale-seed` has been run | `workbench/database/seeders/DatabaseSeeder.php` populated | Stop. Run `/opscale-seed` first — the Presentation phase starts there so the menu lands on top of a seeded workbench. |
+| 4 | Workbench provider exists | `workbench/app/Providers/NovaServiceProvider.php` | This is the file the skill writes into. Create it via `opscale-init` if absent. |
 
-This skill is a **finishing skill**. It runs after `opscale-ui` (which populates
-`src/Nova/`) and is independent of the rest of the Review phase. Run it
-whenever the sidebar looks flat after a fresh generation.
+This skill is **Step 2 of the Presentation phase**. It runs after `opscale-seed`
+and before `opscale-showcase`. Seed makes every page render; menu makes the
+sidebar navigable the way an operator thinks; showcase then walks through the
+result as a guided demo.
 
 ## Why this skill exists
 

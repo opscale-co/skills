@@ -24,13 +24,13 @@ This workflow is built around Claude Code harness best practices: dividing work 
 
 ## How It Works
 
-The harness splits every project into three phases plus an iteration loop. Each phase is a group of skills that orchestrate specialized subagents. No phase starts until the previous one is validated. A handful of **finishing skills** can be invoked alongside any phase to polish the workbench experience.
+The harness splits every project into four phases plus an iteration loop. Each phase is a group of skills that orchestrate specialized subagents. No phase starts until the previous one is validated. **Presentation** is the final phase before iteration — once Review has signed off on quality, Presentation makes the module *demoable*: coherent data, navigable Nova, guided walkthrough.
 
 ```
-init  →  Plan  →  Generate  →  Review
-                                   ↺ Iterate (after the loop is complete)
+init  →  Plan  →  Generate  →  Review  →  Presentation
+                                                ↺ Iterate (after the loop is complete)
 
-Finishing (invoke as needed): opscale-seed · opscale-menu · opscale-showcase
+Presentation (run in order): opscale-seed → opscale-menu → opscale-showcase
 ```
 
 ### init — once per project
@@ -78,15 +78,15 @@ Review skills can be invoked at **any point after `opscale-init`** — you don't
 - **Test** — configures the stack (Pest, Dusk, PHPStan, Duster, Rector) AND **generates the tests**: Unit (domain), Feature (Actions, real DB), Browser (Nova UI smoke). Headless by default. `composer run build` + `composer run serve` mandatory.
 - **Release** — Semantic Release, commitlint, Husky, SonarQube, four GitHub Actions workflows. Refuses to run unless `tests/` is populated.
 
-### Finishing — polish the workbench experience (invoke any time)
+### Presentation — verify the module as a functional demo (strict order)
 
-Skills: `opscale-seed`, `opscale-menu`, `opscale-showcase`
+Skills: `opscale-seed` → `opscale-menu` → `opscale-showcase`
 
-Finishing skills are independent of the strict sequence — invoke whichever you need, whenever you need it, as long as their own prerequisites are met.
+The Presentation phase runs *after* Review has confirmed the code is correct, tested, and releasable. Its purpose is different: turn that validated code into something a human can sit down and watch end-to-end. It answers *"does this work as a functional demo?"* — coherent data on every screen, a sidebar that reads like an operator's workflow, and a guided walkthrough that exercises the module visually. The three skills run in a deliberate sequence — data first, then navigation, then the walkthrough — each building on the previous one's effect on the workbench.
 
-- **Seed** — generates a coherent workbench `DatabaseSeeder` (catalogs + one tenant + one agency + one open day + one funded drawer + one demo transaction). Required before Browser tests can open detail pages. Runs after `opscale-domain`.
-- **Menu** — introspects `src/Nova/` and groups aggregate Resources into sections (Day Lifecycle, Operations, Control, Catalogs…) by writing the `MenuSection` block into `workbench/app/Providers/NovaServiceProvider.php`. Runs after `opscale-ui`.
-- **Showcase** — generates a **non-headless** guided Dusk test that walks the whole Nova flow (login → dashboard → every aggregate → seeded detail → create form) with a configurable pause before each main action. Stakeholder-ready visual validation. Runs after `opscale-test` + `opscale-seed`.
+- **Seed** — generates a coherent workbench `DatabaseSeeder` (catalogs + one tenant + one agency + one open day + one funded drawer + one demo transaction) so every Nova detail page has something to render. Without this step the demo is empty. Requires `opscale-domain`.
+- **Menu** — introspects `src/Nova/` and groups aggregate Resources into `MenuSection`s (Day Lifecycle, Operations, Control, Catalogs…) inside `workbench/app/Providers/NovaServiceProvider.php`, so a reviewer navigates the package the way an operator would. Requires `opscale-ui`.
+- **Showcase** — generates a **non-headless** guided Dusk test that walks the whole Nova flow (login → dashboard → every aggregate → seeded detail → create form) with a configurable pause before each main action. This is the stakeholder-facing visual validation that ties seed and menu together into one watchable demo. Requires `opscale-seed`, `opscale-menu`, and the Dusk infrastructure from `opscale-test`.
 
 ### Iterate — adding the next feature once the module is complete
 
@@ -110,12 +110,12 @@ Every iteration is archived as `docs/iterations/YYYY-MM-DD-<slug>.md` inside the
 ### Development Sequences
 
 ```
-app / module    init → plan → generate → review → (iterate)*
-package         init → generate → review → (iterate)*
+app / module    init → plan → generate → review → presentation → (iterate)*
+package         init → generate → review → presentation → (iterate)*
 library         init → review
 ```
 
-**app/module** get the full pipeline: plan the spec artifacts, generate code from them, review with quality gates. **package** skips the planning phase — definitions are provided directly. **library** has no generation phase — just code, tests, and release.
+**app/module** get the full pipeline: plan the spec artifacts, generate code from them, review with quality gates, then make the module demoable. **package** skips the planning phase — definitions are provided directly. **library** has no generation phase and no demo to present — just code, tests, and release.
 
 `iterate` is the loop that runs after the initial pipeline closes — only valid when every prior task is complete and the tree is clean.
 
@@ -233,9 +233,9 @@ Every module folder under `.specify/specs/{NNN}-{slug}/` contains a `docs/` subf
 | `opscale-debug` | init | Review (any order) |
 | `opscale-test` | init | Review (any order) |
 | `opscale-release` | init + opscale-test produced test files | Review (after test) |
-| `opscale-seed` | init + domain + workbench User model | Finishing (any time after Generate #1) |
-| `opscale-menu` | init + ui + workbench NovaServiceProvider | Finishing (any time after Generate #2) |
-| `opscale-showcase` | init + ui + seed + test (Dusk infra) | Finishing (after Review test) |
+| `opscale-seed` | init + domain + workbench User model | Presentation #1 (strict) |
+| `opscale-menu` | init + ui + workbench NovaServiceProvider | Presentation #2 (strict) |
+| `opscale-showcase` | init + ui + seed + menu + test (Dusk infra) | Presentation #3 (strict) |
 | `opscale-iterate` | init + Plan + Generate + **0 pending tasks** + clean git | After full pipeline |
 | `opscale-ai` | init + at least one shipped package | Independent |
 
@@ -267,15 +267,15 @@ Agents use three MCP servers configured by `opscale-init`:
 | 9 | `opscale-test` | Stack config (Pest, Dusk, PHPStan, Duster, Rector) + workbench seeders + **generates Unit/Feature/Browser tests**. Headless by default. `composer build`/`serve` | Yes | Yes | Yes | Yes |
 | 10 | `opscale-release` | Semantic Release, commitlint, Husky, SonarQube, GitHub Actions. Refuses without test files | deploy-app | publish-package | publish-package | publish-package |
 
-#### Finishing
+#### Presentation
 
-Independent of the strict sequence — invoke whenever the workbench needs polishing.
+Strict order: seed → menu → showcase. Run after Generate to validate the module as a functional demo before Review.
 
 | Skill | Purpose | app | module | package | library |
 |-------|---------|:---:|:------:|:-------:|:-------:|
-| `opscale-seed` | Coherent workbench `DatabaseSeeder`: catalogs + tenant + agency + open day + funded drawer + demo transaction. Unblocks Browser tests and gives `testbench serve` something to render | Per module | Yes | Yes | -- |
+| `opscale-seed` | Coherent workbench `DatabaseSeeder`: catalogs + tenant + agency + open day + funded drawer + demo transaction. Gives every Nova page something to render and unblocks Browser tests | Per module | Yes | Yes | -- |
 | `opscale-menu` | Groups `src/Nova/*` aggregates into `MenuSection`s inside `workbench/app/Providers/NovaServiceProvider.php` so the sidebar reads the way an operator would navigate | Per module | Yes | Yes | -- |
-| `opscale-showcase` | Non-headless guided Dusk test that walks the whole Nova flow with configurable pauses — stakeholder-ready visual validation | Per module | Yes | Yes | -- |
+| `opscale-showcase` | Non-headless guided Dusk test that walks the whole seeded + organized Nova flow with configurable pauses — the stakeholder-ready functional demo | Per module | Yes | Yes | -- |
 
 #### Iterative
 

@@ -1,6 +1,6 @@
 ---
 name: opscale-seed
-description: Generates a coherent workbench DatabaseSeeder for an Opscale module — catalogs first, then a happy-path operating instance (one tenant + one agency + one open day + one funded drawer + one demo transaction). The seeder is what Browser tests boot against and what `testbench serve` shows in the workbench Nova UI. Trigger when the user says "generate the seeder", "seed demo data", "make the workbench demo", "fix empty Nova pages", or after opscale-ui/opscale-test when Browser tests can't open detail pages because no record exists.
+description: Generates a coherent workbench DatabaseSeeder for an Opscale module — catalogs first, then a happy-path operating instance (one tenant + one agency + one open day + one funded drawer + one demo transaction). The seeder is what `testbench serve` shows in the workbench Nova UI and what `opscale-showcase` walks through during the demo. This is Step 1 of the Presentation phase — runs after Review to make the module demoable, and produces the seeded baseline that `opscale-menu` and `opscale-showcase` build on. Trigger when the user says "generate the seeder", "seed demo data", "make the workbench demo", "fix empty Nova pages", or when starting the Presentation phase after Review.
 ---
 
 # opscale-seed
@@ -13,10 +13,10 @@ description: Generates a coherent workbench DatabaseSeeder for an Opscale module
 | 2 | `opscale-domain` has been run | `src/Models/` populated | Stop. Run `/opscale-domain` first — nothing to seed. |
 | 3 | Workbench User model exists | `workbench/app/Models/User.php` | Restore from a sibling module or create the standard testbench User model. |
 
-This skill is a **finishing skill**. It runs after `opscale-domain` (which
-populates `src/Models/`) and before `opscale-test` Browser-test generation
-(which depends on seeded records to render detail pages). It is independent
-of the strict 1→10 sequence.
+This skill is **Step 1 of the Presentation phase**. It runs after Review has
+signed off on quality and is the entry point that turns the module into a
+functional demo: it produces the seeded baseline that `opscale-menu` then
+organizes and that `opscale-showcase` walks through end-to-end.
 
 ## Why this skill exists
 

@@ -1,6 +1,6 @@
 ---
 name: opscale-showcase
-description: Generates a non-headless guided Dusk browser test that walks the entire workbench Nova flow (login → dashboard → every aggregate Resource → seeded detail → create form) with a configurable pause (default 3s) before pressing the main button on each screen. Forces visible Chrome regardless of DUSK_HEADLESS so a human reviewer can watch the package end-to-end. Trigger when the user says "showcase the module", "demo Nova", "guided walkthrough", "non-headless test", or wants a stakeholder-ready visual validation of the package after opscale-test passes. Independent of the strict 1→10 sequence.
+description: Generates a non-headless guided Dusk browser test that walks the entire workbench Nova flow (login → dashboard → every aggregate Resource → seeded detail → create form) with a configurable pause (default 3s) before pressing the main button on each screen. Forces visible Chrome regardless of DUSK_HEADLESS so a human reviewer can watch the package end-to-end. This is Step 3 (final) of the Presentation phase — runs after `opscale-seed` and `opscale-menu`, ties them together into a single watchable demo, and produces the stakeholder-ready functional validation of the module. Trigger when the user says "showcase the module", "demo Nova", "guided walkthrough", "non-headless test", or when closing the Presentation phase with the visual demo.
 ---
 
 # opscale-showcase
@@ -11,9 +11,15 @@ description: Generates a non-headless guided Dusk browser test that walks the en
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
 | 2 | `opscale-ui` has been run | `src/Nova/*.php` populated | Stop. Run `/opscale-ui` — there's nothing to walk. |
-| 3 | `opscale-seed` has been run (or equivalent custom seeder exists) | At least one record per aggregate root in the workbench sqlite | Run `/opscale-seed` first — detail pages need seeded records to render. |
-| 4 | `opscale-test` Dusk infrastructure is set up | `tests/DuskTestCase.php` + `phpunit.dusk.xml` exist | Run `/opscale-test` first. |
-| 5 | ChromeDriver matches local Chrome major version | `vendor/bin/testbench dusk:chrome-driver --detect` | Re-run with explicit version (`dusk:chrome-driver {major}`). On macOS arm the binary lives at `vendor/laravel/dusk/bin/chromedriver-mac-arm` (no `-arm64` suffix). |
+| 3 | `opscale-seed` has been run (Presentation #1) | At least one record per aggregate root in the workbench sqlite | Run `/opscale-seed` first — detail pages need seeded records to render. |
+| 4 | `opscale-menu` has been run (Presentation #2) | `MenuSection` block present in `workbench/app/Providers/NovaServiceProvider.php` | Run `/opscale-menu` first — the showcase walks the operator-grouped sidebar, not the flat default. |
+| 5 | `opscale-test` Dusk infrastructure is set up | `tests/DuskTestCase.php` + `phpunit.dusk.xml` exist | Run `/opscale-test` first. |
+| 6 | ChromeDriver matches local Chrome major version | `vendor/bin/testbench dusk:chrome-driver --detect` | Re-run with explicit version (`dusk:chrome-driver {major}`). On macOS arm the binary lives at `vendor/laravel/dusk/bin/chromedriver-mac-arm` (no `-arm64` suffix). |
+
+This skill is **Step 3 (final) of the Presentation phase**. Seed populated the
+workbench, menu organized navigation, and showcase now produces the single
+visual artifact that exercises both: a guided non-headless walkthrough that a
+stakeholder can sit and watch. When showcase passes, the module is demoable.
 
 ## Why this skill exists
 
