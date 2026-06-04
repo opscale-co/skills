@@ -1,18 +1,11 @@
 ---
 name: opscale-iterate
 description: >
-  Adds a new feature, change, or fix to an existing Opscale project end-to-end:
-  collects a brief description from the user, drives spec-kit (/speckit.specify
-  → /speckit.clarify → /speckit.plan → /speckit.tasks → /speckit.implement) to
-  produce the execution plan, invokes the matching Opscale skills for each
-  affected layer (process / dbml / bpmn / domain / ui / logic / test), and
-  closes the iteration with a Conventional Commits commit compatible with
-  semantic-release. Trigger this skill when the user says "let's iterate",
-  "add a feature", "new iteration", "implement this change", "create a feature
-  branch for X", "ship this small change", or describes a discrete piece of work
-  on top of an already-initialized Opscale project. This is the iterative
-  counterpart to the full Opscale sequence — use it when you do NOT want to run
-  the whole pipeline from scratch.
+  Adds a feature, change, or fix to an already-initialized Opscale project
+  end-to-end — invokes only the affected layers, then commits in Conventional
+  Commits format. Runs after the full pipeline is in place. Trigger: "let's
+  iterate", "add a feature", "implement this change", "ship a small change".
+  Use it whenever a change/feature/fix is added to an already-initialized project, even loosely phrased. Not for first-time setup (opscale-init) or full greenfield builds.
 ---
 
 # opscale-iterate

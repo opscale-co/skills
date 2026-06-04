@@ -1,6 +1,10 @@
 ---
 name: opscale-showcase
-description: Generates a non-headless guided Dusk browser test that walks the entire workbench Nova flow (login → dashboard → every aggregate Resource → seeded detail → create form) with a configurable pause (default 3s) before pressing the main button on each screen. Forces visible Chrome regardless of DUSK_HEADLESS so a human reviewer can watch the package end-to-end. This is Step 3 (final) of the Presentation phase — runs after `opscale-seed` and `opscale-menu`, ties them together into a single watchable demo, and produces the stakeholder-ready functional validation of the module. Trigger when the user says "showcase the module", "demo Nova", "guided walkthrough", "non-headless test", or when closing the Presentation phase with the visual demo.
+description: >
+  Generates a non-headless guided Dusk walkthrough of the workbench Nova flow.
+  Step 13 — final Presentation step, runs after opscale-menu. Trigger:
+  "showcase the module", "demo Nova", "guided walkthrough".
+  Use it whenever a guided visual Nova walkthrough/demo is wanted, even loosely phrased. Not for CI smoke tests (opscale-test) or the menu (opscale-menu).
 ---
 
 # opscale-showcase

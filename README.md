@@ -440,12 +440,6 @@ Each skill is invoked as a Claude Code slash command inside the target project d
 
 Skills validate their prerequisites and refuse to run if missing — `opscale-iterate` requires the initial pipeline complete and zero pending tasks; `opscale-release` requires test files to exist; etc. For package projects, skip the Plan phase (`process`/`dbml`/`bpmn`) and start at `opscale-domain` with direct definitions. For library projects, skip both Plan and Generate — go straight to `opscale-test` and `opscale-release`.
 
-## Testing
-
-``` bash
-npm run test
-```
-
 ## Changelog
 
 Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.

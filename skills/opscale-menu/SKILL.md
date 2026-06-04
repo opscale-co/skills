@@ -1,6 +1,10 @@
 ---
 name: opscale-menu
-description: Generates a user-friendly Nova menu for an Opscale module by introspecting src/Nova/ and grouping aggregate Resources into sections (e.g. Day Lifecycle, Operations, Control, Catalogs). Writes the MenuSection block into workbench/app/Providers/NovaServiceProvider.php so the workbench Nova UI presents the package the way an operator would navigate it during a demo. This is Step 2 of the Presentation phase — runs after `opscale-seed` and before `opscale-showcase` to give the seeded module a navigable sidebar that reads like an operator workflow. Trigger when the user says "generate the menu", "organize the Nova sidebar", "group the resources", or when continuing the Presentation phase after `opscale-seed`.
+description: >
+  Generates a navigable Nova menu by grouping Resources into sections.
+  Step 12 — runs after opscale-seed, before opscale-showcase. Trigger:
+  "generate the menu", "organize the Nova sidebar", "group the resources".
+  Use it whenever the Nova sidebar/menu needs organizing, even loosely phrased. Not for generating Resources themselves (opscale-ui).
 ---
 
 # opscale-menu

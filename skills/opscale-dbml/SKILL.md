@@ -1,14 +1,10 @@
 ---
 name: opscale-dbml
 description: >
-  Generates a DDD-aligned DBML data model from a validated Opscale business spec and
-  writes it to the spec-kit path ready for downstream skills. Use this skill whenever
-  a spec.md exists and the next step is to model the domain data. This is Step 2 in
-  the Opscale sequence and must run AFTER opscale-process and BEFORE opscale-bpmn or
-  any code generation. Also trigger when the user says "create the data model",
-  "model the domain", "generate the DBML", "define the entities", or "let's design
-  the database". Never include UI fields, config tables, or infrastructure concerns —
-  domain only.
+  Generates a DDD-aligned DBML data model from the process spec. Step 2 of
+  Plan — runs after opscale-process, before opscale-bpmn. Trigger: "create the
+  data model", "generate the DBML", "model the domain", "define the entities".
+  Use it whenever the domain data model needs defining, even if just "model this". Not for the process flow (opscale-bpmn) or PHP migrations/models (opscale-domain).
 ---
 
 # opscale-dbml
@@ -489,41 +485,8 @@ node /path/to/opscale-dbml/scripts/validate-dbml.mjs .specify/specs/{NNN}-{slug}
 
 ---
 
-## Reference: Data Types
+## Reference
 
-| Type | Use for | Example |
-|------|---------|---------|
-| `varchar(26)` | ULIDs, external IDs | `id varchar(26) [pk]` |
-| `varchar(n)` | Short text with known max | `name varchar(200)` |
-| `text` | Long text, no max | `description text` |
-| `decimal(p,s)` | Money, precise numbers | `amount decimal(10,2)` |
-| `boolean` | True/false flags | `is_active boolean` |
-| `timestamp` | Date and time | `created_at timestamp` |
-| `date` | Date only | `birth_date date` |
-| `int` | Counts, quantities | `quantity int` |
-| `[EnumName]` | Enum reference | `status OrderStatus` |
-
-## Reference: Constraint Syntax
-
-| Constraint | Syntax |
-|------------|--------|
-| Primary key | `[pk]` |
-| Not null | `[not null]` |
-| Nullable | `[null]` |
-| Unique | `[unique]` |
-| Default value | `[default: 'value']` |
-| Default function | `` [default: `now()`] `` |
-| FK one-to-many | `[ref: > OtherTable.id]` |
-| FK one-to-one | `[ref: - OtherTable.id]` |
-| Inline note | `[note: 'description']` |
-
-## Reference: Naming Conventions
-
-| Element | Convention | Example |
-|---------|------------|---------|
-| Tables | plural snake_case | `loan_applications`, `payment_records` |
-| Columns | snake_case | `created_at`, `total_amount` |
-| Enums | PascalCase | `OrderStatus`, `PaymentMethod` |
-| Enum values | snake_case | `in_progress`, `pending_payment` |
-| Junction tables | [table_a]_[table_b] | `order_items_toppings` |
-| Indexes | `idx_{table}_{column}` | `idx_orders_tenant` |
+DBML data types, constraint syntax, and naming conventions live in
+`references/dbml-syntax.md` — consult it during Phases 4–6 when you need exact
+syntax.

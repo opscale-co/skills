@@ -1,13 +1,10 @@
 ---
 name: opscale-release
 description: >
-  Configures the complete release pipeline for an Opscale/Laravel Nova package:
-  Semantic Release with Packagist publishing, SonarQube quality gates, commitlint
-  and Husky for commit convention enforcement, lint-staged for pre-commit checks,
-  and four GitHub Actions workflows. Use this skill when the user says "configure
-  release", "set up semantic release", "add SonarQube", "configure the release
-  pipeline", or "set up commit hooks". This is Step 10 in the Opscale sequence,
-  runs after opscale-test.
+  Configures the release pipeline (Semantic Release, commitlint, Husky,
+  SonarQube, GitHub Actions). Step 10 — final Review step. Trigger: "configure
+  release", "set up semantic release", "set up commit hooks".
+  Use it whenever the release/CI pipeline or commit hooks need configuring, even loosely phrased. Requires tests to exist first (opscale-test). Not for debug tooling (opscale-debug).
 ---
 
 # opscale-release

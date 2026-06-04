@@ -1,13 +1,10 @@
 ---
 name: opscale-bpmn
 description: >
-  Generates a BPMN 2.0 XML process file from a validated Opscale spec and DBML data
-  model, following the Opscale task type conventions. Use this skill whenever spec.md
-  and data-model.md both exist and the next step is to define the process flow. This
-  is Step 3 in the Opscale sequence — runs AFTER opscale-dbml and BEFORE opscale-domain.
-  Also trigger when the user says "generate the BPMN", "map the process", "define the
-  flow", or "create the process diagram". Every task must reference an entity from the
-  DBML — no new domain concepts at this stage.
+  Generates a BPMN 2.0 XML process file from the spec and DBML. Step 3 of
+  Plan — runs after opscale-dbml, before opscale-sipoc. Trigger: "generate the
+  BPMN", "map the process", "define the flow", "create the process diagram".
+  Use it whenever the process flow needs to be defined as BPMN, even if phrased loosely. Don't use it to model data (opscale-dbml) or detail action internals (opscale-sipoc).
 ---
 
 # opscale-bpmn

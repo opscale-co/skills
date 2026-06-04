@@ -1,15 +1,10 @@
 ---
 name: opscale-init
 description: >
-  Bootstraps a new Opscale/Laravel Nova module or project for Spec-Driven Development
-  using GitHub spec-kit. Use this skill whenever starting a new Opscale module from
-  scratch, setting up spec-kit in an existing Opscale project, or creating the
-  constitution.md for an Opscale codebase. Also trigger when the user says "let's
-  start a new module", "set up spec-kit", "initialize the project", or "create the
-  constitution". This skill MUST run before any other Opscale skill in the sequence.
-  It installs spec-kit, generates the .specify/ scaffold, and writes an
-  Opscale-specific constitution.md that Claude Code will reference throughout all
-  subsequent development phases.
+  Bootstraps an Opscale/Laravel Nova module for Spec-Driven Development. Step 0 —
+  must run before every other Opscale skill. Trigger: "start a new module", "set
+  up spec-kit", "initialize the project", "create the constitution".
+  Use it whenever a new Opscale module is started, even if phrased as "set this up". Not for adding features to an already-initialized project — that's opscale-iterate.
 ---
 
 # opscale-init

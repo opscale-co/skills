@@ -1,0 +1,22 @@
+# Node dependencies (installed locally per skill that needs them)
+node_modules/
+
+# macOS metadata
+.DS_Store
+
+# Test artifacts — Tier 2/3 runs use /tmp for scratch dirs; nothing under
+# tests/ should be regenerated and committed without intent.
+tests/.runs/
+tests/tier2-skill/.session-cache/
+tests/tier3-pipeline/.session-cache/
+tests/fixtures/reference-modules/demo-teller/generated/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Local IDE
+.idea/
+.vscode/

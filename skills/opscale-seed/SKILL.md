@@ -1,6 +1,10 @@
 ---
 name: opscale-seed
-description: Generates a coherent workbench DatabaseSeeder for an Opscale module — catalogs first, then a happy-path operating instance (one tenant + one agency + one open day + one funded drawer + one demo transaction). The seeder is what `testbench serve` shows in the workbench Nova UI and what `opscale-showcase` walks through during the demo. This is Step 1 of the Presentation phase — runs after Review to make the module demoable, and produces the seeded baseline that `opscale-menu` and `opscale-showcase` build on. Trigger when the user says "generate the seeder", "seed demo data", "make the workbench demo", "fix empty Nova pages", or when starting the Presentation phase after Review.
+description: >
+  Generates a workbench DatabaseSeeder with seeded demo data. Step 11 — first
+  step of Presentation, runs after Review. Trigger: "generate the seeder",
+  "seed demo data", "fix empty Nova pages".
+  Use it whenever demo/workbench seed data is needed or Nova pages look empty, even if just "seed it". Not for production data or test fixtures (opscale-test).
 ---
 
 # opscale-seed

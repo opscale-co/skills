@@ -1,15 +1,11 @@
 ---
 name: opscale-logic
 description: >
-  Generates complete Opscale Action classes AND drives spec-kit to produce the
-  execution plan and per-Action tasks. Determines mode by project type:
-  (1) BPMN-driven (app/module) — one Action per businessRuleTask from process.md.
-  Step 6 in the Opscale sequence — runs AFTER opscale-ui and BEFORE opscale-outputs.
-  (2) Standalone (package) — Actions defined directly without BPMN/DBML.
-  In both modes, runs /speckit.plan and /speckit.tasks so every Action lands as
-  its own task in tasks.md, then spawns action-generator agents in parallel.
-  Trigger when the user says "generate the actions", "implement the business logic",
-  "create the Opscale Actions", or "build the logic layer".
+  Generates Opscale Action classes from the SIPOCs (or directly for standalone
+  packages). Step 7 — runs after opscale-ui, before opscale-debug. Trigger:
+  "generate the actions", "implement the business logic", "build the logic
+  layer".
+  Use it whenever Action/business-logic classes must be generated, even if just "implement the logic". Not for Nova UI (opscale-ui) or the data layer (opscale-domain).
 ---
 
 # opscale-logic
@@ -98,7 +94,6 @@ Every Action extends `Opscale\Actions\Action`. All input flows through
 | `description(): string` | YES | One sentence explaining the action — plain string, no `__()`. Written for AI/MCP context |
 | `parameters(): array` | YES | Typed input declarations with validation rules |
 | `handle(array $attributes = []): array` | YES | Business logic — always returns array with success key |
-
 
 ---
 
@@ -441,69 +436,10 @@ The `Task ID` column ties each generated file back to its `tasks.md` entry so
 
 ### Standalone Workflow
 
-#### Phase 1 — Collect Action definitions
-
-From the user request, build the generation plan:
-
-```
-Logic Actions to generate:
-
-| # | Action name | identifier | Purpose |
-|---|-------------|------------|---------|
-| 1 | [name] | [kebab-id] | [one-line description] |
-| 2 | [name] | [kebab-id] | [one-line description] |
-
-Confirm before generating?
-```
-
-Wait for confirmation.
-
-#### Phase 2 — Resolve dependency order
-
-Same as BPMN-driven — if an Action composes others, generate leaves first.
-
-#### Phase 3 — Drive spec-kit to plan + produce per-Action tasks
-
-Standalone mode still uses spec-kit when the project has been initialized with
-`opscale-init` (i.e. `.specify/` exists). The plan + tasks pair gives the rest
-of the pipeline (especially `opscale-test`) something concrete to bind to.
-
-If `.specify/` does NOT exist (rare — package was never run through
-`opscale-init`), skip this phase and proceed to Phase 4 directly. Otherwise:
-
-**3a. Build a synthetic spec folder for this Action batch.** Standalone mode
-has no `process.md`, so create a minimal `.specify/specs/{NNN}-actions-{date}/`
-folder and seed it with the Action definitions the user provided.
-
-**3b. Run `/speckit.plan`** with the same payload structure as the BPMN-driven
-mode (action list, dependency order, parameters, purpose).
-
-**3c. Run `/speckit.tasks`** with the same contract: one task per Action,
-each preceded by a corresponding `Test {ClassName}` task.
-
-The verification checklist is identical to BPMN-driven Phase 3 — one task per
-Action, dependency edges match, no merging.
-
-#### Phase 4 — Generate Actions
-
-For each task in `tasks.md` (or each action from the user's input if Phase 3
-was skipped), in dependency order:
-
-- **Class name**: PascalCase from action name
-- **`identifier()`**: kebab-case from class name (e.g. `CalculateInterest` → `calculate-interest`)
-- **`parameters()`**: from provided parameter definitions
-- **`handle()` body**: implement the described logic
-
-Same generator-vs-agents decision as BPMN-driven Phase 4: ≤ 10 actions → agents;
-11+ → deterministic generator script. Same single-quote escape invariant
-applies to every string that lands in a PHP single-quoted literal.
-
-#### Phase 5 — Update plan.md (if specs exist)
-
-If `.specify/specs/` exists, append the same Logic Layer table as in BPMN-driven
-Phase 5 (including the `Task ID` column). Otherwise skip.
-
----
+For standalone packages with no BPMN/SIPOC source, follow the standalone
+variant in `references/standalone-mode.md`. Mode Detection above tells you when
+to use it; everything after this section (Code Template, Smoke gate) applies to
+both modes.
 
 ## Code Template
 
@@ -516,140 +452,6 @@ one instance per Action.
 The skill is responsible for assembling `handle_body` as ready-to-run PHP
 (including any `OtherAction::run([...])` composition calls). The script
 indents and inserts it verbatim — it does not transform business logic.
-
-<details>
-<summary>Legacy inline template (reference only — `templates/action.php.tmpl` is authoritative)</summary>
-
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace [PackageNamespace]\Services\Actions;
-
-use Illuminate\Support\Collection;
-use Illuminate\Validation\ValidationException;
-use Laravel\Nova\Fields\ActionFields;
-use Laravel\Nova\Fields\Select;
-use Laravel\Nova\Fields\Text;
-use Laravel\Nova\Fields\Textarea;
-use Opscale\Actions\Action;
-use [PackageNamespace]\Models\[ModelName];
-use [PackageNamespace]\Models\Enums\[StatusEnum];
-
-class [ActionClassName] extends Action
-{
-    public function identifier(): string
-    {
-        return '[kebab-case-id]';
-    }
-
-    public function name(): string
-    {
-        return '[Human Readable Name]';
-    }
-
-    /**
-     * NOTE — apostrophes (`'`) in the description string MUST be escaped
-     * with a backslash (`\'`) or the file will fail to parse. Generators
-     * that emit Action descriptions from natural-language sources (e.g.
-     * "Operating day's business date") must run `str_replace("'", "\\'", $s)`
-     * on every value that lands inside a single-quoted PHP literal —
-     * including identifier(), name(), description(), and every parameter
-     * `name`/`description`. Alternative: emit with double quotes and escape
-     * `$` and `\`. Pick ONE convention and apply it everywhere.
-     */
-    public function description(): string
-    {
-        return '[One sentence for AI/MCP: what this action does and when to use it]';
-    }
-
-    public function parameters(): array
-    {
-        return [
-            [
-                'name'        => '[entity_param]',
-                'description' => '[What this entity represents in context]',
-                'type'        => [ModelName]::class,
-                'rules'       => ['required'],
-            ],
-            [
-                'name'        => '[scalar_param]',
-                'description' => '[What this value represents]',
-                'type'        => 'string',
-                'rules'       => ['required', 'string', 'max:255'],
-            ],
-        ];
-    }
-
-    public function handle(array $attributes = []): array
-    {
-        $this->fill($attributes);
-        $this->validate();
-
-        /** @var [ModelName] $[entity] */
-        $[entity] = $this->get('[entity_param]');
-        $[scalar] = $this->get('[scalar_param]');
-
-        // --- Business Rules (BR-01, BR-02) ---
-
-        // Compose with dependency actions if needed:
-        // $result = [DependencyAction]::run(['param' => $value]);
-        // if (! $result['success']) {
-        //     return ['success' => false, 'message' => $result['message']];
-        // }
-
-        $[entity]->save();
-
-        return [
-            'success' => true,
-            '[entity]' => $[entity],
-            'message'  => __('[Action] completed successfully.'),
-        ];
-    }
-
-    // Override output context methods only when default behavior is insufficient
-
-    public function asNovaAction(ActionFields $fields, Collection $models): mixed
-    {
-        try {
-            $attributes = $fields->toArray();
-            $attributes['[entity_param]'] = $models->first();
-
-            $this->fill($attributes);
-            $this->validate();
-
-            $result = $this->handle($validatedData);
-
-            if (empty($result) || ! $result['success']) {
-                return Action::danger($result['message'] ?? __('Something went wrong.'));
-            }
-
-            return Action::message($result['message']);
-
-        } catch (ValidationException $e) {
-            $errors = collect($e->errors())
-                ->map(fn ($msgs, $field) => "{$field}: " . implode(', ', $msgs))
-                ->implode("\n");
-
-            return Action::danger($errors);
-
-        } catch (\Throwable $e) {
-            return Action::danger($e->getMessage());
-        }
-    }
-
-    public function getActionFields(): array
-    {
-        return [
-            Text::make(__('[Label]'), '[field]')
-                ->rules('required', 'string', 'max:255'),
-        ];
-    }
-}
-```
-
-</details>
 
 ---
 

@@ -1,6 +1,11 @@
 ---
 name: opscale-sipoc
-description: Authors a SIPOC (Suppliers, Inputs, Process, Outputs, Customers) document for every `businessRuleTask` in an Opscale module's BPMN. One file per Action under `.specify/specs/{NNN}-{module}/docs/actions/{kebab-id}.sipoc.md`. The SIPOC bridges the BPMN node (what the process expects) and the future `handle()` body (what the code will do) — opscale-logic later reads these SIPOCs to derive `parameters()` and `handle_body`. Use this skill whenever spec.md + data-model.md + process.md exist and the next step is to detail how each Action operates. This is the bridge between Plan (BPMN) and Generate (Logic). Trigger when the user says "generate the SIPOC", "detail the actions", "describe each action", "write the SIPOC for the actions", or after `/opscale-bpmn` finishes and before `/opscale-logic`.
+description: >
+  Authors one SIPOC document per businessRuleTask in the BPMN — the bridge
+  between BPMN (what) and the future handle() body (how). Step 4 of Plan —
+  runs after opscale-bpmn, before opscale-domain. Trigger: "generate the
+  SIPOC", "detail the actions", "describe each action".
+  Use it whenever each BPMN businessRuleTask needs its SIPOC detailed, even if just "detail the actions". Not for writing the actual handle() code — that's opscale-logic.
 ---
 
 # opscale-sipoc

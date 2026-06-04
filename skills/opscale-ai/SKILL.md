@@ -1,14 +1,11 @@
 ---
 name: opscale-ai
 description: >
-  Generates a Claude Code skill that ships with the project to facilitate its
-  installation and configuration in a consuming application. The generated skill
-  is an interactive version of the README — it asks the right config questions,
-  runs migrations, creates seeders, installs complementary packages, and verifies
-  everything works. This is NOT part of the development sequence — it runs
-  independently, after the project is built. Trigger when the user says
-  "generate installer skill", "create setup skill", "make this installable",
-  or "generate AI config".
+  Generates an installer skill that ships with the project so it can be
+  installed and configured by a downstream consumer. Independent of the
+  development sequence — runs after the project is built. Trigger: "generate
+  installer skill", "create setup skill", "make this installable".
+  Use it whenever someone wants the project to be installable/configurable by a downstream consumer, even if they just say "make it installable". Not for building the project itself — that's the development skills.
 ---
 
 # opscale-ai
