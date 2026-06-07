@@ -25,7 +25,7 @@ Output is written to `.specify/specs/{NNN}-{module-name}/data-model.md`.
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init` first. |
 | 2 | `opscale-process` has been run for this module | `.specify/specs/{NNN}-{module-name}/spec.md` exists and passed its completeness gate (PASS) | Stop. Run `/opscale-process` first. |
-| 3 | The spec's Bounded Context section is complete (subdomain slug, responsibility, dependencies) | Read spec.md | Return to `/opscale-process` to complete it. |
+| 3 | The spec has its **Normalización de nombres** and **Relaciones** sections | Read spec.md | Return to `/opscale-process` to complete it. |
 
 This skill is **Step 2 of the Plan phase** and must run **AFTER `opscale-process`** and **BEFORE `opscale-bpmn`**. No skipping, no parallel runs with sibling Plan skills.
 
@@ -77,38 +77,33 @@ If an element from the spec is ambiguous — could be technical or business — 
 
 ## Workflow
 
-### Phase 1 — Extract candidate entities from spec
+### Phase 1 — Take the canonical entities from the module spec
 
-Read `spec.md` and scan every section for entities:
+`opscale-process` already normalized the names and connected the flow. Do **not** re-invent names — reuse them verbatim. Read `spec.md`:
 
-| Spec section | What to look for |
+| Spec section | Use it for |
 |---|---|
-| **Artifacts (type Entity)** | Primary source — every Entity artifact becomes a table |
-| **Actions** | Verbs that create or modify data — may imply junction tables or status transitions |
-| **Business Rules** | Attribute-level rules reveal column constraints; subdomain rules may reveal missing entities |
-| **Actors** | Human actors with stored data become entities; system actors do not |
-| **Triggers** | Event-based triggers may imply entities that record when something happened |
+| **Normalización de nombres** | The canonical entity list (with aliases). Each canonical name is a candidate table; carry its aliases into the table `Note`. |
+| **Relaciones** | The relationships between entities — refine cardinality and FK direction here. |
+| **Flujo relacionado** | Confirm reality: the 📝 steps are what actually gets written (entities). ⚙️/✅ steps and 📩/📄 outputs are behaviour, **not** tables. |
+| **Procesos identificados** | Context only — does not add entities. |
 
-For each candidate, mark its source: `[SPEC: Artifacts]`, `[SPEC: Actions]`, `[SPEC: Rules]`, etc.
+Filter the canonical list through the **DDD Scope** above: keep business entities, drop anything technical / configuration / UI. When a canonical name is ambiguous (business vs technical), ask the user before dropping it.
 
-Present the entity list to the user and confirm before continuing:
+Present the resulting tables and confirm:
 
 ```
-## Candidate Entities
+## Candidate Tables (from the normalized names)
 
-1. **[entity_name]** [SPEC: Artifacts]
-   [One sentence — what business concept this represents]
-
-2. **[entity_name]** [SPEC: Actions — implied by "X records Y"]
-   [One sentence]
+1. **[canonical_name]**  ← [aliases]
+   [One sentence — the business concept]
 
 ---
-Do you confirm these entities? Any to add, remove, or rename?
+These come straight from the spec's normalized names, domain-filtered.
+Confirm, or flag any that are technical / out of scope?
 ```
 
 Wait for confirmation before proceeding to Phase 2.
-
----
 
 ### Phase 2 — Define relationships and cardinality
 
@@ -462,25 +457,27 @@ node /path/to/opscale-dbml/scripts/validate-dbml.mjs .specify/specs/{NNN}-{slug}
 
 ## Domain Rules
 
-1. **Domain only** — every table must trace to a business entity in `spec.md`.
+1. **Metadata everywhere** — the `Project` block, every `Table`, and every field carry a `Note` describing its business meaning. A table or column with no note fails review.
+
+2. **Domain only** — every table must trace to a business entity in `spec.md`.
    If it cannot be traced, it does not belong here.
 
-2. **No technical columns** — reject any column driven by UI, config, or infrastructure:
+3. **No technical columns** — reject any column driven by UI, config, or infrastructure:
    - ❌ `is_visible`, `ui_order`, `display_config`, `cache_key`, `sync_token`
    - ✅ `status`, `amount`, `issued_date`, `approved_by`, `reference_number`
 
-3. **Enums over strings** — any column with a finite set of values is an Enum block.
+4. **Enums over strings** — any column with a finite set of values is an Enum block.
    A `varchar` typed status or category field is a violation.
 
-4. **ULID always** — `varchar(26)`, generated at the application layer. No auto-increment integers.
+5. **ULID always** — `varchar(26)`, generated at the application layer. No auto-increment integers.
 
-5. **Logical cross-subdomain references** — store the ID, never the FK constraint.
+6. **Logical cross-subdomain references** — store the ID, never the FK constraint.
    Always add a note: `// logical reference to {subdomain}.{table}`.
 
-6. **DBML is the source of truth** — the migration must match the DBML exactly.
+7. **DBML is the source of truth** — the migration must match the DBML exactly.
    If a migration needs a column not in the DBML, update the DBML first.
 
-7. **Never invent** — do not add entities or columns that cannot be traced to the spec.
+8. **Never invent** — do not add entities or columns that cannot be traced to the spec.
    If something seems missing, ask the user before adding it.
 
 ---

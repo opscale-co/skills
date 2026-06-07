@@ -1,35 +1,18 @@
-# Template — docs/process.md (narrative)
+# Template — docs/process.md (plain narrative, derived from the flow)
 
-Fill this in during Phase 10. Preserve the user's voice.
+Write this after the connected flow is final. It is the same flow in plain
+prose for humans to read first; downstream skills parse `spec.md`. Keep it in
+the user's language and use the canonical entity names from the normalization
+list. Replace every `[...]`.
 
 ---
-
-## Output: docs/process.md (narrative — preserve user voice)
 
 ```markdown
-# [Process Name] — Process Narrative
+# [Module Name]
 
-> Captured: [YYYY-MM-DD]
-> Source: [user conversation / pasted doc / chat thread]
+[2–3 lines: what the module does overall.]
 
-## Original description
-
-[The user's input verbatim, lightly cleaned for readability. Keep their wording,
-their priorities, any informal phrasing. Do NOT rewrite as a structured spec —
-that is what spec.md is for.]
-
-## Identified business domain
-
-[Domain from the taxonomy at the bottom of this skill]
-
-## Identified actors (from the narrative)
-
-- [Actor 1] — [how they appeared in the description]
-- [Actor 2] — …
-
-## Open questions left for spec.md
-
-- [Question the user did not answer that the structured spec had to assume]
+[One short paragraph per segment of the flow, in order — naming the same
+entities the normalization list uses, mentioning each decision and wait as it
+occurs. No detail that isn't in the flow.]
 ```
-
----

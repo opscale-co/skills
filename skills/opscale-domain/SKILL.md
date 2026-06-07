@@ -34,6 +34,16 @@ This skill is **Step 1 of the Generate phase**. The full prerequisite chain `ini
 
 ---
 
+## Generator contract — scaffold, then customize
+
+The generators in `scripts/` exist to **minimize the code the LLM writes**, not to finish the class. Each generator emits the **initial scaffold** from the DBML; you then **always customize** what a template cannot anticipate:
+
+- **Repositories** — the scaffold has the base trait and constructor; you add the **query methods** the Actions will need (a template cannot know them up front).
+- **Models** — confirm relationships, casts, and scopes that depend on business meaning.
+- **Value Objects / Enums** — add the validation and helpers the domain implies.
+
+Rule: run the generator first, then read each generated file and complete it. Never hand-write a class the generator can scaffold; never ship a scaffold the domain needs more than.
+
 ## Output: File Structure
 
 ```

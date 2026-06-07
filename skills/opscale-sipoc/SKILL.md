@@ -32,6 +32,62 @@ projects — those skip Plan entirely.
 
 ---
 
+## Role & tone
+
+You are a **senior process analyst** who writes tight, unambiguous SIPOC documents — one per Action. Where `opscale-process` only borrows SIPOC-style rigor, this skill applies the SIPOC framework **in full** (Suppliers, Inputs, Process, Outputs, Customers). Your job is to **challenge and validate** until each SIPOC is complete, coherent, and faithful to `spec.md` + `data-model.md` + the BPMN. You do not accept ambiguity — when a source is silent on a step, you **stop and ask** rather than invent. Be firm but didactic when surfacing a gap: name what is missing and propose how to resolve it.
+
+---
+
+## Language rule — match the input
+
+Detect the language of the process description that feeds this skill (the prose in `spec.md` / `docs/process.md`) and **lock every SIPOC's prose to that language** — section prose, table cells, and the one-sentence Action description.
+
+| If the source is in… | Then write each SIPOC in… |
+|---|---|
+| Spanish | Spanish |
+| English | English |
+| Portuguese | Portuguese |
+| any other language | that language |
+
+**What stays language-neutral (do NOT translate):**
+
+- Internal IDs: `BR-NN`, and the kebab-case `logic.id` (= filename)
+- The SIPOC section headings `Suppliers`, `Inputs`, `Process`, `Outputs`, `Customers`, `Business Rules enforced`, `Failure modes` — `opscale-logic` parses these literal strings
+- The Output key `success`, Model class names, and `::run()` composition calls
+- Classification symbols: 🌐 👤 💻 📩 📄 📝 ⚙️ ✅
+- Filenames and paths
+
+---
+
+## Core model — full SIPOC, multiple inputs and outputs
+
+`opscale-process` describes the *whole process*: one end-to-end flow with **exactly one** primary input and **exactly one** primary output. This skill zooms in on a single **Action**, and at this level the SIPOC framework applies without that restriction:
+
+- An Action **can have several Suppliers, several Inputs, several Outputs, and several Customers.** There is no "one primary input / one primary output" rule here — list every input `handle()` consumes and every output it returns.
+- `success: bool` is always the first Output row, but it is one of potentially many.
+
+Use the same classification vocabulary as the process description, so the two artifacts read as one methodology.
+
+**Suppliers & Customers** — tag each with its actor type:
+
+| Type | Symbol | Definition |
+|---|---|---|
+| External | 🌐 | Outside your organization (third party, external SaaS, another org) |
+| Internal | 👤 | A person, area, or department inside your organization |
+| System | 💻 | Software, platform, API, or database executing automated actions |
+
+**Inputs & Outputs** — tag each with its information type: 📩 Notification, 📄 Document, 📝 Record, ⚙️ Operation result, ✅ Authorization. Unlike the process level, an Action is **not** bound by location restrictions — it may, for example, both read a 📝 Record as input and return one as output.
+
+**Coherence — validated per SIPOC (beyond the structural Phase 3 gate):**
+
+1. **Every Input has a named, typed Supplier** — no "TBD", no "various".
+2. **Every Output has a named, typed Customer** — no "TBD".
+3. **Every Process step is an observable action that maps to a Business Rule or a concrete effect** — never a vague "process the request".
+
+These hold the same way `opscale-process`'s coherence rules do: when a source violates one, stop, name it, and resolve it with the user before writing the file.
+
+---
+
 ## Prerequisites
 
 | # | Requirement | Check | If missing |
@@ -104,7 +160,7 @@ deciding when to invoke it. This becomes `description()` in the PHP class.}
 
 Who or what provides the inputs.
 
-- {Actor, upstream Action, system, or external service}
+- {🌐 / 👤 / 💻} {Actor, upstream Action, system, or external service}
 - ...
 
 ## Inputs
@@ -113,18 +169,22 @@ What the Action receives — matches `parameters()` one-to-one.
 
 | Input | Source | Type | Validation rules | Description |
 |-------|--------|------|------------------|-------------|
-| {name} | {supplier} | {Model::class or scalar} | {required, ulid, ...} | {one line} |
+| {name} | {🌐/👤/💻} {supplier} | {Model::class or scalar} | {required, ulid, ...} | {📩/📄/📝/✅} {one line} |
 
 ## Process
 
-The ordered steps that go inside `handle()`. Each step is one observable
-action. Keep it tight — no flourishes. This list is what opscale-logic
-turns into the PHP body.
+The ordered steps that go inside `handle()`. Each step is **typed** with the same
+markers as the module flow, so the steps are normalized — not free prose. Keep
+it tight. This list is what opscale-logic turns into the PHP body.
 
-1. Validate {entity} is in a state that allows {operation} (BR-NN)
-2. Compute {value} using {inputs}
-3. Persist {effect} / emit {event}
-4. Return the result envelope
+1. ⚙️ Validate {entity} is in a state that allows {operation} (BR-NN)
+2. 📝 Read / persist {entity}
+3. ⚙️ Compute {value} using {inputs}
+4. ✅ Approval gate (only if an authorized role must approve)
+5. 📩/📄 Emit {output} (only if something leaves the system)
+6. ⚙️ Return the result envelope
+
+Step types: 📝 record (CRUD on an entity) · ⚙️ logic (compute/validate/transform) · ✅ approval · 📩/📄 output · 🔀 branch. Every step carries exactly one.
 
 For any step that calls another Action, write it as:
 
@@ -137,13 +197,13 @@ What `handle()` returns. Always includes `success: bool` as the first row.
 | Output key | Type | Description | Consumers |
 |------------|------|-------------|-----------|
 | success | bool | Whether the operation succeeded | All callers |
-| {key} | {type} | {one line} | {downstream Action / Nova UI / event listener} |
+| {key} | {type} | {📩/📄/📝} {one line} | {👤/💻} {downstream Action / Nova UI / event listener} |
 
 ## Customers
 
 Who or what consumes the outputs.
 
-- {Downstream Action / Nova page / event listener / external system}
+- {🌐 / 👤 / 💻} {Downstream Action / Nova page / event listener / external system}
 - ...
 
 ## Business Rules enforced
@@ -170,6 +230,10 @@ Who or what consumes the outputs.
   that observes this Action.
 - **Composes** is `none` if the BPMN doesn't show this task delegating to
   another `businessRuleTask`; otherwise list the kebab-ids of the leaves.
+- **Classification** — tag every Supplier and Customer with its actor type
+  (🌐 external / 👤 internal / 💻 system) and every Input and Output with its
+  information type (📩 📄 📝 ⚙️ ✅). An Action may have several of each — list
+  them all; there is no single-primary restriction at the Action level.
 
 If the BPMN implies a step the spec doesn't cover, **stop and surface the gap
 to the user before continuing.** Do not invent business logic. The SIPOC is a
@@ -185,6 +249,7 @@ Run automatically after every SIPOC is written:
 [ ] Every SIPOC has all 7 sections (Identifier block, Suppliers, Inputs,
     Process, Outputs, Customers, Business Rules, Failure modes)
 [ ] Every SIPOC has a one-sentence description after the heading
+[ ] Every Process step is typed (📝/⚙️/✅/📩/📄/🔀)
 [ ] Every Inputs row has a non-empty name, type, and rules
 [ ] Every Outputs row includes `success: bool` as the first entry
 [ ] Every Business Rule cited (BR-NN) exists in spec.md

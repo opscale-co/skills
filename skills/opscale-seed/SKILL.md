@@ -1,10 +1,13 @@
 ---
 name: opscale-seed
 description: >
-  Generates a workbench DatabaseSeeder with seeded demo data. Step 11 — first
-  step of Presentation, runs after Review. Trigger: "generate the seeder",
-  "seed demo data", "fix empty Nova pages".
-  Use it whenever demo/workbench seed data is needed or Nova pages look empty, even if just "seed it". Not for production data or test fixtures (opscale-test).
+  Generates a workbench DatabaseSeeder with a coherent demo dataset that
+  exemplifies a complete run of the module's flow — connected records that let
+  someone walk each process end to end, not isolated rows. Step 11 — first step
+  of Presentation, runs after Review. Trigger: "generate the seeder", "seed demo
+  data", "fix empty Nova pages". Use it whenever demo/workbench data is needed or
+  Nova pages look empty, even if just "seed it". Not for production data or test
+  fixtures (opscale-test).
 ---
 
 # opscale-seed
@@ -24,12 +27,13 @@ organizes and that `opscale-showcase` walks through end-to-end.
 
 ## Why this skill exists
 
-Browser smoke tests need at least one record per aggregate root to render the
-detail page (`GET /nova/resources/{uri}/{id}`). Without seeded data the test
-either skips the detail assertion or — worse — the page renders an empty
-table that masks Resource bugs (missing relations, broken casts, enum
-mismatches). Every module ends up reinventing the seeder; this skill makes
-the convention explicit.
+The demo must let someone **walk a complete flow of the module**, not just see
+a row in each table. The seeded dataset has to be **coherent and connected** —
+the records of one process link to the next so `opscale-showcase` can drive each
+process in `spec.md` *Procesos identificados* end to end, and so empty/half-
+populated pages don't mask Resource bugs (missing relations, broken casts, enum
+mismatches). Every module ends up reinventing the seeder; this skill makes the
+convention explicit.
 
 ## Output
 
@@ -69,6 +73,11 @@ skill walks the DBML / models in this order:
    "operating"/"executed"/"confirmed"/"open" states by default so the
    detail page exercises the happy path. Add one record in a pending state
    if the module has a critical pending-flow UI to demonstrate.
+6. **One complete flow per process** — for each process in `spec.md`
+   *Procesos identificados*, seed the connected records needed to walk it from
+   start to finish (the trigger record, the entities each step touches, the
+   final outcome). The dataset is the script `opscale-showcase` follows; if a
+   process can't be walked end to end on the seed, the seed is incomplete.
 
 ## Template
 

@@ -1,10 +1,13 @@
 ---
 name: opscale-debug
 description: >
-  Sets up debug tooling (Xdebug + Telescope) for local and staging. Step 8 —
-  first step of Review, runs after opscale-logic. Trigger: "configure debug",
-  "set up Telescope", "enable Xdebug".
-  Use it whenever local/staging debug tooling needs setting up, even loosely phrased. Not for the test/quality stack (opscale-test) or release pipeline (opscale-release).
+  Sets up debug tooling mapped to what you are debugging: Nova DevTool /
+  workbench for the UI, Telescope for the domain (jobs, events), and Xdebug for
+  the logic at runtime — for local and staging. Step 8 — first step of Review,
+  runs after opscale-logic. Trigger: "configure debug", "set up Telescope",
+  "enable Xdebug", "debug the UI". Use it whenever local/staging debug tooling
+  needs setting up, even loosely phrased. Not for the test/quality stack
+  (opscale-test) or the release pipeline (opscale-release).
 ---
 
 # opscale-debug
@@ -20,11 +23,28 @@ description: >
 
 ## Purpose
 
-Configure Xdebug and Laravel Telescope for local and staging environments.
-Nothing generated here affects production behavior — all configuration is
-environment-gated.
+Configure debug tooling so Claude can verify how the solution actually behaves,
+each tool aimed at one layer of the stack. Nothing here affects production —
+all configuration is environment-gated.
+
+| Tool | Debugs | What it surfaces |
+|------|--------|------------------|
+| **Nova DevTool / workbench** | the **UI** | Nova screens that don't render, broken fields, missing menu entries |
+| **Telescope** | the **domain** | jobs, events, queries, model lifecycle |
+| **Xdebug** | the **logic** | step-through of Action code at runtime |
 
 Output is listed in `.specify/specs/{NNN}-{module-name}/plan.md` (debug section).
+
+---
+
+## Nova DevTool — debug the UI
+
+To debug Nova Resources, Claude needs a Nova **workbench** it can boot and
+inspect. Reuse the workbench `opscale-test` builds for Browser tests — do not
+build a second one. With it running, render each Resource and read the page to
+spot UI errors (unrendered screens, field exceptions, missing menu entries)
+before and during testing. Install Nova DevTool as a dev dependency and ensure
+the workbench app boots with Nova mounted.
 
 ---
 
@@ -41,7 +61,7 @@ The three MCP servers are development-only tools — never registered in product
 
 ---
 
-## Xdebug
+## Xdebug — debug the logic
 
 ### Installation
 
@@ -115,7 +135,7 @@ SAIL_XDEBUG_CONFIG="client_host=host.docker.internal"
 
 ---
 
-## Laravel Telescope
+## Laravel Telescope — debug the domain
 
 ### Installation
 

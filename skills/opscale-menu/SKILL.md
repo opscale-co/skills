@@ -1,10 +1,13 @@
 ---
 name: opscale-menu
 description: >
-  Generates a navigable Nova menu by grouping Resources into sections.
-  Step 12 — runs after opscale-seed, before opscale-showcase. Trigger:
-  "generate the menu", "organize the Nova sidebar", "group the resources".
-  Use it whenever the Nova sidebar/menu needs organizing, even loosely phrased. Not for generating Resources themselves (opscale-ui).
+  Generates a user-friendly Nova menu organized around how the module is
+  actually used — its processes and the operator's tasks — not a flat
+  alphabetical list of entities. Step 12 — runs after opscale-seed, before
+  opscale-showcase. Trigger: "generate the menu", "organize the Nova sidebar",
+  "make the menu user-friendly". Use it whenever the Nova sidebar/menu needs
+  organizing, even loosely phrased. Not for generating Resources themselves
+  (opscale-ui).
 ---
 
 # opscale-menu
@@ -42,12 +45,30 @@ Edits **`workbench/app/Providers/NovaServiceProvider.php`** in place to:
 2. Call `Nova::mainMenu(function (Request $request) { return [...]; })` in
    the provider's `boot()` method.
 3. Group every Resource in `src/Nova/` (excluding children with
-   `availableForNavigation() === false`) by a heuristic or by an explicit
-   `MENU_SECTION` constant on the Resource class.
+   `availableForNavigation() === false`) **by the module's processes** (see
+   below), falling back to a name heuristic or an explicit `MENU_SECTION`
+   constant on the Resource class.
 4. Render one `MenuSection::make(__('{Section}'), [...])->icon(...)->collapsable()`
    per group.
 
-## Heuristic grouping
+## Process-driven grouping (preferred)
+
+A user-friendly menu mirrors **what the operator does**, not which tables exist.
+Read `spec.md` — the **Procesos identificados** and **Flujo relacionado** — and
+build the sidebar around them:
+
+- One section per natural phase / process group, in the **order the operator
+  works** (e.g. open the day → run operations → control → close), not
+  alphabetical.
+- Lead with the operator's primary entry points (the screens a process starts
+  from); push catalogs, configuration, and reports to the bottom.
+- Label sections by the **task** ("Cash operations"), not by the entity type
+  ("Transactions table").
+
+Only when the spec gives no process information, fall back to the name heuristic
+below.
+
+## Heuristic grouping (fallback)
 
 When the Resource does not declare a `MENU_SECTION` constant, the skill
 infers a section by matching the Resource class name against these patterns

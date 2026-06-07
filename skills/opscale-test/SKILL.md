@@ -18,7 +18,7 @@ description: >
 | 2 | Inside a PHP/Laravel project | `composer.json` exists | Stop. Re-run `/opscale-init`. |
 | 3 | (To generate Unit tests) `src/Models/` populated | List files | Run `/opscale-domain` first OR proceed and the Unit-test generator will produce zero files. |
 | 4 | (To generate Feature tests) `src/Services/Actions/` populated | List files | Run `/opscale-logic` first OR proceed without Feature tests. |
-| 5 | (To generate Browser tests) `src/Nova/` populated | List files | Run `/opscale-ui` first OR proceed without Browser tests. |
+| 5 | (To generate Browser tests) `src/Nova/` populated AND spec.md has *Procesos identificados* | List files | Run `/opscale-ui` and `/opscale-process` first OR proceed without Browser tests. |
 
 This skill belongs to the **Review phase**. The Review phase (`debug`, `test`, `release`) can be invoked at any point after `opscale-init`. You can:
 - Configure the stack early (no source files) and generate tests later as Generate-phase output appears.
@@ -131,7 +131,7 @@ tests/
 |-------|-------|--------------|--------|-----|------------|
 | **Unit** | **Domain** | Models, Enums, Value Objects, Repositories, Migrations/Schema | Pest | In-memory SQLite | `src/Models/`, `src/Models/Enums/`, `src/Models/ValueObjects/`, `src/Models/Repositories/`, `database/migrations/` |
 | **Feature** | **Actions** | Each Action class executed end-to-end with real DB, real events, real side effects (no DB mocks) | Pest | In-memory SQLite | `src/Services/Actions/` |
-| **Browser** | **UI (Nova)** | Smoke test per Nova Resource: navigate index, open create form, open detail of a seeded record — verify no exceptions / no 500 | Pest + Dusk | Workbench SQLite file | `src/Nova/` |
+| **Browser** | **UI (Nova)** | One test **per identified process**: drive the full process flow through Nova — every step's screen renders and the process runs end to end without exceptions / no 500 | Pest + Dusk | Workbench SQLite file | spec.md *Procesos identificados* + `src/Nova/` |
 
 **Strict layer assignment — no overlap:**
 - Domain logic (model methods, VO immutability, enum transitions, schema) → **Unit only**
@@ -240,7 +240,7 @@ generator agents in parallel** to produce the actual test files.
 | `src/Models/Repositories/*.php` | `unit-test-generator` (type=repository) | Unit | Repository trait |
 | `database/migrations/*.php` | `unit-test-generator` (type=migration) | Unit | Table |
 | `src/Services/Actions/*.php` | `feature-test-generator` | Feature | Action class |
-| `src/Nova/*.php` (Resources only — not Concerns/, not Repeatables/, not Actions/, not Metrics/) | `web-test-generator` | Browser | Nova Resource |
+| spec.md *Procesos identificados* (driving the `src/Nova/` screens they touch) | `web-test-generator` | Browser | identified process |
 
 ### Invocation order
 
@@ -253,7 +253,7 @@ generator agents in parallel** to produce the actual test files.
 
 - **`unit-test-generator`** → one or more `tests/Unit/{Type}/{Name}Test.php` files testing domain in isolation (no Action calls, no Nova)
 - **`feature-test-generator`** → one `tests/Feature/{ActionName}Test.php` per Action, calling `Action::run()` against real DB, asserting events dispatched and state persisted
-- **`web-test-generator`** → one `tests/Browser/{Resource}ResourceTest.php` per Nova Resource with exactly two tests: `create_page_renders_without_exceptions`, `detail_page_renders_without_exceptions`
+- **`web-test-generator`** → one `tests/Browser/{Process}FlowTest.php` **per process** in spec.md *Procesos identificados*, driving the whole process through Nova (navigate, fill the screens the process touches, advance through its steps) and asserting it completes without exceptions / no 500. Any Resource no process touches gets a minimal render smoke.
 
 **Do NOT generate cross-suite tests** — no Feature test for a model, no Unit test for an Action, no Browser test with business asserts.
 
@@ -406,7 +406,7 @@ GENERATED TESTS — STRICT LAYER ASSIGNMENT
 [ ] Unit test exists for every Repository in src/Models/Repositories/
 [ ] Unit (schema) test exists for every migration
 [ ] Feature test exists for every Action in src/Services/Actions/ (real DB, real events)
-[ ] Browser smoke test exists for every Nova Resource in src/Nova/ (create + detail render, no exceptions)
+[ ] One Browser flow test exists per process in spec.md *Procesos identificados* (drives the full flow end to end, no exceptions)
 [ ] NO cross-suite tests: no Feature tests for models, no Unit tests for Actions, no Browser tests with business asserts
 
 STATIC ANALYSIS + LINT
@@ -435,7 +435,7 @@ STATUS: [ ] PASS — opscale-release may proceed
 2. **Strict layer assignment — no overlap:**
    - Unit (`tests/Unit/`) → **Domain only**: Models, Enums, Value Objects, Repositories, Migrations/Schema. One test class per domain component.
    - Feature (`tests/Feature/`) → **Actions only**: one test per class in `src/Services/Actions/`. Hits real DB, asserts events, asserts state. **No DB mocks.**
-   - Browser (`tests/Browser/`) → **Nova UI smoke only**: one test class per Resource in `src/Nova/`, exactly two methods (create page renders, detail page renders), assert no exceptions / no 500. **No business asserts.**
+   - Browser (`tests/Browser/`) → **process flows**: one test class per process in spec.md *Procesos identificados*, driving the full flow through Nova and asserting it runs end to end without exceptions / no 500. Heavy business asserts stay in Feature tests.
 3. **Browser tests use Nova DevTool + Testbench Dusk + Workbench** — `DuskTestCase` extends `Orchestra\Testbench\Dusk\TestCase` with `WithWorkbench`. Tests run against the workbench skeleton, not against the host app.
 4. **Workbench seeders are mandatory** — `workbench/database/seeders/DatabaseSeeder.php` MUST seed: (a) the `admin@laravel.com / password` user used by `loginToNova()`, and (b) 1–3 records per aggregate root so detail-page smoke tests can resolve a real record.
 5. **`composer run build` is the single environment-recreation command** — builds workbench, copies Nova assets to both skeletons, copies SQLite DB, clears view caches, syncs ChromeDriver. MUST work from a clean clone.

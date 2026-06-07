@@ -27,7 +27,7 @@ Output is written to `.specify/specs/{NNN}-{module-name}/process.md`.
 | 2 | `opscale-process` has been run for this module | `.specify/specs/{NNN}-{module-name}/spec.md` exists and PASS | Stop. Run `/opscale-process` first. |
 | 3 | `opscale-dbml` has been run for this module | `.specify/specs/{NNN}-{module-name}/data-model.md` exists and PASS | Stop. Run `/opscale-dbml` first. |
 
-This skill is **Step 3 (last) of the Plan phase**. The Plan phase is `process → dbml → bpmn` — strictly ordered, no skipping. After this skill passes, the module enters the Generate phase (`domain → ui → logic`).
+This skill is **Step 3 of the Plan phase**. The Plan phase is `process → dbml → bpmn → sipoc` — strictly ordered, no skipping. After `opscale-sipoc`, the module enters the Generate phase (`domain → ui → logic`).
 
 ---
 
@@ -59,9 +59,14 @@ No business logic. No conditions. No transformations. Always a `serviceTask`.
 ---
 
 ### businessRuleTask — `logic`
-Encapsulated business operation — applies rules, validates conditions, calculates values,
-or coordinates multiple entities. Maps to exactly one Opscale Action class.
-Name the task as the Action class name in PascalCase verb+noun form.
+Encapsulated business operation — anything **heavier than a single CRUD**. A step is `logic` when it does one or more of:
+- queries an **external source** (API, external DB, third-party service) to proceed,
+- requires an **approval** by an authorized role,
+- **gathers additional data** before it can continue,
+- **calculates / transforms** with formulas or business rules,
+- **coordinates multiple entities**.
+
+If a step is a plain create/read/update/delete on one entity, it is `serviceTask` (crud), not logic. Maps to exactly one Opscale Action class. Name the task as the Action class name in PascalCase verb+noun form.
 
 ```xml
 <bpmn:businessRuleTask id="rule_[id]" name="[ActionClassName]">
@@ -99,15 +104,31 @@ WhatsApp, webhook. Maps to exactly one Output class. One channel per task.
 ---
 
 ### Forbidden task types
-`userTask` · `manualTask` · `receiveTask` · `scriptTask` · `callActivity` · `subProcess`
+`userTask` · `manualTask` · `receiveTask` · `scriptTask` · `callActivity`
 
 ---
+
+## Mapping the module spec to BPMN
+
+`opscale-process` already produced the typed flow. Translate each step emoji directly:
+
+| Spec step | BPMN element |
+|---|---|
+| 📝 record | `serviceTask` (`type=crud`) |
+| ⚙️ logic | `businessRuleTask` (`type=logic`) |
+| ✅ approval | `businessRuleTask` (`type=logic`) |
+| 📩 / 📄 output | `sendTask` (`type=output`) |
+| ⏳ wait | `intermediateCatchEvent` |
+| 🔀 decision | `exclusiveGateway` |
+
+**One `subProcess` per identified process.** The spec's **Procesos identificados** lists the sub-processes inside the module's macro-flow. Wrap each one in an embedded `subProcess` so the top-level diagram stays legible — the main flow reads as a sequence of named sub-processes, and the detailed steps live inside each. Model the **whole module**, not a single process.
 
 ## Allowed BPMN Elements
 
 | Category | Elements |
 |----------|----------|
 | Tasks | `serviceTask` (crud), `businessRuleTask` (logic), `sendTask` (output) |
+| Structure | `subProcess` — one per process in the spec's **Procesos identificados** |
 | Gateways | `exclusiveGateway`, `parallelGateway`, `inclusiveGateway`, `eventBasedGateway` |
 | Events | `startEvent`, `endEvent`, `intermediateCatchEvent`, `intermediateThrowEvent` |
 | Flows | `sequenceFlow`, `messageFlow` |
@@ -116,10 +137,13 @@ WhatsApp, webhook. Maps to exactly one Output class. One channel per task.
 
 ## Workflow
 
-### Phase 1 — Parse DBML entities
+### Phase 1 — Parse the module spec and the DBML
 
-Read `data-model.md` and extract all table names. These are the only valid entity values
-for `scriptTask`. Present and confirm:
+Read both inputs:
+- `spec.md` → the **Flujo relacionado** (the typed steps to translate) and **Procesos identificados** (one `subProcess` each).
+- `data-model.md` → all table names. These are the only valid `entity` values for `serviceTask` (crud).
+
+Present and confirm:
 
 ```
 DBML entities detected:

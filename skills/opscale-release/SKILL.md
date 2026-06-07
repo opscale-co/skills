@@ -1,10 +1,15 @@
 ---
 name: opscale-release
 description: >
-  Configures the release pipeline (Semantic Release, commitlint, Husky,
-  SonarQube, GitHub Actions). Step 10 — final Review step. Trigger: "configure
-  release", "set up semantic release", "set up commit hooks".
-  Use it whenever the release/CI pipeline or commit hooks need configuring, even loosely phrased. Requires tests to exist first (opscale-test). Not for debug tooling (opscale-debug).
+  Configures the code-quality gates and deployment/release CI — Duster
+  (PHP + JS linting), static analysis with Opscale strict rules, Rector,
+  SonarQube, and the GitHub Actions workflows. The commit standard and
+  semantic-release config are set up earlier by opscale-init. Step 10 — final
+  Review step. Trigger: "configure release", "set up code quality", "set up CI".
+  Use it whenever the deployment/CI pipeline or code-quality gates need
+  configuring, even loosely phrased. Requires tests to exist first
+  (opscale-test). Not for the commit standard (opscale-init) or debug tooling
+  (opscale-debug).
 ---
 
 # opscale-release
@@ -21,9 +26,12 @@ This skill belongs to the **Review phase**. The Review phase (`debug`, `test`, `
 
 ## Purpose
 
-Configure automated versioning, changelog generation, Packagist publishing, and code
-quality gates so every merge to main produces a correctly versioned, documented,
-quality-verified package release.
+Configure the code-quality gates (Duster, static analysis with Opscale strict
+rules, Rector, SonarQube) and the GitHub Actions workflows so every merge
+produces a quality-verified, deployable release. Versioning, changelog, and
+publishing run on `semantic-release`, whose config (`.releaserc.json`,
+commitlint, the commit-msg hook) was already established by `opscale-init`;
+this skill wires the CI that invokes it.
 
 Read the reference files in `references/` before generating any config — they are
 the authoritative templates for this skill.
@@ -34,9 +42,7 @@ the authoritative templates for this skill.
 
 ```
 references/
-├── .releaserc.json                          — Semantic Release config
-├── commitlint.config.mjs                    — Commit message rules
-├── lint-staged.config.mjs                   — Pre-commit hooks
+├── lint-staged.config.mjs                   — Pre-commit code-style hook
 ├── duster.json                              — Duster linting config
 ├── pint.json                                — PHP style rules (Pint preset)
 ├── rector.php                               — Rector modernization config
@@ -66,33 +72,17 @@ Copy the chosen file to `.github/workflows/` and replace the `[placeholder]` tok
 ## Installation
 
 ```bash
-# Semantic Release + plugins
-npm install --save-dev semantic-release \
-    @semantic-release/changelog \
-    @semantic-release/git \
-    @semantic-release/github \
-    @semantic-release/exec
-
-# Commit convention enforcement
-npm install --save-dev @commitlint/cli @commitlint/config-conventional
-
-# Pre-commit hooks
-npm install --save-dev husky lint-staged
-npx husky init
+# Pre-commit code-style hook (Husky was initialized by opscale-init)
+npm install --save-dev lint-staged
 
 # Rector Laravel extension
 composer require --dev rector/rector rector/rector-laravel
 ```
 
-### Husky hooks
+### Husky pre-commit hook
 
-After `npx husky init`, create two hook files:
-
-**`.husky/commit-msg`**
-```bash
-#!/bin/sh
-npx --no -- commitlint --edit "$1"
-```
+Husky and the `commit-msg` hook (commitlint) were configured by `opscale-init`.
+Add the **pre-commit** hook here, since it needs Duster/lint-staged from this skill:
 
 **`.husky/pre-commit`**
 ```bash
@@ -120,19 +110,17 @@ After copying the reference files, replace these tokens:
 
 ## What Each File Does
 
-**`.releaserc.json`**
-Semantic Release config. On push to `main`:
-1. Analyzes commits since last release to determine version bump
-2. Generates release notes from conventional commits
-3. Updates `CHANGELOG.md`
-4. Bumps `version` in `composer.json` via `jq` (`@semantic-release/exec`)
-5. Triggers Packagist webhook to publish the new version
-6. Creates GitHub release and tags
-7. Commits `CHANGELOG.md` + `composer.json` + `package.json` back to `main`
+**`.releaserc.json` / commitlint** — configured by `opscale-init`; this skill only
+wires the CI workflows that invoke `semantic-release`.
 
 **`duster.json`**
 Duster runs Pint (PHP style) and ESLint (JS/Vue). PHPStan is disabled — it runs
 separately via `phpstan analyse`. Includes `src`, `tests`, `workbench/app`.
+
+**Static analysis (PHPStan + Larastan)**
+The deployment gate runs `phpstan analyse` at Opscale's **strict** level (the
+`phpstan.neon` ruleset from the testing/quality stack). SonarQube reads its
+report. A static-analysis failure blocks the release.
 Excludes `tests/fixtures`.
 
 **`rector.php`**
@@ -143,10 +131,6 @@ Cache stored at `/tmp/rector-cache`.
 **`lint-staged.config.mjs`**
 Runs `duster fix` on staged PHP and JS/Vue/TS files at `git commit` time.
 PHPStan is intentionally excluded — too slow for pre-commit, runs in CI instead.
-
-**`commitlint.config.mjs`**
-Enforces Conventional Commits. Allowed types: feat, fix, docs, style, refactor,
-perf, test, chore, revert, build, ci. Scope must be kebab-case.
 
 **`README.md`**
 Standardized Opscale package README. Replace `[MODULE_DESCRIPTION]`, `[PACKAGE_SLUG]`,
@@ -246,9 +230,7 @@ Configure these in GitHub → Settings → Secrets and variables → Actions:
 ```
 RELEASE CONFIGURATION GATE
 ──────────────────────────────────────────────────────
-[ ] .releaserc.json present (changelog title updated)
-[ ] commitlint.config.mjs present
-[ ] .husky/commit-msg runs commitlint
+[ ] .releaserc.json + commit-msg hook present (from opscale-init)
 [ ] .husky/pre-commit runs lint-staged
 [ ] lint-staged.config.mjs runs duster fix only (no phpstan)
 [ ] duster.json present with workbench/app included
@@ -270,7 +252,7 @@ STATUS: [ ] PASS — opscale-ai may proceed
 ## Domain Rules
 
 1. **Semantic versioning is automated** — never bump versions manually.
-2. **Every commit follows Conventional Commits** — enforced by commitlint via Husky.
+2. **Every commit follows Conventional Commits** — enforced by the commit-msg hook configured in `opscale-init`.
 3. **Duster on pre-commit, PHPStan in CI** — pre-commit is fast (style only), CI is thorough.
 4. **PRs to `develop` pass all three gates** — Duster, SonarQube, and tests before merge.
 5. **Rector failures block PRs** — authors must apply `vendor/bin/rector process` locally.

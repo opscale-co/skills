@@ -1,10 +1,13 @@
 ---
 name: opscale-showcase
 description: >
-  Generates a non-headless guided Dusk walkthrough of the workbench Nova flow.
-  Step 13 — final Presentation step, runs after opscale-menu. Trigger:
-  "showcase the module", "demo Nova", "guided walkthrough".
-  Use it whenever a guided visual Nova walkthrough/demo is wanted, even loosely phrased. Not for CI smoke tests (opscale-test) or the menu (opscale-menu).
+  Generates a non-headless guided Dusk walkthrough that drives each of the
+  module's processes end to end through Nova, pausing 3s before the main action
+  on each screen so a stakeholder can watch the whole module work. Step 13 —
+  final Presentation step, runs after opscale-menu. Trigger: "showcase the
+  module", "demo Nova", "guided walkthrough". Use it whenever a guided visual
+  Nova demo of the module is wanted, even loosely phrased. Not for CI smoke
+  tests (opscale-test) or the menu (opscale-menu).
 ---
 
 # opscale-showcase
@@ -15,7 +18,8 @@ description: >
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
 | 2 | `opscale-ui` has been run | `src/Nova/*.php` populated | Stop. Run `/opscale-ui` — there's nothing to walk. |
-| 3 | `opscale-seed` has been run (Presentation #1) | At least one record per aggregate root in the workbench sqlite | Run `/opscale-seed` first — detail pages need seeded records to render. |
+| 3 | `opscale-seed` has been run (Presentation #1) | The seed lets each process be walked end to end (see opscale-seed) | Run `/opscale-seed` first — the showcase drives the seeded flows. |
+| 3b | `spec.md` has *Procesos identificados* | Read spec.md | Run `/opscale-process` — the showcase walks the processes. |
 | 4 | `opscale-menu` has been run (Presentation #2) | `MenuSection` block present in `workbench/app/Providers/NovaServiceProvider.php` | Run `/opscale-menu` first — the showcase walks the operator-grouped sidebar, not the flat default. |
 | 5 | `opscale-test` Dusk infrastructure is set up | `tests/DuskTestCase.php` + `phpunit.dusk.xml` exist | Run `/opscale-test` first. |
 | 6 | ChromeDriver matches local Chrome major version | `vendor/bin/testbench dusk:chrome-driver --detect` | Re-run with explicit version (`dusk:chrome-driver {major}`). On macOS arm the binary lives at `vendor/laravel/dusk/bin/chromedriver-mac-arm` (no `-arm64` suffix). |
@@ -33,9 +37,9 @@ package. The "showcase" pattern was invented during the Teller flow and
 proved its value:
 
 - One visible Chrome session
-- A human can watch login → dashboard → every aggregate
-- Pauses long enough to read what's on each screen
-- Closes with a final create-form so the demo ends in "what can I do next?"
+- A human watches the module **work**: each process driven end to end, not a tour of empty tables
+- Pauses 3s before the main action on every screen so the viewer can read it
+- Ends with the module having done something real
 
 It's the single most persuasive artifact for "is this module done".
 
@@ -48,8 +52,9 @@ Writes **`tests/Browser/{Module}ShowcaseTest.php`** with:
   always visible
 - One `#[Test]` method `guided_walkthrough_of_full_{module}_flow`
 - A `MAIN_BUTTON_PAUSE_MS` constant defaulting to `3000`
-- Steps: login (3s pause before Log In) → dashboard → every aggregate Resource
-  index → seeded detail page → create form
+- Steps: login (3s pause before Log In) → dashboard → then **drive each process
+  in `spec.md` Procesos identificados end to end** (reuse the per-process flows
+  from `opscale-test`), pausing 3s before the main action on each screen
 
 ## Template
 
@@ -125,21 +130,16 @@ final class {Module}ShowcaseTest extends DuskTestCase
             $browser->visit('/nova/dashboards/main')
                 ->pause(self::MAIN_BUTTON_PAUSE_MS);
 
-            // --- 3. Walk every aggregate Resource in menu order ---
-            $resources = [
-                // {one entry per uriKey() from src/Nova/*.php, in MENU order}
-                'agency-operating-days',
-                'cash-transactions',
-                // ...
-            ];
-
-            foreach ($resources as $uri) {
-                $browser->visit('/nova/resources/'.$uri)
-                    ->pause(self::MAIN_BUTTON_PAUSE_MS)
-                    ->assertDontSee('SERVER ERROR')
-                    ->assertDontSee('Whoops')
-                    ->assertDontSee('Exception');
-            }
+            // --- 3. Drive each identified process end to end ---
+            // For each process in spec.md *Procesos identificados*, reuse its
+            // per-process flow (the tests/Browser/{Process}FlowTest steps from
+            // opscale-test) and pause 3s before the main action on each screen.
+            // {process 1: navigate → fill the screens it touches → advance to its outcome}
+            //   $browser->visit('/nova/resources/'.$uri)
+            //       ->pause(self::MAIN_BUTTON_PAUSE_MS)
+            //       ->...drive the flow...
+            //       ->assertDontSee('SERVER ERROR')->assertDontSee('Whoops');
+            // {process 2 …}
 
             // --- 4. Seeded record detail (uses a known seeded reference) ---
             // {one record fetched via Model::query()->where(...)->first()}
@@ -159,15 +159,13 @@ final class {Module}ShowcaseTest extends DuskTestCase
 
 ## Workflow
 
-### Step 1 — Discover the aggregate URIs in menu order
+### Step 1 — Discover the processes to walk
 
-Read `workbench/app/Providers/NovaServiceProvider.php` if it has a
-`mainMenu(...)` call (generated by `opscale-menu`) and walk that order.
-Otherwise reflect over `src/Nova/*.php`, skipping Resources whose
-`availableForNavigation()` returns `false`, and use alphabetical order.
-
-Resolve the `uriKey()` of each Resource via reflection — the showcase needs
-the kebab-case URI segment, not the class name.
+Read `spec.md` *Procesos identificados* — one walkthrough segment per process,
+in flow order. For each, reuse the steps from its `tests/Browser/{Process}FlowTest`
+(generated by `opscale-test`) so the showcase drives the same flow, only
+non-headless and with a 3s pause before each main action. Resolve each Resource
+`uriKey()` via reflection (kebab-case URI segment, not the class name).
 
 ### Step 2 — Pick a "seeded detail" record
 
