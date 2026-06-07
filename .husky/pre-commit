@@ -1,0 +1,11 @@
+# Lint every skill whose SKILL.md / references / assets / scripts changed in this commit.
+# Hard-limit failures (quick_validate) block the commit; soft warnings don't.
+changed_skills=$(git diff --cached --name-only --diff-filter=ACMR \
+    | grep -E '^skills/[^/]+/' \
+    | awk -F/ '{print $1"/"$2}' \
+    | sort -u)
+
+if [ -n "$changed_skills" ]; then
+    # shellcheck disable=SC2086
+    python3 scripts/lint_skill.py $changed_skills || exit 1
+fi

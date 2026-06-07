@@ -11,6 +11,9 @@ tests/tier2-skill/.session-cache/
 tests/tier3-pipeline/.session-cache/
 tests/fixtures/reference-modules/demo-teller/generated/
 
+# semantic-release artifact (generated on release)
+# CHANGELOG.md  # uncomment if you want to keep CHANGELOG out of source
+
 # Python cache
 __pycache__/
 *.py[cod]

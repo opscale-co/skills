@@ -1,0 +1,30 @@
+{
+  "name": "opscale-skills",
+  "version": "0.0.0-development",
+  "private": true,
+  "description": "Claude Code skills and subagents for building Laravel/Nova projects with a spec-driven workflow.",
+  "scripts": {
+    "prepare": "husky",
+    "commitlint": "commitlint --edit",
+    "lint:skills": "python3 scripts/lint_skill.py --all",
+    "validate:skills": "python3 scripts/quick_validate.py skills/*",
+    "release": "semantic-release"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opscale-co/skills.git"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@commitlint/cli": "^19.5.0",
+    "@commitlint/config-conventional": "^19.5.0",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.0",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^11.0.0",
+    "@semantic-release/release-notes-generator": "^14.0.1",
+    "conventional-changelog-conventionalcommits": "^8.0.0",
+    "husky": "^9.1.6",
+    "semantic-release": "^24.1.2"
+  }
+}
