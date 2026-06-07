@@ -89,7 +89,16 @@ Record the result as `Canonical ← alias, alias`. This list is the handoff to `
 
 Lay the module out as one ordered flow of typed steps, grouped into natural segments (opening, … closing). Reorder whatever the user gave you into process order.
 
-Every step must connect: it comes from a previous step and leads to a next one (or a branch / a wait). Every entity must appear in at least one relation. Anything mentioned but unconnected is an **island**.
+**Format: one step per line, numbered sequentially across the whole module (`1)`, `2)`, `3)`, ... — numbering does not restart per segment). Never write long arrow chains on a single line — every step is its own row.**
+
+Connections are written by referencing step numbers, not by chaining arrows:
+
+- **Linear:** the next-numbered step is the implicit continuation.
+- **Branch (`🔀`)** — write the question on the branching line and the destinations as `Yes → N` / `No → M` on the same line (use the user's language: `Sí`, `No`, etc.). Each destination must be a step number that exists.
+- **Wait (`⏳`)** — the step that resumes the flow references it back: `(after step N)`.
+- **Merge** — two branches that reconverge both end pointing to the same next step number.
+
+Every step must connect: it comes from a previous step (by number) and leads to a next one (or a branch / a wait). Every entity must appear in at least one relation. Anything mentioned but unconnected is an **island**.
 
 **On every island, ask — never drop and never guess:**
 
@@ -104,7 +113,7 @@ Integrate the answer into the flow before continuing. Repeat until nothing is lo
 Write `spec.md` with three sections, plain titles, no rationale (translate the titles to the user's language):
 
 - **Normalización de nombres** — the canonical list with aliases
-- **Flujo relacionado** — the connected, ordered, emoji-typed flow, in segments
+- **Flujo relacionado** — the connected, ordered, emoji-typed flow, in segments, with **one numbered step per line** and branches written as `Yes → N / No → M` (no long arrow chains on a single line)
 - **Procesos identificados** — the sub-processes inside the macro-flow (one line each: name + the flow segment / steps it spans). This list is what `opscale-bpmn` turns into subtasks, what `opscale-test` turns into one browser test each, and what `opscale-showcase` walks.
 - **Relaciones** — how the entities connect
 

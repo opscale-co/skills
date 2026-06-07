@@ -15,17 +15,28 @@ type word. Replace every `[...]`. Three sections, plain titles, no rationale.
 
 ## Flujo relacionado
 
-[Segment name]
-📝 [plain step]
-📝 [plain step] → 🔀 [question?] · [branch] → 📝 [plain step] → ✅ [plain step]
-📩 [plain step] → ⏳ [what it waits for] → 📄 [plain step]
+> One step per line. Numbering is sequential across the whole module — it does
+> not restart per segment. Branches reference destinations by step number.
+> Yes/No labels use the user's language (`Sí`, `No`, `True`, `False`, ...).
 
 [Segment name]
-📝 [plain step] → … → 📄 [plain step]
+1) 📝 [plain step]
+2) ⚙️ [plain step]
+3) 🔀 [question?] — Sí → 4 · No → 6
+4) 📝 [plain step]
+5) ✅ [plain step] → 8
+6) 📩 [plain step]
+7) ⏳ [what it waits for] → 8
+8) 📄 [plain step]
+
+[Segment name]
+9) 📝 [plain step]
+10) ⚙️ [plain step]
+11) 📄 [plain step]
 
 ## Procesos identificados
-- [Process name] — [segment / steps it spans]
-- [Process name] — […]
+- [Process name] — [step range, e.g. "1–8"]
+- [Process name] — [step range, e.g. "9–11"]
 
 ## Relaciones
 - [Canonical] [relates to] [Canonical] [and …]
