@@ -3,7 +3,8 @@
 This template is in English; at generation translate the titles and prose to the
 user's language. Use **readable canonical entity names** (natural words, not
 snake_case, no DDD jargon). The emoji is the only step marker — never write the
-type word. Replace every `[...]`. Three sections, plain titles, no rationale.
+type word. Replace every `[...]`. **Three sections**, plain titles, no rationale:
+Normalización de nombres, Flujo ordenado, Relaciones.
 
 ---
 
@@ -13,30 +14,35 @@ type word. Replace every `[...]`. Three sections, plain titles, no rationale.
 [Canonical name]   ← [alias, alias]
 [Canonical name]   ← [alias, alias]
 
-## Flujo relacionado
+## Flujo ordenado
 
-> One step per line. Numbering is sequential across the whole module — it does
-> not restart per segment. Branches reference destinations by step number.
-> Yes/No labels use the user's language (`Sí`, `No`, `True`, `False`, ...).
+> Subprocesses are bounded by a wait (`⏳`). Notifications (`📩`) and file
+> deliveries (`📄`) are internal steps; they only close a subprocess when a
+> `⏳` immediately follows them. One step per line. Numbering is sequential
+> across the whole module — it does NOT restart per subprocess. Branches
+> reference destinations by step number. Yes/No labels use the user's language
+> (`Sí`, `No`, `True`, `False`, ...).
 
-[Segment name]
+### Subproceso 1: [Subprocess name]
+*Trigger:* [what starts the module]
 1) 📝 [plain step]
 2) ⚙️ [plain step]
-3) 🔀 [question?] — Sí → 4 · No → 6
-4) 📝 [plain step]
-5) ✅ [plain step] → 8
-6) 📩 [plain step]
-7) ⏳ [what it waits for] → 8
-8) 📄 [plain step]
+3) 🔀 [question?] — Sí → 4 · No → 5
+4) ✅ [plain step] → 6
+5) 📩 [notify someone — internal step]
+6) ⏳ [wait for X — boundary; ends Subproceso 1]
 
-[Segment name]
-9) 📝 [plain step]
-10) ⚙️ [plain step]
-11) 📄 [plain step]
+### Subproceso 2: [Subprocess name]
+*Trigger:* the wait from Subproceso 1 resolved ([X arrived])
+7) 📝 [plain step]
+8) ⚙️ [plain step]
+9) 📄 [deliver file — internal step]
+10) ⏳ [wait for Y — boundary; ends Subproceso 2]
 
-## Procesos identificados
-- [Process name] — [step range, e.g. "1–8"]
-- [Process name] — [step range, e.g. "9–11"]
+### Subproceso 3: [Subprocess name]
+*Trigger:* the wait from Subproceso 2 resolved
+11) 📝 [plain step]
+12) 📩 [notify someone — internal step; final subprocess, no closing wait]
 
 ## Relaciones
 - [Canonical] [relates to] [Canonical] [and …]

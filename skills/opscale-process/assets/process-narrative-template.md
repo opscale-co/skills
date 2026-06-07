@@ -12,7 +12,10 @@ list. Replace every `[...]`.
 
 [2–3 lines: what the module does overall.]
 
-[One short paragraph per segment of the flow, in order — naming the same
-entities the normalization list uses, mentioning each decision and wait as it
-occurs. No detail that isn't in the flow.]
+[One short paragraph per subprocess of the flow, in order — naming the same
+entities the normalization list uses, mentioning each decision and the wait
+(`⏳`) that closes the subprocess (or noting that it's the final subprocess
+with no closing wait). Notifications and file deliveries are mentioned where
+they happen inside the subprocess, not as boundaries. No detail that isn't
+in the flow.]
 ```

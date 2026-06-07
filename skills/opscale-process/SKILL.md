@@ -28,10 +28,10 @@ Step 1 of the Plan phase. Does not run standalone.
 
 ## Purpose
 
-Model a **whole module** as one connected flow — a macro-process, not a single procedure. Don't detail every sub-process; that loses the focus. Deliver exactly three things:
+Model a **whole module** as one connected flow — a macro-process composed of **subprocesses bounded by a wait (`⏳`)**. The only thing that truly closes one subprocess and opens the next is having to wait for something external; everything else (notifications, file deliveries, decisions) is an internal step. Stay at the operational level. Deliver exactly three things:
 
 1. **Name normalization** — list the things involved under one readable name each, folding every synonym into it (`client / customer / user → Member`). The same real thing is named the same everywhere.
-2. **A standard narrative** — reorder however the user told it (from the end, out of order, scattered) into one ordered flow of typed steps.
+2. **Ordered flow** — reorder however the user told it (from the end, out of order, scattered) into one ordered flow of typed steps, grouped by subprocess; each subprocess ends with the `⏳` that closes it (or with its last internal step if it's the final subprocess of the module).
 3. **Interrelation** — every step and every entity connects to the rest. Nothing is an island.
 
 This is an **interactive** skill: it does not guess or silently drop. When something is loose or a name is ambiguous, it **asks**.
@@ -85,11 +85,23 @@ Record the result as `Canonical ← alias, alias`. This list is the handoff to `
 
 ---
 
-## Connected flow — nothing loose
+## Ordered flow — nothing loose
 
-Lay the module out as one ordered flow of typed steps, grouped into natural segments (opening, … closing). Reorder whatever the user gave you into process order.
+Lay the module out as one ordered flow of typed steps, grouped into **subprocesses bounded by a wait (`⏳`)**. A subprocess is a continuous sequence of steps that runs without interruption; the only thing that truly interrupts a flow is **having to wait for something external to happen** — a reply, a timer, a downstream system. That wait (`⏳`) is the boundary.
 
-**Format: one step per line, numbered sequentially across the whole module (`1)`, `2)`, `3)`, ... — numbering does not restart per segment). Never write long arrow chains on a single line — every step is its own row.**
+| Emoji | Role in the boundary |
+|---|---|
+| 📝 ⚙️ ✅ 🔀 📩 📄 | **Internal step** — runs inside a subprocess, never breaks it. Sending a notification (`📩`) or delivering a file (`📄`) is just a step the subprocess performs and keeps going. |
+| ⏳ | **Boundary event** — the flow pauses until something arrives. The current subprocess ends here; the next subprocess starts because the wait resolved. |
+
+So:
+
+- The module = N subprocesses connected by `⏳` waits.
+- Inside each subprocess, steps flow continuously, possibly with branches (🔀), and may include notifications (📩) or file deliveries (📄) along the way.
+- A subprocess ends only when the flow has to wait. If a notification is sent and then the flow has to wait for the reply, write them in that order — **first `📩` (notify), then `⏳` (wait)** — and the `⏳` is what closes the subprocess.
+- If a subprocess simply finishes the module (no further wait), it ends with its last internal step, not with a boundary event.
+
+**Format: one step per line, numbered sequentially across the whole module (`1)`, `2)`, `3)`, ... — numbering does not restart per subprocess). Never write long arrow chains on a single line — every step is its own row.**
 
 Connections are written by referencing step numbers, not by chaining arrows:
 
@@ -110,11 +122,10 @@ Integrate the answer into the flow before continuing. Repeat until nothing is lo
 
 ## Output
 
-Write `spec.md` with three sections, plain titles, no rationale (translate the titles to the user's language):
+Write `spec.md` with **three sections**, plain titles, no rationale (translate the titles to the user's language):
 
 - **Normalización de nombres** — the canonical list with aliases
-- **Flujo relacionado** — the connected, ordered, emoji-typed flow, in segments, with **one numbered step per line** and branches written as `Yes → N / No → M` (no long arrow chains on a single line)
-- **Procesos identificados** — the sub-processes inside the macro-flow (one line each: name + the flow segment / steps it spans). This list is what `opscale-bpmn` turns into subtasks, what `opscale-test` turns into one browser test each, and what `opscale-showcase` walks.
+- **Flujo ordenado** — the macro-flow, grouped into **subprocesses bounded by events**. Each subprocess is its own heading with a *Trigger* line and its numbered steps inside. This single section replaces the previous *Procesos identificados* + *Flujo relacionado* pair: the subprocess headings ARE the identified processes, and the numbered steps under each ARE the detailed flow. `opscale-bpmn` turns each subprocess heading into one `subProcess`; `opscale-test` turns each into one browser test; `opscale-showcase` walks each one.
 - **Relaciones** — how the entities connect
 
 Also write `docs/process.md` — the same flow as plain narrative for humans. Use the templates in `assets/`.
@@ -137,14 +148,42 @@ One line: we'll capture the whole module as one connected flow, normalize the na
 ### Phase 1 — Normalize names
 List the things the narrative names; fold synonyms; **ask** to confirm each canonical name wherever there's any ambiguity.
 
-### Phase 2 — Lay out the connected flow
-Reorder the narration into one ordered flow of emoji-typed steps, grouped in segments. Then name the **sub-processes** the macro-flow contains (each is one trigger → one end inside the flow) and record which segment / steps each spans — that is the "Procesos identificados" section.
+### Phase 2a — Propose subprocesses and their wait boundaries (authorization gate)
+
+Before laying out any steps, read the narrative and identify every point where the flow has to **wait** for something external — a reply, a timer, a downstream answer, a manual handoff. Each wait is a `⏳` boundary between two subprocesses. Notifications (`📩`) and file deliveries (`📄`) by themselves are NOT boundaries — they are internal steps; they only become a boundary if a `⏳` immediately follows them.
+
+From that, propose the breakdown:
+
+```
+## Proposed subprocesses
+
+1. **[Subproceso 1 name]**
+   Trigger: [what starts the whole module]
+   Ends with: ⏳ [wait for X — e.g. "reply from the customer", "timer of 24h"]
+2. **[Subproceso 2 name]**
+   Trigger: the wait from Subproceso 1 resolved ([X arrived])
+   Ends with: ⏳ [wait for Y]
+3. **[Subproceso N name]**
+   Trigger: …
+   Ends with: — (final subprocess; no further wait)
+
+—
+Do you confirm this breakdown? Should any subprocess be split, merged, or renamed?
+Did I miss any waits (timers, replies, external answers) that should add a boundary?
+Are there notifications or file deliveries currently shown as boundaries that are actually just internal steps?
+```
+
+**Wait for explicit authorization** before moving on. The breakdown the user confirms here is the contract: every step in Phase 2b lives inside exactly one of these subprocesses.
+
+### Phase 2b — Detail each subprocess
+
+Once authorized, walk each subprocess in order and lay out its numbered typed steps. A subprocess is a continuous chain of internal steps (`📝 ⚙️ ✅ 🔀 📩 📄`) and ends with the `⏳` that closes it (or with its last internal step if it's the final subprocess of the module). When a notification triggers a wait, write **`📩` first, then `⏳`** — both belong to the same subprocess and `⏳` is the boundary. Numbering is sequential across the whole module; it does not restart per subprocess.
 
 ### Phase 3 — Resolve islands (interactive)
 Walk every step and every entity. For each that doesn't connect, **ask** the user what it relates to and integrate the answer. Loop until nothing is loose.
 
 ### Phase 4 — Write
-Confirm the normalized names and the flow, then write `spec.md` (three sections) and the derived `docs/process.md` from the templates in `assets/`, in the user's language.
+Confirm the normalized names and the flow, then write `spec.md` with three sections — **Normalización de nombres**, **Flujo ordenado**, **Relaciones** — and the derived `docs/process.md` from the templates in `assets/`, in the user's language.
 
 ---
 
