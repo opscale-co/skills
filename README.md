@@ -49,7 +49,7 @@ No phase starts until the previous one is validated. Each phase is a group of sk
 
 Skill: `opscale-init`
 
-Setup step. Assumes you are inside an **existing PHP/Laravel project** (refuses if `composer.json` is missing). Installs spec-kit, configures MCP servers, writes the Opscale constitution, sets the commit convention and release pipeline, and establishes the per-module `docs/` convention. Every other skill checks `.specify/memory/constitution.md` exists before running.
+Setup step. Assumes you are inside an **existing PHP/Laravel project** (refuses if `composer.json` is missing). Installs spec-kit, configures MCP servers, writes the Opscale constitution, sets the **commit standard** (commitlint + Husky + semantic-release config, so every later commit is conventional), and establishes the per-module `docs/` convention. Every other skill checks `.specify/memory/constitution.md` exists before running.
 
 ### Plan — understand before building (strict order)
 
@@ -57,9 +57,9 @@ Skills: `opscale-process` → `opscale-dbml` → `opscale-bpmn` → `opscale-sip
 
 The planning phase produces validated spec artifacts — not code. Each skill takes informal input, structures it, spawns validator subagents, and only advances when the artifact passes. The four skills run **in order**; each declares its predecessor as a hard prerequisite.
 
-- **Process** — business spec from informal input. Writes `spec.md` (structured) AND `docs/process.md` (the original narrative, preserved verbatim).
-- **DBML** — DDD-aligned data model. Writes `data-model.md` (live) AND `docs/initial.dbml` (frozen snapshot, never overwritten).
-- **BPMN** — process map. Writes `process.md` (live) AND `docs/initial.bpmn` (frozen snapshot).
+- **Process** — captures the whole **module** as one connected macro-flow. Writes `spec.md` with four sections — normalized entity names, the emoji-typed connected flow, the **sub-processes identified** inside it, and their relations — plus `docs/process.md` (narrative derived from the flow). Interactive: asks when a name is ambiguous or a step/entity is loose.
+- **DBML** — DDD-aligned data model built from the spec's normalized names, business-only, with a `note` on every module/table/field. Writes `data-model.md` (live) AND `docs/initial.dbml` (frozen snapshot, never overwritten).
+- **BPMN** — process map with one `subProcess` per identified process for legibility. Writes `process.md` (live) AND `docs/initial.bpmn` (frozen snapshot).
 - **SIPOC** — one Suppliers/Inputs/Process/Outputs/Customers document per `businessRuleTask` in the BPMN. Writes `docs/actions/{kebab-id}.sipoc.md` per Action. This is the contract that `opscale-logic` later materializes into PHP — `Inputs` → `parameters()`, `Process` → `handle()` body, `Outputs` → return-array keys.
 
 Every artifact is cross-validated: the BPMN references only entities from the DBML, the DBML traces back to the spec, each SIPOC traces back to a BPMN task and the Business Rules it cites exist in the spec. Nothing is invented.
@@ -68,7 +68,7 @@ Every artifact is cross-validated: the BPMN references only entities from the DB
 
 Skills: `opscale-domain` → `opscale-ui` → `opscale-logic`
 
-Each Generate skill first drives **spec-kit `/speckit.plan` + `/speckit.tasks`** to record one task per unit, then spawns parallel agents to produce the code. Generation is deterministic and traceable: every generated file maps back to a tasks.md entry.
+Each Generate skill first drives **spec-kit `/speckit.plan` + `/speckit.tasks`** to record one task per unit, then spawns parallel agents to produce the code. The generators emit the **initial scaffold** only; the LLM then customizes each class (repository methods, Resource fields, Action `handle()` bodies) — a template can't anticipate those. Generation is traceable: every generated file maps back to a tasks.md entry.
 
 | Skill | Unit | One task per | Bundle contents |
 |-------|------|--------------|-----------------|
@@ -86,9 +86,9 @@ Skills: `opscale-debug`, `opscale-test`, `opscale-release`
 
 Review skills can be invoked at **any point after `opscale-init`** — you don't have to finish Plan or Generate first. The only ordering constraint inside Review is: `release` always runs after `test`.
 
-- **Debug** — Xdebug + Telescope for local/staging only (never production)
-- **Test** — configures the stack (Pest, Dusk, PHPStan, Duster, Rector) AND **generates the tests**: Unit (domain), Feature (Actions, real DB), Browser (Nova UI smoke). Headless by default. `composer run build` + `composer run serve` mandatory.
-- **Release** — Semantic Release, commitlint, Husky, SonarQube, four GitHub Actions workflows. Refuses to run unless `tests/` is populated.
+- **Debug** — debug tooling by layer: Nova DevTool (UI), Telescope (domain: jobs/events), Xdebug (logic) — local/staging only, never production
+- **Test** — configures the stack (Pest, Dusk, PHPStan, Duster, Rector) AND **generates the tests**: Unit (domain), Feature (Actions, real DB), Browser (**one flow test per identified process**, driving it end to end). Headless by default. `composer run build` + `composer run serve` mandatory.
+- **Release** — code-quality gates for deployment: Duster (PHP + JS lint), static analysis with Opscale strict rules, Rector, SonarQube, and the GitHub Actions workflows. Refuses to run unless `tests/` is populated. (The commit standard / semantic-release config come from `opscale-init`.)
 
 ### Presentation — close the MVP (strict order)
 
@@ -96,9 +96,9 @@ Skills: `opscale-seed` → `opscale-menu` → `opscale-showcase`
 
 Presentation closes the MVP. Review has already confirmed the code is correct, tested, and releasable; Presentation turns that into something a human can sit down and watch end-to-end. It answers *"does this work as a functional demo?"* — coherent data on every screen, a sidebar that reads like an operator's workflow, and a guided walkthrough that exercises the module visually. The three skills run in a deliberate sequence — data first, then navigation, then the walkthrough — each building on the previous one's effect on the workbench. **When Presentation succeeds, the MVP is done.**
 
-- **Seed** — generates a coherent workbench `DatabaseSeeder` (catalogs + one tenant + one agency + one open day + one funded drawer + one demo transaction) so every Nova detail page has something to render. Without this step the demo is empty. Requires `opscale-domain`.
-- **Menu** — introspects `src/Nova/` and groups aggregate Resources into `MenuSection`s (Day Lifecycle, Operations, Control, Catalogs…) inside `workbench/app/Providers/NovaServiceProvider.php`, so a reviewer navigates the package the way an operator would. Requires `opscale-ui`.
-- **Showcase** — generates a **non-headless** guided Dusk test that walks the whole Nova flow (login → dashboard → every aggregate → seeded detail → create form) with a configurable pause before each main action. This is the stakeholder-facing visual validation that ties seed and menu together into one watchable demo. Requires `opscale-seed`, `opscale-menu`, and the Dusk infrastructure from `opscale-test`.
+- **Seed** — generates a coherent workbench `DatabaseSeeder` whose connected records let **each identified process be walked end to end**, so the demo shows the module working, not empty tables. Requires `opscale-domain`.
+- **Menu** — builds a **user-friendly** sidebar organized around the module's processes / the operator's tasks (not a flat list of entities), inside `workbench/app/Providers/NovaServiceProvider.php`. Requires `opscale-ui`.
+- **Showcase** — generates a **non-headless** guided Dusk test that **drives each identified process end to end** through Nova, pausing 3s before the main action on each screen, so a stakeholder watches the module actually work. Requires `opscale-seed`, `opscale-menu`, and the Dusk infrastructure from `opscale-test`.
 
 ### Iterate — polish the MVP into the final product
 
@@ -188,7 +188,7 @@ Skills manage the sequence, interact with the user, and spawn agents. Agents do 
 
 ### Deterministic code generation
 
-For the Generate phase (`domain`, `ui`, `logic`), file generation is fully deterministic. Each generator agent (`enum-generator`, `model-generator`, `resource-generator`, `action-generator`, etc.) is a thin wrapper that runs a Node.js script (`scripts/generate-*.mjs`) which renders a PHP template (`templates/*.php.tmpl`) from a JSON payload the skill normalized.
+For the Generate phase (`domain`, `ui`, `logic`), the generators emit a deterministic **scaffold**; the LLM then customizes each class (repository methods, Resource fields, Action `handle()` bodies), since a template can't anticipate them. Each generator agent (`enum-generator`, `model-generator`, `resource-generator`, `action-generator`, etc.) is a thin wrapper that runs a Node.js script (`scripts/generate-*.mjs`) which renders a PHP template (`templates/*.php.tmpl`) from a JSON payload the skill normalized.
 
 | What the skill does | What the script does |
 |---------------------|---------------------|
@@ -221,7 +221,7 @@ Every module folder under `.specify/specs/{NNN}-{slug}/` contains a `docs/` subf
 ├── plan.md             ← tech decisions (live)
 ├── tasks.md            ← ordered task ledger (live)
 └── docs/               ← human-readable history (frozen + append-only)
-    ├── process.md      ← original narrative from opscale-process
+    ├── process.md      ← narrative derived from the typed flow (opscale-process)
     ├── initial.dbml    ← frozen DBML snapshot — never overwritten
     ├── initial.bpmn    ← frozen BPMN snapshot — never overwritten
     ├── actions/        ← SIPOC per Action (BPMN-driven only)
@@ -269,17 +269,17 @@ Agents use three MCP servers configured by `opscale-init`:
 
 | Step | Skill | Purpose | app | module | package | library |
 |------|-------|---------|:---:|:------:|:-------:|:-------:|
-| 0 | `opscale-init` | Bootstrap scaffold, constitution, MCP servers, `docs/` convention. Refuses if not inside a Laravel/PHP project | Yes | Yes | Yes | Yes |
-| 1 | `opscale-process` | Business spec from informal input + narrative in `docs/process.md` | Per module | Yes | -- | -- |
-| 2 | `opscale-dbml` | DDD-aligned DBML + frozen `docs/initial.dbml` snapshot | Per module | Yes | -- | -- |
-| 3 | `opscale-bpmn` | BPMN 2.0 process map + frozen `docs/initial.bpmn` snapshot | Per module | Yes | -- | -- |
+| 0 | `opscale-init` | Bootstrap scaffold, constitution, MCP servers, **commit standard** (commitlint/Husky/semantic-release), `docs/` convention. Refuses if not inside a Laravel/PHP project | Yes | Yes | Yes | Yes |
+| 1 | `opscale-process` | Module macro-flow: normalized names + connected typed flow + identified processes + relations; derived `docs/process.md` | Per module | Yes | -- | -- |
+| 2 | `opscale-dbml` | DDD-aligned DBML from the normalized names (business-only, `note` on module/table/field) + frozen `docs/initial.dbml` snapshot | Per module | Yes | -- | -- |
+| 3 | `opscale-bpmn` | BPMN 2.0 map (one subProcess per identified process) + frozen `docs/initial.bpmn` snapshot | Per module | Yes | -- | -- |
 | 4 | `opscale-sipoc` | One SIPOC per `businessRuleTask` under `docs/actions/{kebab-id}.sipoc.md` — Suppliers/Inputs/Process/Outputs/Customers per Action. Consumed by `opscale-logic` | Per module | Yes | -- | -- |
 | 5 | `opscale-domain` | Spec-kit plan + tasks (one per entity bundle), then models/migrations/enums/VOs/repos. No entity cap | Per module | Yes | Yes | -- |
 | 6 | `opscale-ui` | Spec-kit plan + tasks (one per aggregate bundle), then Resources + Repeatables + Field traits | Per module | Yes | Yes | -- |
 | 7 | `opscale-logic` | Spec-kit plan + tasks (one per Action), then Opscale Actions. Reads `docs/actions/*.sipoc.md` (produced by `opscale-sipoc`) to derive `parameters()` and `handle()` body | Per module | Yes | Yes | -- |
-| 8 | `opscale-debug` | Xdebug + Telescope (local/staging only) | Yes | Yes | Yes | Optional |
-| 9 | `opscale-test` | Stack config (Pest, Dusk, PHPStan, Duster, Rector) + workbench seeders + **generates Unit/Feature/Browser tests**. Headless by default. `composer build`/`serve` | Yes | Yes | Yes | Yes |
-| 10 | `opscale-release` | Semantic Release, commitlint, Husky, SonarQube, GitHub Actions. Refuses without test files | deploy-app | publish-package | publish-package | publish-package |
+| 8 | `opscale-debug` | Nova DevTool (UI) + Telescope (domain) + Xdebug (logic), local/staging only | Yes | Yes | Yes | Optional |
+| 9 | `opscale-test` | Stack config (Pest, Dusk, PHPStan, Duster, Rector) + **generates Unit (domain) / Feature (Actions) / Browser (one per identified process) tests**. Headless by default. `composer build`/`serve` | Yes | Yes | Yes | Yes |
+| 10 | `opscale-release` | Code quality for deployment: Duster (PHP+JS), static analysis (strict rules), Rector, SonarQube, GitHub Actions. Refuses without test files | deploy-app | publish-package | publish-package | publish-package |
 
 #### Presentation
 
@@ -287,9 +287,9 @@ Strict order: seed → menu → showcase. Run after Generate to validate the mod
 
 | Skill | Purpose | app | module | package | library |
 |-------|---------|:---:|:------:|:-------:|:-------:|
-| `opscale-seed` | Coherent workbench `DatabaseSeeder`: catalogs + tenant + agency + open day + funded drawer + demo transaction. Gives every Nova page something to render and unblocks Browser tests | Per module | Yes | Yes | -- |
-| `opscale-menu` | Groups `src/Nova/*` aggregates into `MenuSection`s inside `workbench/app/Providers/NovaServiceProvider.php` so the sidebar reads the way an operator would navigate | Per module | Yes | Yes | -- |
-| `opscale-showcase` | Non-headless guided Dusk test that walks the whole seeded + organized Nova flow with configurable pauses — the stakeholder-ready functional demo | Per module | Yes | Yes | -- |
+| `opscale-seed` | Coherent `DatabaseSeeder` that lets each identified process be walked end to end; gives every Nova page data and unblocks Browser tests | Per module | Yes | Yes | -- |
+| `opscale-menu` | User-friendly sidebar organized around the module's processes / operator tasks (not a flat entity list) | Per module | Yes | Yes | -- |
+| `opscale-showcase` | Non-headless guided Dusk test that drives each identified process end to end with a 3s pause before each main action — the stakeholder-ready functional demo | Per module | Yes | Yes | -- |
 
 #### Iterative
 
@@ -356,7 +356,7 @@ All deterministic wrappers — each runs the matching `scripts/generate-*.mjs` a
 | Agent | Spawned by | Unit |
 |-------|-----------|------|
 | `workflow-generator` | opscale-release | One per GitHub Actions workflow |
-| `release-config-generator` | opscale-release | All configs (.releaserc, commitlint, husky, sonar, etc.) |
+| `release-config-generator` | opscale-release | Quality + CI configs (duster, rector, sonar, GitHub workflows). Commit configs (.releaserc, commitlint, husky) come from opscale-init |
 
 #### Installer
 
@@ -434,20 +434,20 @@ Skills are discovered automatically — no `settings.json` changes needed. Symli
 Each skill is invoked as a Claude Code slash command inside the target project directory:
 
 ```
-/opscale-init          # bootstrap an existing Laravel/PHP project
-/opscale-process       # generate business spec + docs/process.md from informal input
+/opscale-init          # bootstrap project + commit standard (commitlint/husky/semantic-release)
+/opscale-process       # capture the module macro-flow: names + flow + processes + relations
 /opscale-dbml          # generate data model + frozen docs/initial.dbml
 /opscale-bpmn          # generate process map + frozen docs/initial.bpmn
 /opscale-sipoc         # one SIPOC per Action under docs/actions/ (input for opscale-logic)
 /opscale-domain        # plan + tasks per entity, then generate domain layer
 /opscale-ui            # plan + tasks per aggregate, then generate Nova layer
 /opscale-logic         # plan + tasks per Action, consumes SIPOCs to generate Opscale Actions
-/opscale-debug         # Xdebug + Telescope (local/staging)
+/opscale-debug         # Nova DevTool (UI) + Telescope (domain) + Xdebug (logic)
 /opscale-test          # configure stack AND generate Unit/Feature/Browser tests
-/opscale-release       # semantic-release + CI/CD + SonarQube
-/opscale-seed          # workbench DatabaseSeeder (catalogs + happy-path instance)
-/opscale-menu          # group Nova Resources into sidebar sections
-/opscale-showcase      # non-headless guided Dusk walkthrough of the module
+/opscale-release       # code quality (Duster/Rector/SonarQube) + CI/CD
+/opscale-seed          # workbench DatabaseSeeder that walks each process end to end
+/opscale-menu          # user-friendly sidebar organized around the module's processes
+/opscale-showcase      # non-headless Dusk demo driving each process (3s pauses)
 /opscale-iterate       # add the next feature via user story → spec-kit → one commit
 /opscale-ai            # generate installer skill for consumers
 ```
