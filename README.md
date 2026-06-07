@@ -18,26 +18,38 @@ Thanks for helping Opscale continue to scale! 🚀
 
 ## Description
 
-Claude Code skills and subagents for building Laravel projects with a structured, spec-driven workflow. Works with new and existing projects.
+Claude Code skills and subagents for building Laravel projects. Works with new and existing projects.
 
-This workflow is built around Claude Code harness best practices: dividing work into specialized skills and subagents, each with a focused scope and limited tools, to maximize precision and reduce hallucination. Instead of one monolithic prompt, the harness orchestrates small, composable units that do one thing well. For architecture, it follows the conventions already defined by [Opscale](https://github.com/opscale-co) for Laravel + Nova projects. For methodology, it implements [spec-driven development](https://github.com/spec-driven) — artifacts are validated before any code is generated.
+The workflow stands on two ideas:
+
+- **Spec-driven development** — every artifact (spec, data model, process map, SIPOC) is produced and validated **before** any code is generated. Code is a deterministic projection of validated artifacts, not a free-form draft. Implements [spec-driven development](https://github.com/spec-driven) on top of GitHub spec-kit.
+- **Claude Code harness** — work is split into specialized skills and subagents, each with a focused scope and limited tools. The harness orchestrates small, composable units that do one thing well, instead of one monolithic prompt. This maximizes precision and reduces hallucination.
+
+For architecture, it follows the conventions defined by [Opscale](https://github.com/opscale-co) for Laravel + Nova projects.
 
 ## How It Works
 
-The harness splits every project into four phases plus an iteration loop. Each phase is a group of skills that orchestrate specialized subagents. No phase starts until the previous one is validated. **Presentation** is the final phase before iteration — once Review has signed off on quality, Presentation makes the module *demoable*: coherent data, navigable Nova, guided walkthrough.
+The pipeline has one **setup** step (`init`), three **core harness** phases (`Plan` → `Generate` → `Review`), and a closing **Presentation** phase. Everything up to Presentation produces an **MVP**: a working, tested, releasable module that a human can sit down and demo end-to-end.
+
+Once the MVP is done, **Iterate** is the loop you run from there on — one user story at a time — to polish the MVP into the final product.
 
 ```
-init  →  Plan  →  Generate  →  Review  →  Presentation
-                                                ↺ Iterate (after the loop is complete)
+init  →  Plan  →  Generate  →  Review  →  Presentation        →  Iterate
+└ setup └────── core harness flow (MVP) ──────┘  └ MVP done ┘    ↺ polish
 
-Presentation (run in order): opscale-seed → opscale-menu → opscale-showcase
+Plan         (in order): opscale-process → opscale-dbml → opscale-bpmn → opscale-sipoc
+Generate     (in order): opscale-domain → opscale-ui → opscale-logic
+Review       (flexible, except test → release): opscale-debug, opscale-test, opscale-release
+Presentation (in order): opscale-seed → opscale-menu → opscale-showcase
 ```
 
-### init — once per project
+No phase starts until the previous one is validated. Each phase is a group of skills that orchestrate specialized subagents.
+
+### init — setup, once per project
 
 Skill: `opscale-init`
 
-Assumes you are inside an **existing PHP/Laravel project** (refuses if `composer.json` is missing). Installs spec-kit, configures MCP servers, writes the Opscale constitution, and establishes the per-module `docs/` convention. Every other skill checks `.specify/memory/constitution.md` exists before running.
+Setup step. Assumes you are inside an **existing PHP/Laravel project** (refuses if `composer.json` is missing). Installs spec-kit, configures MCP servers, writes the Opscale constitution, sets the commit convention and release pipeline, and establishes the per-module `docs/` convention. Every other skill checks `.specify/memory/constitution.md` exists before running.
 
 ### Plan — understand before building (strict order)
 
@@ -78,23 +90,25 @@ Review skills can be invoked at **any point after `opscale-init`** — you don't
 - **Test** — configures the stack (Pest, Dusk, PHPStan, Duster, Rector) AND **generates the tests**: Unit (domain), Feature (Actions, real DB), Browser (Nova UI smoke). Headless by default. `composer run build` + `composer run serve` mandatory.
 - **Release** — Semantic Release, commitlint, Husky, SonarQube, four GitHub Actions workflows. Refuses to run unless `tests/` is populated.
 
-### Presentation — verify the module as a functional demo (strict order)
+### Presentation — close the MVP (strict order)
 
 Skills: `opscale-seed` → `opscale-menu` → `opscale-showcase`
 
-The Presentation phase runs *after* Review has confirmed the code is correct, tested, and releasable. Its purpose is different: turn that validated code into something a human can sit down and watch end-to-end. It answers *"does this work as a functional demo?"* — coherent data on every screen, a sidebar that reads like an operator's workflow, and a guided walkthrough that exercises the module visually. The three skills run in a deliberate sequence — data first, then navigation, then the walkthrough — each building on the previous one's effect on the workbench.
+Presentation closes the MVP. Review has already confirmed the code is correct, tested, and releasable; Presentation turns that into something a human can sit down and watch end-to-end. It answers *"does this work as a functional demo?"* — coherent data on every screen, a sidebar that reads like an operator's workflow, and a guided walkthrough that exercises the module visually. The three skills run in a deliberate sequence — data first, then navigation, then the walkthrough — each building on the previous one's effect on the workbench. **When Presentation succeeds, the MVP is done.**
 
 - **Seed** — generates a coherent workbench `DatabaseSeeder` (catalogs + one tenant + one agency + one open day + one funded drawer + one demo transaction) so every Nova detail page has something to render. Without this step the demo is empty. Requires `opscale-domain`.
 - **Menu** — introspects `src/Nova/` and groups aggregate Resources into `MenuSection`s (Day Lifecycle, Operations, Control, Catalogs…) inside `workbench/app/Providers/NovaServiceProvider.php`, so a reviewer navigates the package the way an operator would. Requires `opscale-ui`.
 - **Showcase** — generates a **non-headless** guided Dusk test that walks the whole Nova flow (login → dashboard → every aggregate → seeded detail → create form) with a configurable pause before each main action. This is the stakeholder-facing visual validation that ties seed and menu together into one watchable demo. Requires `opscale-seed`, `opscale-menu`, and the Dusk infrastructure from `opscale-test`.
 
-### Iterate — adding the next feature once the module is complete
+### Iterate — polish the MVP into the final product
 
 Skill: `opscale-iterate`
 
+Once the MVP is closed, the work changes shape: instead of building the module from a spec, you grow it one user story at a time. `opscale-iterate` is the loop that turns each story into a focused change without rerunning the whole pipeline.
+
 Single command that takes a **user story** (`As X / I want Y / So that Z` + Given/When/Then), drives spec-kit through specify/clarify/plan/tasks/analyze, surgically invokes only the Opscale skills the diff requires, runs the quality gates, and closes with **one Conventional Commits commit** compatible with semantic-release.
 
-Strict gate: refuses to run unless the **initial pipeline is complete** (Plan + Generate done) AND **zero pending tasks** in `tasks.md`. Iteration extends a finished module; it does not finish a half-built one.
+Strict gate: refuses to run unless the **MVP pipeline is complete** (Plan + Generate + Review + Presentation done) AND **zero pending tasks** in `tasks.md`. Iterate polishes a finished MVP; it does not finish a half-built one.
 
 Every iteration is archived as `docs/iterations/YYYY-MM-DD-<slug>.md` inside the target module's spec folder — a permanent dated record alongside the frozen `docs/initial.dbml` / `docs/initial.bpmn` snapshots.
 
