@@ -31,6 +31,18 @@ This skill is **Step 2 of the Plan phase** and must run **AFTER `opscale-process
 
 ---
 
+## Operating principle — validate every step, never assume
+
+This is an **interactive** skill. The workflow advances **one phase at a time**, and each phase ends with a confirmation gate. You never:
+
+- Pick a canonical name without checking the project standard
+- Introduce an enum, relationship, attribute, type, nullability, or default without it being traceable to the spec **or** confirmed by the user
+- Roll multiple phases into one prompt
+
+When something is missing, ambiguous, or would require a guess — **stop and ask**, then integrate the answer.
+
+---
+
 ## Output Location
 
 ```
@@ -77,90 +89,110 @@ If an element from the spec is ambiguous — could be technical or business — 
 
 ## Workflow
 
-### Phase 1 — Take the canonical entities from the module spec
+### Phase 1 — Identify entities (reconciled against the project naming standard)
 
-`opscale-process` already normalized the names and connected the flow. Do **not** re-invent names — reuse them verbatim. Read `spec.md`:
+The spec's **Normalización de nombres** is the module-local proposal. The **project-wide standard** lives at `.specify/memory/glossary.md` — it accumulates the canonical names every previous module agreed on. The DBML must use the project standard wherever one exists, so the same real thing has one name across the whole codebase.
 
-| Spec section | Use it for |
-|---|---|
-| **Normalización de nombres** | The canonical entity list (with aliases). Each canonical name is a candidate table; carry its aliases into the table `Note`. |
-| **Relaciones** | The relationships between entities — refine cardinality and FK direction here. |
-| **Flujo relacionado** | Confirm reality: the 📝 steps are what actually gets written (entities). ⚙️/✅ steps and 📩/📄 outputs are behaviour, **not** tables. |
-| **Procesos identificados** | Context only — does not add entities. |
+**1a — Load both sources:**
 
-Filter the canonical list through the **DDD Scope** above: keep business entities, drop anything technical / configuration / UI. When a canonical name is ambiguous (business vs technical), ask the user before dropping it.
+```bash
+# Module-local proposal
+cat .specify/specs/{NNN}-{module-name}/spec.md   # → "Normalización de nombres"
 
-Present the resulting tables and confirm:
+# Project-wide standard (may not exist on the first module)
+cat .specify/memory/glossary.md 2>/dev/null || echo "(glossary not yet created — this is the first module)"
+```
+
+**1b — Reconcile each module-local name against the glossary.** For each canonical name in the spec, classify it:
+
+| Case | What it means | Action |
+|---|---|---|
+| **Exact match** | Spec name is already in the glossary as a canonical | Use the glossary name; carry on |
+| **Alias of an existing canonical** | Spec proposes `User` but glossary lists it as an alias of `Member` | **Ask**: "Spec calls it `User`; the project standard is `Member` (covers: user, client, customer). Use `Member`? Yes/No" — apply the answer |
+| **Conflict** | Spec proposes a different canonical (`Client`) for what the glossary already names (`Member`) | **Ask** which wins, and whether the glossary should be updated. Never silently override the standard. |
+| **New** | Spec proposes a name the glossary doesn't know | **Ask**: "Add `[name]` to the project glossary as canonical? (aliases: [...])" — append on confirmation |
+
+Then filter the reconciled list through the **DDD Scope**: keep business entities, drop technical / config / UI. **Ask before dropping** anything that looks ambiguous (business vs technical).
+
+Present the result and **wait for confirmation**:
 
 ```
-## Candidate Tables (from the normalized names)
+## Entities (reconciled against the project glossary)
 
-1. **[canonical_name]**  ← [aliases]
+1. **Member**  ← (project standard; spec proposed: User)
    [One sentence — the business concept]
+2. **CashSession**  ← (new; added to glossary on confirmation)
+   [One sentence]
+…
 
----
-These come straight from the spec's normalized names, domain-filtered.
-Confirm, or flag any that are technical / out of scope?
+Glossary updates pending: [list adds / new aliases]
+
+Confirm the entity list and any glossary updates? Yes / No / edit
 ```
 
-Wait for confirmation before proceeding to Phase 2.
-
-### Phase 2 — Define relationships and cardinality
-
-For each pair of related entities, determine:
-- Is the relationship 1:1, 1:N, or N:M?
-- Does the relationship cross subdomain boundaries?
-- Does the spec's Business Rules section constrain this relationship?
-
-Present relationships for confirmation:
-
-```
-## Entity Relationships
-
-1. **[EntityA] → [EntityB]** (1:N) [SPEC: Actions]
-   [Business justification — e.g. "one invoice can have many line items"]
-
-2. **[EntityC] ↔ [EntityD]** (N:M) [SPEC: Artifacts]
-   [Business justification — requires junction table]
-   Junction table: `[entity_c_entity_d]`
-
-3. **[EntityE] → [OtherSubdomain.EntityF]** (logical reference)
-   [Cross-subdomain — no FK constraint]
-
----
-Do you confirm these relationships and cardinalities?
-```
-
-Wait for confirmation before proceeding to Phase 3.
+Apply confirmed glossary changes to `.specify/memory/glossary.md` before moving on. Do not proceed to Phase 2 until the user confirms.
 
 ---
 
-### Phase 3 — Define enums
+### Phase 2 — Identify enums
 
-Scan spec for every field with a fixed set of possible values:
+Now that the entity list is locked, surface every column with a **fixed set of possible values**:
+
 - Status fields derived from spec Triggers, Pre/Post conditions, or Business Rules
-- Type or category fields from spec Artifacts notes
+- Type / category fields from spec Artifacts notes
 - Gateway decisions from the process flow
 
-For each enum, ask the user for values if they are not explicit in the spec:
+Do **not** guess values. If the spec doesn't list them, ask.
+
+Present per enum and **wait for confirmation**:
 
 ```
 ## Proposed Enums
 
-1. **[EnumName]** — for [table].[column]
-   Source: [SPEC: Business Rules / Triggers / Post-conditions]
-   Values from spec: [list if found]
-   Missing values? Please confirm or provide the complete set.
+1. **[EnumName]** — for [entity].[column]
+   Source in spec: [SPEC: Business Rules / Triggers / Post-conditions / Flow]
+   Values found in spec: [list, or "none"]
+   Missing values? Default value? Please confirm or provide the complete set.
+
+Confirm enums and values? Yes / No / edit
 ```
 
-Wait for confirmation before proceeding to Phase 4.
+Do not proceed to Phase 3 until the user confirms.
 
 ---
 
-### Phase 4 — Define fields per entity
+### Phase 3 — Identify relationships between entities
 
-Process **one entity at a time**. For each entity, present the full field set and wait
-for confirmation before moving to the next.
+Only after entities and enums are locked. For each pair of related entities, determine:
+
+- Is the relationship 1:1, 1:N, or N:M?
+- Does the relationship cross subdomain boundaries (→ logical reference, no FK)?
+- Does a Business Rule in the spec constrain this relationship?
+
+Trace each relationship to a source in the spec (`Relaciones`, `Flujo relacionado`, Business Rules). **Ask** when cardinality or ownership is ambiguous — do not assume.
+
+Present and **wait for confirmation**:
+
+```
+## Entity Relationships
+
+1. **[EntityA] → [EntityB]** (1:N) [SPEC: Relaciones]
+   [Business justification — e.g. "one cash session has many transactions"]
+2. **[EntityC] ↔ [EntityD]** (N:M) [SPEC: Flujo, steps 4–7]
+   Junction table: `[entity_c_entity_d]`
+3. **[EntityE] → [OtherSubdomain.EntityF]** (logical reference)
+   Cross-subdomain — no FK constraint
+
+Confirm relationships and cardinalities? Yes / No / edit
+```
+
+Do not proceed to Phase 4 until the user confirms.
+
+---
+
+### Phase 4 — Identify attributes per entity (one entity at a time)
+
+Process **one entity at a time**. For each entity, present the full attribute set, justify each non-standard column from the spec, and **wait for confirmation** before moving to the next. Do not infer types, nullability, or defaults — when not explicit in the spec, ask.
 
 Apply standard columns automatically:
 
@@ -280,6 +312,8 @@ DBML COMPLETENESS GATE
 [ ] Script exited with code 0 (syntax + quality pass)
 [ ] data-model.md written
 [ ] docs/initial.dbml written on first run (or preserved if already present)
+[ ] .specify/memory/glossary.md created or updated with confirmed canonicals
+[ ] Every entity name in the DBML matches the project glossary
 [ ] Every Entity artifact from spec.md has a corresponding DBML table
 [ ] No technical, UI, or config entities present
 [ ] No `tenant_id` columns anywhere (single-tenant deployment model)
@@ -479,6 +513,30 @@ node /path/to/opscale-dbml/scripts/validate-dbml.mjs .specify/specs/{NNN}-{slug}
 
 8. **Never invent** — do not add entities or columns that cannot be traced to the spec.
    If something seems missing, ask the user before adding it.
+
+---
+
+## Project naming standard — `.specify/memory/glossary.md`
+
+The glossary is **project-wide**: it accumulates the canonical names every module agreed on. The first module bootstraps it; every subsequent module reads it in Phase 1 and proposes additions there. Treat it as append-only unless the user explicitly approves a rename (which has to propagate to every module that already used the old name).
+
+Format — one canonical per row, aliases comma-separated, one-line definition:
+
+```markdown
+# Project glossary
+
+| Canonical | Aliases | Definition |
+|-----------|---------|------------|
+| Member | user, client, customer, account holder | Person who holds a relationship with the institution |
+| CashSession | jornada, día operativo, sesión de caja | One operational day for a teller station |
+| Transaction | movimiento, operación | A single debit or credit recorded against a CashSession |
+```
+
+Rules:
+
+- One canonical per real-world concept across the whole project.
+- A canonical may appear as an entity in many modules; an alias never does.
+- New modules **add** canonicals; renames need an explicit user decision because they affect prior modules.
 
 ---
 
