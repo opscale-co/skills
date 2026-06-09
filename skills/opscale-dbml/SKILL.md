@@ -89,54 +89,88 @@ If an element from the spec is ambiguous — could be technical or business — 
 
 ## Workflow
 
-### Phase 1 — Identify entities (reconciled against the project naming standard)
+### Phase 1 — Identify entities (reconciled against industry-standard naming)
 
-The spec's **Normalización de nombres** is the module-local proposal. The **project-wide standard** lives at `.specify/memory/glossary.md` — it accumulates the canonical names every previous module agreed on. The DBML must use the project standard wherever one exists, so the same real thing has one name across the whole codebase.
+The spec's **Normalización de nombres** is the module-local proposal — the names the business itself uses. Before locking them as table names, compare each one against **industry-standard / domain best-practice naming** for the same concept. Examples:
 
-**1a — Load both sources:**
+- Banking / payments: `Customer`, `Account`, `Transaction`, `Ledger`, `Statement`, `Beneficiary`
+- Identity: `User` (auth-only) vs `Member` / `Customer` (business actor with data of its own)
+- Inventory: `Product`, `SKU`, `StockItem`, `Warehouse`, `Lot`
+- Orders: `Order`, `LineItem`, `Shipment`, `Fulfillment`
+- Accounting: `JournalEntry`, `Posting`, `ChartOfAccount`
+- Identifiers: `…Id`, `…Number`, `…Code`, `…Reference` — each carries a different meaning, don't conflate
+
+When the spec proposes a name that diverges from the industry standard for the same concept, **do not silently override either side** — surface the divergence and ask. The business name may be the right one (it preserves the operator's language), or the industry standard may be (it makes the model legible to anyone coming from the same domain). The user decides.
+
+**1a — Read the spec proposal:**
 
 ```bash
-# Module-local proposal
 cat .specify/specs/{NNN}-{module-name}/spec.md   # → "Normalización de nombres"
-
-# Project-wide standard (may not exist on the first module)
-cat .specify/memory/glossary.md 2>/dev/null || echo "(glossary not yet created — this is the first module)"
 ```
 
-**1b — Reconcile each module-local name against the glossary.** For each canonical name in the spec, classify it:
+**1b — Classify each proposed canonical against the industry standard:**
 
 | Case | What it means | Action |
 |---|---|---|
-| **Exact match** | Spec name is already in the glossary as a canonical | Use the glossary name; carry on |
-| **Alias of an existing canonical** | Spec proposes `User` but glossary lists it as an alias of `Member` | **Ask**: "Spec calls it `User`; the project standard is `Member` (covers: user, client, customer). Use `Member`? Yes/No" — apply the answer |
-| **Conflict** | Spec proposes a different canonical (`Client`) for what the glossary already names (`Member`) | **Ask** which wins, and whether the glossary should be updated. Never silently override the standard. |
-| **New** | Spec proposes a name the glossary doesn't know | **Ask**: "Add `[name]` to the project glossary as canonical? (aliases: [...])" — append on confirmation |
+| **Matches the standard** | Spec name == the conventional industry term | Use it; carry on |
+| **Synonym / informal variant of a standard term** | Spec proposes `Client` for what the industry calls `Customer`, or `User` for what's actually a `Member` | **Ask**: "Spec uses `Client`; the industry-standard term for this concept is `Customer`. Which should the data model use?" — apply the answer |
+| **Overloaded / ambiguous** | Spec uses `User` for a business actor (which industry separates from auth `User`) | **Ask** which concept it is, and which name to use |
+| **Domain-specific term with no standard equivalent** | Spec proposes a domain-native name (e.g. `JornadaDeCaja`, `Vale`) | Keep it, but **ask** for an English/standardized equivalent if the codebase mixes languages |
 
 Then filter the reconciled list through the **DDD Scope**: keep business entities, drop technical / config / UI. **Ask before dropping** anything that looks ambiguous (business vs technical).
 
 Present the result and **wait for confirmation**:
 
 ```
-## Entities (reconciled against the project glossary)
+## Entities (reconciled against industry-standard naming)
 
-1. **Member**  ← (project standard; spec proposed: User)
+1. **Customer**  ← spec: Client (industry-standard term in this domain)
    [One sentence — the business concept]
-2. **CashSession**  ← (new; added to glossary on confirmation)
+2. **CashSession**  ← spec: CashSession (kept; no widely-used industry standard for this concept)
+   [One sentence]
+3. **Member**  ← spec: User (User reserved for auth; Member is the business actor)
    [One sentence]
 …
 
-Glossary updates pending: [list adds / new aliases]
-
-Confirm the entity list and any glossary updates? Yes / No / edit
+Confirm the entity list? Yes / No / edit
 ```
 
-Apply confirmed glossary changes to `.specify/memory/glossary.md` before moving on. Do not proceed to Phase 2 until the user confirms.
+Do not proceed to Phase 2 until the user confirms.
 
 ---
 
-### Phase 2 — Identify enums
+### Phase 2 — Identify relationships between entities
 
-Now that the entity list is locked, surface every column with a **fixed set of possible values**:
+Now that the entity list is locked, list how those entities relate. For each pair of related entities, determine:
+
+- Is the relationship 1:1, 1:N, or N:M?
+- Does the relationship cross subdomain boundaries (→ logical reference, no FK)?
+- Does a Business Rule in the spec constrain this relationship?
+
+Trace each relationship to a source in the spec (`Relaciones`, `Flujo ordenado`, Business Rules). **Ask** when cardinality or ownership is ambiguous — do not assume.
+
+Present and **wait for confirmation**:
+
+```
+## Entity Relationships
+
+1. **[EntityA] → [EntityB]** (1:N) [SPEC: Relaciones]
+   [Business justification — e.g. "one cash session has many transactions"]
+2. **[EntityC] ↔ [EntityD]** (N:M) [SPEC: Flujo, steps 4–7]
+   Junction table: `[entity_c_entity_d]`
+3. **[EntityE] → [OtherSubdomain.EntityF]** (logical reference)
+   Cross-subdomain — no FK constraint
+
+Confirm relationships and cardinalities? Yes / No / edit
+```
+
+Do not proceed to Phase 3 until the user confirms.
+
+---
+
+### Phase 3 — Identify enums
+
+Only after entities and relationships are locked. Surface every column with a **fixed set of possible values** in any of the entities:
 
 - Status fields derived from spec Triggers, Pre/Post conditions, or Business Rules
 - Type / category fields from spec Artifacts notes
@@ -157,42 +191,13 @@ Present per enum and **wait for confirmation**:
 Confirm enums and values? Yes / No / edit
 ```
 
-Do not proceed to Phase 3 until the user confirms.
-
----
-
-### Phase 3 — Identify relationships between entities
-
-Only after entities and enums are locked. For each pair of related entities, determine:
-
-- Is the relationship 1:1, 1:N, or N:M?
-- Does the relationship cross subdomain boundaries (→ logical reference, no FK)?
-- Does a Business Rule in the spec constrain this relationship?
-
-Trace each relationship to a source in the spec (`Relaciones`, `Flujo relacionado`, Business Rules). **Ask** when cardinality or ownership is ambiguous — do not assume.
-
-Present and **wait for confirmation**:
-
-```
-## Entity Relationships
-
-1. **[EntityA] → [EntityB]** (1:N) [SPEC: Relaciones]
-   [Business justification — e.g. "one cash session has many transactions"]
-2. **[EntityC] ↔ [EntityD]** (N:M) [SPEC: Flujo, steps 4–7]
-   Junction table: `[entity_c_entity_d]`
-3. **[EntityE] → [OtherSubdomain.EntityF]** (logical reference)
-   Cross-subdomain — no FK constraint
-
-Confirm relationships and cardinalities? Yes / No / edit
-```
-
 Do not proceed to Phase 4 until the user confirms.
 
 ---
 
 ### Phase 4 — Identify attributes per entity (one entity at a time)
 
-Process **one entity at a time**. For each entity, present the full attribute set, justify each non-standard column from the spec, and **wait for confirmation** before moving to the next. Do not infer types, nullability, or defaults — when not explicit in the spec, ask.
+Only after entities, relationships, and enums are locked. Process **one entity at a time**. For each entity, present the full attribute set, justify each non-standard column from the spec, and **wait for confirmation** before moving to the next. Do not infer types, nullability, or defaults — when not explicit in the spec, ask.
 
 Apply standard columns automatically:
 
@@ -312,8 +317,7 @@ DBML COMPLETENESS GATE
 [ ] Script exited with code 0 (syntax + quality pass)
 [ ] data-model.md written
 [ ] docs/initial.dbml written on first run (or preserved if already present)
-[ ] .specify/memory/glossary.md created or updated with confirmed canonicals
-[ ] Every entity name in the DBML matches the project glossary
+[ ] Every entity name reconciled with industry-standard naming (or explicitly kept after asking)
 [ ] Every Entity artifact from spec.md has a corresponding DBML table
 [ ] No technical, UI, or config entities present
 [ ] No `tenant_id` columns anywhere (single-tenant deployment model)
@@ -516,27 +520,20 @@ node /path/to/opscale-dbml/scripts/validate-dbml.mjs .specify/specs/{NNN}-{slug}
 
 ---
 
-## Project naming standard — `.specify/memory/glossary.md`
+## Industry-standard naming — heuristics
 
-The glossary is **project-wide**: it accumulates the canonical names every module agreed on. The first module bootstraps it; every subsequent module reads it in Phase 1 and proposes additions there. Treat it as append-only unless the user explicitly approves a rename (which has to propagate to every module that already used the old name).
+The reconciliation in Phase 1 is not a lookup against a file in the project — it is a judgment call against **general industry conventions** for the domain at hand. A few rules of thumb to anchor it:
 
-Format — one canonical per row, aliases comma-separated, one-line definition:
+- Prefer the term a developer familiar with the domain (banking, retail, healthcare, ...) would expect to see in a schema.
+- Separate **auth identity** (`User`) from **business actor** (`Customer`, `Member`, `Employee`). Same row sometimes, different concepts always.
+- Identifiers are not interchangeable: `…Id` (surrogate PK), `…Number` (human-issued sequence), `…Code` (short symbolic key), `…Reference` (external system handle).
+- Money: `amount` + `currency`, not `value`. Counts: `quantity`, not `count` (column).
+- Time: `…_at` for timestamps, `…_on` for dates, `…_date` only when truly a date label.
+- Lifecycle states: prefer `status` (one current state) over scattered booleans (`is_active`, `is_approved`, `is_cancelled`).
 
-```markdown
-# Project glossary
+When the spec's name is a localized term with no widely-used equivalent (e.g. `Jornada`, `Vale`, `Asiento`), keep it — that's signal, not noise. Just confirm with the user that mixing languages in the schema is intentional.
 
-| Canonical | Aliases | Definition |
-|-----------|---------|------------|
-| Member | user, client, customer, account holder | Person who holds a relationship with the institution |
-| CashSession | jornada, día operativo, sesión de caja | One operational day for a teller station |
-| Transaction | movimiento, operación | A single debit or credit recorded against a CashSession |
-```
-
-Rules:
-
-- One canonical per real-world concept across the whole project.
-- A canonical may appear as an entity in many modules; an alias never does.
-- New modules **add** canonicals; renames need an explicit user decision because they affect prior modules.
+When in doubt, **ask**. The cost of one extra question is far lower than the cost of an entity named `User` that turns out to mean three different things.
 
 ---
 
