@@ -278,12 +278,37 @@ Do not proceed until exit code is `0`.
 Fix all reported warnings, re-write the temp file, re-run until exit code is `0`.
 
 **If the script exits with code `0` (pass):**
-Proceed to Phase 7 — write the validated DBML to the final output file.
+Proceed to Phase 7 — emit the external-ref index, then write the final output file.
 The temp file and the validation script stay outside the project — nothing is added to the repo.
 
 ---
 
-### Phase 7 — Write output and close gate
+### Phase 7 — Emit external-ref index
+
+For every column whose note carries `external_ref:{slug}`, group the columns by
+slug. Append a fenced block named `external-refs` at the end of `data-model.md`:
+
+````markdown
+```external-refs
+{contract_slug}: {column_a}, {column_b}, ...
+users:     opened_by, closed_by, witness_id, requested_by
+agencies:  agency_id
+```
+````
+
+Rules:
+
+- Every column with `external_ref:{slug}` in its note MUST appear here.
+- Every column listed here MUST have `external_ref:{slug}` in its note.
+- One line per slug; columns comma-separated; column order follows DBML order.
+
+This index is the **single source of truth** that `opscale-domain` reads to
+generate the contract interfaces and the model's virtual `BelongsTo` methods.
+Downstream skills do NOT re-scan the DBML notes — they read this block only.
+
+---
+
+### Phase 8 — Write output and close gate
 
 Only reached after the validator exits with code `0`.
 
@@ -323,6 +348,8 @@ DBML COMPLETENESS GATE
 [ ] No `tenant_id` columns anywhere (single-tenant deployment model)
 [ ] All intra-subdomain relationships have real FK constraints
 [ ] All cross-subdomain references are logical only (no FK constraint)
+[ ] Every cross-subdomain column has a structured `// external_ref:{slug} | {subdomain}.{table}` note
+[ ] `external-refs` index block present at the end of data-model.md and consistent with the notes
 [ ] Data dictionary section is complete for all tables
 [ ] Project block and Model Notes block present
 [ ] Every entity traceable to a spec section
@@ -510,7 +537,13 @@ node /path/to/opscale-dbml/scripts/validate-dbml.mjs .specify/specs/{NNN}-{slug}
 5. **ULID always** — `varchar(26)`, generated at the application layer. No auto-increment integers.
 
 6. **Logical cross-subdomain references** — store the ID, never the FK constraint.
-   Always add a note: `// logical reference to {subdomain}.{table}`.
+   The column note MUST follow the structured form
+   `// external_ref:{contract_slug} | {subdomain}.{table}`
+   (e.g. `// external_ref:users | auth.users`,
+   `// external_ref:agencies | crm.agencies`).
+   `opscale-domain` parses `external_ref:{slug}` to generate the contract,
+   trait wiring, and virtual `BelongsTo` method. The free-text portion after
+   `|` is for human reference only.
 
 7. **DBML is the source of truth** — the migration must match the DBML exactly.
    If a migration needs a column not in the DBML, update the DBML first.

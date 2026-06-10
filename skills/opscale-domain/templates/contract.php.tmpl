@@ -1,0 +1,17 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{package_namespace}}\Contracts;
+
+use Illuminate\Database\Eloquent\Builder;
+
+interface {{contract_class}}
+{
+    public function query(): Builder;
+
+    /**
+     * @return array<string, string> Associative array of id to user-friendly description.
+     */
+    public function options(): array;
+}

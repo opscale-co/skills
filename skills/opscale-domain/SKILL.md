@@ -51,7 +51,11 @@ database/
 └── migrations/
     └── YYYY_MM_DD_HHMMSS_create_{table}_table.php       (one per table — at package root)
 src/
+├── Contracts/
+│   └── {ContractName}Contract.php                       (one per external-refs slug — only if ≥1 ref)
 ├── Models/
+│   ├── Concerns/
+│   │   └── HasContractRelations.php                     (generated once if ≥1 external-ref)
 │   ├── Enums/
 │   │   └── {EnumName}.php                               (one per DBML enum)
 │   ├── Repositories/
@@ -60,6 +64,90 @@ src/
 │   │   └── {ValueObjectName}.php                        (one per VO)
 │   └── {ModelName}.php                                  (one per table)
 ```
+
+### Cross-subdomain virtual relations
+
+When `data-model.md` carries an `external-refs` index, the domain layer emits
+two extra artifacts and wires every cross-subdomain column into a real
+`BelongsTo` resolved through a host-supplied contract — instead of a dangling
+comment.
+
+#### `src/Models/Concerns/HasContractRelations.php` — generated once if there is ≥1 external-ref slug
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace {Package\Namespace}\Models\Concerns;
+
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+trait HasContractRelations
+{
+    /**
+     * Define a BelongsTo against the Eloquent query builder supplied
+     * by the given contract. The related model class comes from
+     * whatever model the host bound to that contract.
+     *
+     * @param  class-string  $contract  Contract whose query() returns the host's Eloquent\Builder
+     */
+    protected function belongsToContract(string $contract, string $foreignKey, string $relation): BelongsTo
+    {
+        $query = app($contract)->query();
+        $related = $query->getModel();
+
+        return $this->newBelongsTo(
+            $query,
+            $this,
+            $foreignKey,
+            $related->getKeyName(),
+            $relation,
+        );
+    }
+}
+```
+
+#### `src/Contracts/{ContractName}Contract.php` — one per slug in the `external-refs` index
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace {Package\Namespace}\Contracts;
+
+use Illuminate\Database\Eloquent\Builder;
+
+interface {ContractName}Contract
+{
+    public function query(): Builder;
+
+    /**
+     * @return array<string, string> Associative array of id to user-friendly description.
+     */
+    public function options(): array;
+}
+```
+
+Naming: `users` → `UsersContract`, `agencies` → `AgenciesContract`
+(StudlyCase + `Contract` suffix).
+
+The host is responsible for binding an implementation. Domain does NOT
+register any default binding — that's the host's concern, not the package's.
+
+#### Relation method naming convention
+
+For each cross-subdomain column the model emits a virtual `BelongsTo` method:
+
+| Column shape | Relation method | Example |
+|--------------|-----------------|---------|
+| `agency_id`, `teller_id`, `witness_id` | strip `_id`, camelCase | `agency_id → agency` |
+| `*_witness_id` (qualified witness) | camelCase the qualified prefix | `opening_witness_id → openingWitness` |
+| `*_by` (actor / audit columns) | camelCase + `User` suffix | `opened_by → openedByUser` |
+
+These rules live in `scripts/generate-model.mjs` — extend them there if a new
+shape shows up.
 
 ---
 
@@ -176,6 +264,7 @@ the result. They never write PHP themselves.
 | `scripts/generate-migration.mjs` | `templates/migration.php.tmpl` | migration-generator |
 | `scripts/generate-model.mjs` | `templates/model.php.tmpl` | model-generator |
 | `scripts/generate-repository.mjs` | `templates/repository.php.tmpl` | repository-generator |
+| `scripts/generate-contract.mjs` | `templates/contract.php.tmpl` + `templates/has-contract-relations.php.tmpl` | model-generator (per slug) |
 
 The JSON contract for each script is documented in the header comment of the
 `.mjs` file. The skill is responsible for normalizing the DBML into that JSON
@@ -297,19 +386,34 @@ Generate migration files in dependency order (parents before children).
 
 ---
 
-### Phase 6 — Generate Models
+### Phase 6 — Generate Contracts + HasContractRelations trait
+
+If `data-model.md` carries an `external-refs` index, run
+`scripts/generate-contract.mjs` once per unique slug **before** generating
+models. Each call emits one `src/Contracts/{ContractName}Contract.php` and
+(idempotently) the shared `src/Models/Concerns/HasContractRelations.php`.
+
+If there is no `external-refs` index, skip this phase entirely — no contracts,
+no concern.
+
+Model generation in the next phase will import these contracts and the trait
+when normalizing each model's `cross_subdomain_refs`.
+
+---
+
+### Phase 7 — Generate Models
 
 Generate all Eloquent model files.
 
 ---
 
-### Phase 7 — Generate Repositories
+### Phase 8 — Generate Repositories
 
 Generate interface first, then implementation — one pair per model.
 
 ---
 
-### Phase 8 — Update plan.md
+### Phase 9 — Update plan.md
 
 Append the generated file list to `.specify/specs/{NNN}-{module-name}/plan.md`, including the `Task ID` from `tasks.md` for each entity bundle so the file → task mapping is traceable.
 
@@ -328,9 +432,10 @@ to live in this section is now the source of truth in those template files.
 | Repository Trait | `templates/repository.php.tmpl` | `scripts/generate-repository.mjs` |
 | Enum | `templates/enum.php.tmpl` | `scripts/generate-enum.mjs` |
 | Value Object | `templates/value-object.php.tmpl` | `scripts/generate-value-object.mjs` |
+| Contract + Concern | `templates/contract.php.tmpl`, `templates/has-contract-relations.php.tmpl` | `scripts/generate-contract.mjs` |
 
 The JSON input contract for each script is documented in its header comment.
-The skill's job during Phases 3–7 is to normalize the DBML + spec into that
+The skill's job during Phases 3–8 is to normalize the DBML + spec into that
 JSON; the script does the rest.
 
 ### Generator pitfalls — verified against real modules
@@ -355,7 +460,7 @@ listed here so the **skill** can keep enforcing the one rule it owns
 
 ---
 
-## Phase 8 — Smoke gate (MANDATORY before marking the skill complete)
+## Phase 10 — Smoke gate (MANDATORY before marking the skill complete)
 
 The auto-reported checkboxes in the completeness gate are not enough — too many
 template bugs (empty `$casts`, sibling-FK collisions, unused imports, missing

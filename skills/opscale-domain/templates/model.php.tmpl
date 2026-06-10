@@ -13,6 +13,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 {{#each relation_imports}}
 use {{.}};
 {{/each}}
+{{#if has_cross_refs}}
+use {{package_namespace}}\Models\Concerns\HasContractRelations;
+{{#each cross_subdomain_contract_imports}}
+use {{.}};
+{{/each}}
+{{/if}}
 {{#each enum_imports}}
 use {{.}};
 {{/each}}
@@ -28,7 +34,7 @@ use {{package_namespace}}\Models\Repositories\{{model_name}}Repository;
  */
 class {{model_name}} extends Model
 {
-    use HasUlids, Validatable, {{model_name}}Repository{{#if has_soft_deletes}}, SoftDeletes{{/if}};
+    use HasUlids, Validatable, {{model_name}}Repository{{#if has_cross_refs}}, HasContractRelations{{/if}}{{#if has_soft_deletes}}, SoftDeletes{{/if}};
 
 {{#if custom_table}}
     protected $table = '{{table_name}}';
@@ -64,9 +70,13 @@ class {{model_name}} extends Model
 {{/if}}
 {{#if has_cross_refs}}
 
-    // --- Cross-subdomain logical references ---
+    // --- Cross-subdomain virtual relations (resolved through host-supplied query) ---
 {{#each cross_subdomain_refs}}
-    // {{column}} references {{subdomain}}.{{table}} — query via the target subdomain's repository trait, no Eloquent relationship.
+
+    public function {{relation_method}}(): BelongsTo
+    {
+        return $this->belongsToContract({{contract_class}}::class, '{{column}}', '{{relation_method}}');
+    }
 {{/each}}
 {{/if}}
 }

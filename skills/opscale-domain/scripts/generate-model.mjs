@@ -33,8 +33,16 @@
 //       { "type": "hasMany",   "method": "items",    "model": "OrderItem" }
 //     ],
 //     "cross_subdomain_refs": [
-//       { "column": "owner_user_id", "subdomain": "auth", "table": "users" }
+//       { "column": "owner_user_id", "contract_slug": "users",    "subdomain": "auth", "table": "users" },
+//       { "column": "agency_id",     "contract_slug": "agencies", "subdomain": "crm",  "table": "agencies" }
 //     ],
+//
+//   `contract_slug` is the slug from the data-model.md `external-refs` index.
+//   The script derives `contract_class` (StudlyCase + `Contract`) and
+//   `relation_method` (see RELATION_METHOD_RULES below) from the column +
+//   contract_slug. When `has_cross_refs` is true, the model `use`s the
+//   `HasContractRelations` trait + imports `BelongsTo` + imports each unique
+//   contract class.
 //     "validation_rules": {
 //       "code":        ["required", "string", "max:50"],
 //       "status":      ["required", "string"],
@@ -47,6 +55,33 @@ import { fileURLToPath } from 'node:url';
 import { readJsonInput, render, writeOrConflict, loadTemplate, resultLine } from './_lib.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const BELONGS_TO_FQN = 'Illuminate\\Database\\Eloquent\\Relations\\BelongsTo';
+
+// Derive the relation method name from a cross-subdomain FK column.
+//   *_by             → camelCase + 'User'        (opened_by → openedByUser)
+//   *_witness_id     → camelCase qualified prefix (opening_witness_id → openingWitness)
+//   *_id             → camelCase prefix          (agency_id → agency, teller_id → teller)
+//   anything else    → camelCase(column)
+function camel(parts) {
+  return parts.map((p, i) => i === 0 ? p.toLowerCase() : p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join('');
+}
+function studly(slug) {
+  return slug.split(/[^A-Za-z0-9]+/).filter(Boolean).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join('');
+}
+function relationMethodFromColumn(column) {
+  const parts = column.split('_');
+  if (parts.length >= 2 && parts[parts.length - 1] === 'by') {
+    return camel(parts.slice(0, -1)) + 'ByUser';
+  }
+  if (parts.length >= 3 && parts[parts.length - 1] === 'id' && parts[parts.length - 2] === 'witness') {
+    return camel(parts.slice(0, -1));
+  }
+  if (parts.length >= 2 && parts[parts.length - 1] === 'id') {
+    return camel(parts.slice(0, -1));
+  }
+  return camel(parts);
+}
 
 const RELATION_MAP = {
   belongsTo:     { class: 'Illuminate\\Database\\Eloquent\\Relations\\BelongsTo',     ret: 'BelongsTo' },
@@ -99,8 +134,29 @@ function main() {
     return `${c.php_type} $${c.name}${' '.repeat(pad)}${c.description || ''}`.trimEnd();
   });
 
-  const relation_imports = Array.from(new Set(
+  const rawCrossRefs = input.cross_subdomain_refs || [];
+  const crossRefs = rawCrossRefs.map(ref => {
+    if (!ref.contract_slug) {
+      throw new Error(`cross_subdomain_refs entry for column '${ref.column}' is missing contract_slug`);
+    }
+    const contract_class = `${studly(ref.contract_slug)}Contract`;
+    return {
+      column:          ref.column,
+      contract_slug:   ref.contract_slug,
+      contract_class,
+      relation_method: ref.relation_method || relationMethodFromColumn(ref.column),
+    };
+  });
+  const hasCrossRefs = crossRefs.length > 0;
+
+  const relationImportsSet = new Set(
     (input.relationships || []).map(r => RELATION_MAP[r.type]?.class).filter(Boolean)
+  );
+  if (hasCrossRefs) relationImportsSet.add(BELONGS_TO_FQN);
+  const relation_imports = Array.from(relationImportsSet).sort();
+
+  const cross_subdomain_contract_imports = Array.from(new Set(
+    crossRefs.map(r => `${input.package_namespace}\\Contracts\\${r.contract_class}`)
   )).sort();
 
   const enum_imports = (input.enums || []).map(e => `${input.package_namespace}\\Models\\Enums\\${e.class}`);
@@ -132,8 +188,9 @@ function main() {
     casts:              input.casts || [],
     relationships,
     has_relationships:  relationships.length > 0,
-    cross_subdomain_refs: input.cross_subdomain_refs || [],
-    has_cross_refs:     (input.cross_subdomain_refs || []).length > 0,
+    cross_subdomain_refs:             crossRefs,
+    cross_subdomain_contract_imports: cross_subdomain_contract_imports,
+    has_cross_refs:                   hasCrossRefs,
   };
 
   const template = loadTemplate(join(__dirname, '..', 'templates', 'model.php.tmpl'));

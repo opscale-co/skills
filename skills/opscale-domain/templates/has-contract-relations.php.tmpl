@@ -1,0 +1,31 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{package_namespace}}\Models\Concerns;
+
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+trait HasContractRelations
+{
+    /**
+     * Define a BelongsTo against the Eloquent query builder supplied
+     * by the given contract. The related model class comes from
+     * whatever model the host bound to that contract.
+     *
+     * @param  class-string  $contract  Contract whose query() returns the host's Eloquent\Builder
+     */
+    protected function belongsToContract(string $contract, string $foreignKey, string $relation): BelongsTo
+    {
+        $query = app($contract)->query();
+        $related = $query->getModel();
+
+        return $this->newBelongsTo(
+            $query,
+            $this,
+            $foreignKey,
+            $related->getKeyName(),
+            $relation,
+        );
+    }
+}
