@@ -134,7 +134,45 @@ Repeatable, and Fields trait into separate tasks — they always ship together."
 
 If any check fails, regenerate `tasks.md` before continuing.
 
-### Phase 3 — Generate Nova bundles
+### Phase 3 — Per-resource authorization confirmation
+
+For each aggregate in the inventory, **ask the user** which CRUD operations
+the Resource should expose in Nova. The defaults below are not assumed — the
+skill MUST prompt explicitly so the spec gets reflected in the generated
+guards.
+
+```
+For each aggregate, confirm Nova CRUD access:
+
+  [ModelA]
+    can create? (Y/n)
+    can update? (Y/n)
+    can delete? (Y/n)
+
+  [ModelB]
+    can create? (Y/n)
+    can update? (Y/n)
+    can delete? (Y/n)
+  ...
+```
+
+The answers map directly to the JSON contract of `generate-resource.mjs`:
+`can_create`, `can_update`, `can_delete`. When any flag is `false`, the
+generated Resource emits the corresponding `authorizedTo*` method returning
+`false`. When all three are `true`, no overrides are emitted (Nova allows
+everything by default).
+
+Read-only / system-generated resources answer `n / n / n`. State-locked
+resources (e.g. "editable only while Pending") answer `Y` here and get a
+custom guard added in the customization pass — the prompt only sets the
+hard-stop floor.
+
+Do not proceed to generation until every aggregate has all three answers
+recorded.
+
+---
+
+### Phase 4 — Generate Nova bundles
 
 Generation is **always deterministic**. The skill normalizes each aggregate
 into the JSON contract for each script, then spawns the wrapper agents in
@@ -172,7 +210,7 @@ they hold):
   the script applies `Tab::group(...)` automatically when this list is
   non-empty. Skip it and you ship orphaned children in the UI.
 
-### Phase 4 — Update plan.md
+### Phase 5 — Update plan.md
 
 Append the Nova layer table to `plan.md` with the `Task ID` column tying each file back to its `tasks.md` entry.
 
@@ -237,7 +275,18 @@ class [ModelName] extends Resource
 
 ### URI + Labels
 
-Always override these three methods. Use `__()` for all strings — everything is translatable:
+**MANDATORY — every Resource declares all three methods, with no exceptions.**
+Nova's defaults pluralize the model class name in English; that breaks any
+non-English deployment and hides the resource in localized menus. The
+generator emits these three methods unconditionally — `uri_key`, `label`,
+and `singular_label` are required inputs to the JSON contract.
+
+Both labels go through `__()` so every locale resolves at request time. The
+generator also seeds `lang/{locale}.json` with the label, the singular label,
+the standard fixed labels (`Details`, `Status`, `Created At`, `Updated At`),
+every status badge label, and every HasMany tab label — so a human translator
+(or `laravel-lang/common lang:update`) has every key already present and can
+replace the English placeholder with the target locale's translation.
 
 ```php
 public static function uriKey(): string  { return '[plural-kebab-case]'; }
@@ -249,11 +298,20 @@ public static function singularLabel(): string { return __('[Singular Label]'); 
 
 ### Authorization
 
-Only override when the spec or business rules impose restrictions.
-Common patterns from the spec:
+Authorization has two layers:
 
-- Read-only resource (e.g. system-generated records): override all three to `return false`
-- State-locked resource (e.g. cannot edit after published): check `$this->resource->status`
+1. **Hard floor — set per resource in Phase 3.** For every aggregate the skill
+   asks the user `can create? / can update? / can delete?`. Any `no` answer
+   emits the matching `authorizedTo*` returning `false`, baked into the
+   generated Resource. This is the floor — a downstream policy cannot loosen
+   it.
+
+2. **State-conditional overrides — added in the customization pass.** When the
+   spec restricts an operation only under specific states (e.g. "editable
+   only while `Draft`"), the generator emits the `Y` answer (no method) and
+   the customization pass adds a guard that inspects `$this->resource->status`.
+
+Patterns:
 
 ```php
 // Read-only resource
@@ -454,10 +512,12 @@ behind syntactically valid PHP.
 7. **Tabs MANDATORY for HasOne/HasMany** — if the model has any `HasOne` or `HasMany` relationship, fields MUST be wrapped in `Tab::group()` with `Tab::make(__('Details'), [...])` for own fields plus one `Tab::make` per relationship. Flat `fields()` array is only allowed when the model has zero HasOne/HasMany.
 8. **Badge for status** — status columns always use `Badge`, never `Select` or `Text`. Color convention: success/warning/danger/info.
 9. **DateTime always diffForHumans** — `->displayUsing(fn ($v) => $v?->diffForHumans())->exceptOnForms()`.
-10. **Authorization from spec** — only override `authorizedTo*` when the spec defines restrictions (read-only records, state-locked editing).
+10. **Authorization confirmed per resource** — for every aggregate the skill MUST ask `can create? / can update? / can delete?` in Phase 3 and pass the answers as `can_create` / `can_update` / `can_delete` to `generate-resource.mjs`. Any `no` emits the matching `authorizedTo*` returning `false`. State-conditional overrides (e.g. only editable while `Draft`) are added in the customization pass on top of the floor.
 11. **`fieldsForCreate()` when needed** — extract create/edit fields when they differ from the display view, or when a collapsible advanced panel exists.
 12. **Actions only from BPMN** — only add `actions()` when the BPMN has `businessRuleTask` or `sendTask` nodes for this entity. No speculative actions.
 13. **`@extends Resource<Model>`** — always add the generic docblock for IDE type inference.
 14. **Every aggregate = Resource + Repeatable + shared trait** — always generate all three files per aggregate root.
 15. **Shared fields trait** — `Nova/Concerns/{ModelName}Fields.php` holds `coreFields()`. Both the Resource and Repeatable use it via `use {ModelName}Fields` — zero field duplication.
 16. **Rules via `Model::$validationRules`** — never duplicate rules inline. Use spread: `->rules(...Model::$validationRules['col'])`.
+17. **`uriKey()`, `label()`, `singularLabel()` MANDATORY on every Resource** — never rely on Nova's default English pluralization. The generator requires `uri_key`, `label`, and `singular_label` in the JSON contract and emits all three methods unconditionally.
+18. **Lang file seeded automatically** — `generate-resource.mjs` and `generate-field-trait.mjs` append every user-visible string (resource label, singular label, field labels, status badge labels, HasMany tab labels, help texts, fixed labels like `Details` / `Status` / `Created At` / `Updated At`) to `lang/{locale}.json` as English placeholders. Existing keys are never overwritten. The skill does NOT hand-write translations — the generator does it.

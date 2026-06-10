@@ -42,14 +42,25 @@
 //         "attribute": "amount",
 //         "modifiers": ["sortable", { "rules": "amount" }]
 //       }
-//     ]
+//     ],
+//
+//     "lang_dir": "lang",     // optional — defaults to <project_root>/lang (derived from output_dir)
+//     "locale":   "en"        // optional — default locale to seed; defaults to "en"
 //   }
 //
-// Output: writes `{output_dir}/{ModelName}Fields.php`.
+// Output: writes `{output_dir}/{ModelName}Fields.php` and seeds every field
+// label + every `{ help: '...' }` modifier into `{lang_dir}/{locale}.json`
+// (created if missing; existing keys preserved).
 
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readJsonInput, render, writeOrConflict, loadTemplate, resultLine } from './_lib.mjs';
+import { readJsonInput, render, writeOrConflict, loadTemplate, resultLine, seedTranslations } from './_lib.mjs';
+
+function resolveLangDir(input) {
+  if (input.lang_dir) return resolve(input.lang_dir);
+  // output_dir is typically <project>/src/Nova/Concerns → three levels up is <project>.
+  return resolve(input.output_dir, '..', '..', '..', 'lang');
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -152,12 +163,27 @@ function main() {
   const outPath = resolve(input.output_dir, `${input.model_name}Fields.php`);
   const result = writeOrConflict(outPath, rendered);
 
+  // Seed translation keys for every user-visible string in the field set.
+  const translationKeys = new Set();
+  for (const f of input.fields) {
+    if (f.label) translationKeys.add(f.label);
+    for (const m of (f.modifiers || [])) {
+      if (typeof m === 'object' && m && m.help) translationKeys.add(m.help);
+    }
+  }
+
+  const langDir = resolveLangDir(input);
+  const locale  = input.locale || 'en';
+  const langResult = seedTranslations(langDir, locale, translationKeys);
+
   console.log(resultLine('STATUS', result.status));
   console.log(resultLine('GENERATED', result.path));
   if (result.preview) console.log(resultLine('PREVIEW', result.preview));
   console.log(resultLine('TRAIT', `${input.model_name}Fields`));
   console.log(resultLine('CORE_FIELDS', input.fields.length));
   console.log(resultLine('USED_BY', `${input.model_name} Resource, ${input.model_name} Repeatable`));
+  console.log(resultLine('LANG_PATH',  langResult.path));
+  console.log(resultLine('LANG_ADDED', langResult.added.length));
 }
 
 try { main(); } catch (e) {

@@ -51,6 +51,27 @@ class {{model_name}} extends Resource
     {
         return __('{{singular_label}}');
     }
+{{#unless can_create}}
+
+    public static function authorizedToCreate(Request $request): bool
+    {
+        return false;
+    }
+{{/unless}}
+{{#unless can_update}}
+
+    public function authorizedToUpdate(Request $request): bool
+    {
+        return false;
+    }
+{{/unless}}
+{{#unless can_delete}}
+
+    public function authorizedToDelete(Request $request): bool
+    {
+        return false;
+    }
+{{/unless}}
 
     public function fields(NovaRequest $request): array
     {
