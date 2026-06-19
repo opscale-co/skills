@@ -309,7 +309,7 @@ red.
 
 ```bash
 composer run check     # fix + refactor + lint + analyse + test (Unit + Feature)
-composer run test:web  # Browser smoke tests (only if Nova layer changed)
+composer run test:browser  # Browser smoke tests (only if Nova layer changed)
 ```
 
 If any step fails:
@@ -414,7 +414,7 @@ Do NOT push or open the PR automatically — leave that to the user.
 7. **Conventional Commits is mandatory** — the commit message is what
    semantic-release reads. A wrong prefix silently breaks the release. Validate
    with commitlint when available.
-8. **Quality gates are blocking** — `composer run check` (and `test:web` when
+8. **Quality gates are blocking** — `composer run check` (and `test:browser` when
    Nova changed) must pass before commit. No `--no-verify`, no skipping tests.
 9. **BREAKING CHANGE is opt-in and explicit** — never infer it from the diff.
    Only add the footer when the user explicitly confirmed it in Step 1.

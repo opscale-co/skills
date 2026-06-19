@@ -198,7 +198,7 @@ abstract class DuskTestCase extends BaseTestCase
      * Headless by default. To run with a visible Chrome window (for debugging
      * a failing Browser test), set DUSK_HEADLESS=false in the environment:
      *
-     *     DUSK_HEADLESS=false composer run test:web
+     *     DUSK_HEADLESS=false composer run test:browser
      */
     #[Override]
     protected function driver(): RemoteWebDriver

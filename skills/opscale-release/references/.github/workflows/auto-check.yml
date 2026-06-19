@@ -77,11 +77,11 @@ jobs:
         continue-on-error: true
 
       # Gate 3: Tests
-      - name: Gate 3 - Tests with coverage
+      - name: Gate 3 - Tests
         id: phpunit-check
         run: |
           if [[ -f "phpunit.xml" ]] || [[ -f "phpunit.xml.dist" ]]; then
-            npm run test:coverage
+            npm run test
           else
             echo "⚠️ No PHPUnit config found — skipping"
           fi

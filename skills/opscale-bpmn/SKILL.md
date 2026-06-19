@@ -66,10 +66,12 @@ Encapsulated business operation — anything **heavier than a single CRUD**. A s
 - **calculates / transforms** with formulas or business rules,
 - **coordinates multiple entities**.
 
-If a step is a plain create/read/update/delete on one entity, it is `serviceTask` (crud), not logic. Maps to exactly one Opscale Action class. Name the task as the Action class name in PascalCase verb+noun form.
+If a step is a plain create/read/update/delete on one entity, it is `serviceTask` (crud), not logic. Maps to exactly one Opscale Action class.
+
+**Naming — MANDATORY: `verb + noun` in natural language.** The `name` attribute is a short human-readable phrase — verb first, noun next, sentence case, spaces between words. No PascalCase, no class-name form, no abbreviations. Examples: `"Calculate interest"`, `"Approve loan"`, `"Validate credit score"`, `"Generate sequential number"`. The `id` inside `<documentation>` is the kebab-case slug derived from that phrase (`calculate-interest`, `approve-loan`, …) — downstream skills derive the Action class name from this slug.
 
 ```xml
-<bpmn:businessRuleTask id="rule_[id]" name="[ActionClassName]">
+<bpmn:businessRuleTask id="rule_[id]" name="[Verb noun in natural language]">
   <bpmn:documentation>{"type":"logic","id":"[kebab-case-id]"}</bpmn:documentation>
   <bpmn:incoming>flow_[id]</bpmn:incoming>
   <bpmn:outgoing>flow_[id]</bpmn:outgoing>
@@ -137,99 +139,130 @@ WhatsApp, webhook. Maps to exactly one Output class. One channel per task.
 
 ## Workflow
 
-### Phase 1 — Parse the module spec and the DBML
+The workflow is strictly sequential: **flows → steps per flow → BPMN**. Do not attempt to classify a single step before the user has approved (a) the list of flows and (b) the step list for the flow that step belongs to. Never generate the BPMN until every flow has been walked.
+
+### Phase 1 — Parse inputs and list detected flows
 
 Read both inputs:
-- `spec.md` → the **Flujo relacionado** (the typed steps to translate) and **Procesos identificados** (one `subProcess` each).
+- `spec.md` → the **Procesos identificados** section (one `subProcess` each) and the typed steps under each flow.
 - `data-model.md` → all table names. These are the only valid `entity` values for `serviceTask` (crud).
 
-Present and confirm:
+Present the **list of detected flows** first — nothing else — and wait for approval:
 
 ```
-DBML entities detected:
-- [table_1]
-- [table_2]
-- [table_n]
+Flows detected in spec.md *Procesos identificados*:
 
-Is the DBML complete or is any entity missing?
+1. [Flow 1 name] — [one-line purpose from spec]
+2. [Flow 2 name] — [one-line purpose from spec]
+3. [Flow n name] — [one-line purpose from spec]
+
+DBML entities available: [comma-separated table list]
+
+Is this the complete set of flows? Any missing, extra, or to rename?
 ```
 
-Wait for confirmation before continuing.
+Wait for explicit approval of the flow list. If the user adds, removes or renames flows, update spec.md *Procesos identificados* accordingly before continuing. **Do not move to Phase 2 until the flow list is locked.**
 
 ---
 
-### Phase 2 — Analyze current vs systematized process
+### Phase 2 — Walk each approved flow, list its steps, classify
 
-Read `spec.md` Actions section. The spec describes the systematized process.
-For each action, identify: what it does, who does it, what data it touches.
-This is the input for Phase 3.
+For **each approved flow, in order**, do a full pass before moving to the next one. Per flow:
 
----
+**2a. List the steps**
 
-### Phase 3 — Classify each activity
-
-For **each action** in the spec, ask for classification — one at a time:
-
-> "Is '[Activity]' CRUD (create/read/update/delete a record) or business logic
-> (calculation, validation, notification, integration that modifies state)?"
-
-**If CRUD:**
-- Ask: which entity? (must exist in DBML list)
-- Ask: which action — create, read, update, or delete?
-- Confirm before moving on
-
-**If Logic:**
-- Verify it actually modifies state/data — if it's a simple query, reclassify as CRUD read
-- Propose ID in kebab-case
-- Confirm before moving on
-
-Present per activity:
+Read the flow's typed steps from spec.md and present them as-is:
 
 ```
-Activity: "[name]"
-→ Type: [CRUD | Logic]
-→ Task: [serviceTask | businessRuleTask | sendTask]
-→ [entity + action | operation id]
+Flow [n]: "[Flow name]"
+
+Steps:
+1. [emoji] [step name from spec]
+2. [emoji] [step name from spec]
+3. ...
+
+Is this step list complete? Any missing, extra, or reordered?
+```
+
+Wait for approval. **Do not classify until the step list is approved.**
+
+**2b. Classify each step**
+
+Once the step list is approved, walk every step and propose a classification. Translate the spec emoji directly:
+
+| Spec step | BPMN element | Naming format for `name` attribute |
+|---|---|---|
+| 📝 record | `serviceTask` (crud) | `"[Verb] [entity]"` — e.g. `"Create application"` |
+| ⚙️ logic | `businessRuleTask` (logic) | **`verb + noun` natural language** — e.g. `"Calculate interest"` |
+| ✅ approval | `businessRuleTask` (logic) | **`verb + noun` natural language** — e.g. `"Approve loan"` |
+| 📩 / 📄 output | `sendTask` (output) | `"Send [thing] via [channel]"` |
+| ⏳ wait | `intermediateCatchEvent` | `"Wait for [condition]"` |
+| 🔀 decision | `exclusiveGateway` | `"[Condition?]"` |
+
+Present per step:
+
+```
+Step: "[name from spec]"
+→ Type: [CRUD | Logic | Output | Wait | Decision]
+→ Task: [serviceTask | businessRuleTask | sendTask | intermediateCatchEvent | exclusiveGateway]
+→ Name: "[verb + noun in natural language]"   ← for logic/output
+→ [entity + action]                            ← for CRUD
+→ Logic id (kebab-case): "[verb-noun]"         ← for logic (auto-derived from Name)
 
 Correct?
 ```
 
-Wait for confirmation after each activity.
+Rules during classification:
+- **If CRUD**: the `entity` MUST exist in the DBML table list. If it doesn't, stop and have the user fix the DBML first.
+- **If Logic**: the `name` MUST be `verb + noun` in natural language (sentence case, spaces, no PascalCase, no abbreviations). The `id` is the kebab-case slug of that name (`calculate-interest`). If the proposed step is actually a plain create/read/update/delete on one entity, reclassify as CRUD — do not promote queries to logic.
+- **If Output**: ask which channel (`email | push | sms | whatsapp | pdf | webhook | dashboard`) and which logic step triggers it.
+
+Wait for confirmation after each step.
+
+**2c. Flow recap**
+
+Once every step in the flow is classified, recap the flow before moving on:
+
+```
+Flow [n] "[Flow name]" — locked:
+
+Steps (in order):
+1. [task type] "[name]"     ← [entity+action | logic-id | channel]
+2. ...
+
+CRUD entities touched: [list]
+Logic operations: [list of verb+noun names]
+Outputs: [list]
+Gateways: [list with branch labels]
+
+Move to next flow?
+```
+
+Wait for confirmation. Then repeat 2a–2c for the next approved flow. **Do not skip ahead to the BPMN while any flow is still unwalked.**
 
 ---
 
-### Phase 4 — Confirm all operations
+### Phase 3 — Final summary before generating
 
-List all `serviceTask` operations identified:
-
-```
-Logic operations defined:
-
-1. `[operation-id-1]` — "[Descriptive name]"
-2. `[operation-id-2]` — "[Descriptive name]"
-
-All modify state/data. Complete or any missing?
-```
-
-Wait for confirmation.
-
----
-
-### Phase 5 — Final summary before generating
+After every flow has been locked, present the consolidated summary:
 
 ```
 Summary before generating BPMN:
 
-CRUD (serviceTask):
-- [entity] → [action]
+Flows (one subProcess each):
+- [Flow 1] → [n steps]
+- [Flow 2] → [n steps]
 
-Logic (businessRuleTask):
-- `[kebab-case-id]` → [description]
+CRUD (serviceTask):
+- [entity] → [action]   (in flow: [flow name])
+
+Logic (businessRuleTask) — verb + noun, natural language:
+- "[Verb noun]" (id: `[verb-noun]`)   (in flow: [flow name])
 
 Output (sendTask):
-- `[channel]` triggered by `[logic-id]`
+- `[channel]` triggered by `[logic-id]`   (in flow: [flow name])
 
-Flow:
+Flow (top level):
 - Start: [trigger from spec]
 - Gateways: [list]
 - End: [post-conditions from spec]
@@ -243,7 +276,7 @@ Never generate without explicit confirmation.
 
 ---
 
-### Phase 6 — Assemble and validate
+### Phase 4 — Assemble and validate
 
 Assemble the complete BPMN 2.0 XML in memory — **do not write the file yet**.
 
@@ -267,13 +300,13 @@ node {SKILL_DIR}/opscale-bpmn/scripts/validate-bpmn.mjs /tmp/.bpmn-validate.tmp.
 **exit 1** — XML/BPMN structure error: fix and re-run.
 **exit 2** — Quality warnings (forbidden task types, missing docs, unlabelled
 gateway branches, orphan tasks, missing start/end events): fix and re-run.
-**exit 0** — Proceed to Phase 7.
+**exit 0** — Proceed to Phase 5.
 
 The script never gets copied to the project — it stays in the skill bundle.
 
 ---
 
-### Phase 7 — Write output and close gate
+### Phase 5 — Write output and close gate
 
 Only reached after validator exits with `0`.
 
@@ -325,13 +358,17 @@ Then verify the semantic gate:
 ```
 BPMN COMPLETENESS GATE
 ──────────────────────────────────────────────────────
+[ ] Flow list approved before any step classification began
+[ ] Every flow walked: step list approved, then each step classified
 [ ] Script exited with code 0
 [ ] process.md written
 [ ] docs/initial.bpmn written on first run (or preserved if already present)
+[ ] One subProcess per flow in spec.md *Procesos identificados*
 [ ] Only serviceTask, businessRuleTask, sendTask used — no scriptTask
 [ ] Every crud serviceTask entity exists in data-model.md
 [ ] Every crud serviceTask has valid action (create|read|update|delete)
-[ ] Every businessRuleTask has a logic id in kebab-case
+[ ] Every businessRuleTask `name` is verb + noun in natural language (sentence case, no PascalCase, no abbreviations)
+[ ] Every businessRuleTask has a logic id in kebab-case matching its name
 [ ] Every sendTask has channel and trigger attributes
 [ ] Simple queries use serviceTask (crud read) — not businessRuleTask
 [ ] Every gateway branch has a condition label
@@ -361,9 +398,9 @@ STATUS: [ ] PASS — opscale-domain may proceed
 
 | ID | Name | Type | Task | Entity / ID | Action |
 |----|------|------|------|-------------|--------|
-| service_01 | [name] | crud | serviceTask | [table_name] | create |
-| rule_01 | [name] | logic | businessRuleTask | [kebab-case-id] | — |
-| send_01 | [name] | output | sendTask | [channel] | trigger: [id] |
+| service_01 | Create application | crud | serviceTask | [table_name] | create |
+| rule_01 | Calculate interest (verb + noun, natural language) | logic | businessRuleTask | calculate-interest | — |
+| send_01 | Send approval notification | output | sendTask | email | trigger: approve-loan |
 
 ---
 
@@ -394,9 +431,9 @@ STATUS: [ ] PASS — opscale-domain may proceed
       <bpmn:outgoing>flow_002</bpmn:outgoing>
     </bpmn:serviceTask>
 
-    <!-- Logic Task -->
-    <bpmn:businessRuleTask id="rule_[id]" name="[ActionClassName]">
-      <bpmn:documentation>{"type":"logic","id":"[kebab-case-id]"}</bpmn:documentation>
+    <!-- Logic Task — name MUST be verb + noun in natural language (e.g. "Calculate interest") -->
+    <bpmn:businessRuleTask id="rule_[id]" name="Calculate interest">
+      <bpmn:documentation>{"type":"logic","id":"calculate-interest"}</bpmn:documentation>
       <bpmn:incoming>flow_002</bpmn:incoming>
       <bpmn:outgoing>flow_003</bpmn:outgoing>
     </bpmn:businessRuleTask>

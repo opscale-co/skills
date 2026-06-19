@@ -247,7 +247,28 @@ generator agents in parallel** to produce the actual test files.
 1. Configure stack (Pest, Dusk, PHPStan, Duster, Rector) — sections above
 2. Generate `workbench/database/seeders/DatabaseSeeder.php` with one factory call per aggregate root
 3. Spawn all agents **in parallel** (single message, multiple Agent tool calls)
-4. After agents finish, run `composer run build` then `composer run test` to validate
+4. After agents finish, **validate every generated suite executes green** — see *Validation loop* below. The skill is NOT complete until Unit, Feature and Browser suites all pass.
+
+### Validation loop — MANDATORY after generation
+
+Generating test files is not enough. Each suite MUST actually execute and pass before the skill exits. Run this loop until all three suites are green:
+
+```
+1. composer run build          # recreate workbench, copy Nova assets, sync ChromeDriver
+2. composer run test            # Unit + Feature suites
+   └─ on failure: read the Pest output, fix the offending test file
+      (or the source it tests if the source is wrong), re-run. Repeat until green.
+3. composer run test:browser        # Browser suite against Nova DevTool workbench
+   └─ on failure: inspect tests/Browser/screenshots/ + tests/Browser/console/,
+      fix selectors / waits / seed data / Resource code, re-run. Repeat until green.
+4. composer run check           # full pipeline: fix → refactor → lint → analyse → test
+   └─ on failure: address the reported issues, re-run. Repeat until green.
+```
+
+**Stop conditions for the loop:**
+- ✅ Exit when all three commands (`test`, `test:browser`, `check`) exit 0 on a clean re-run.
+- ❌ Do NOT mark the skill complete with red tests "to be fixed later". A skipped suite is a failed skill.
+- If a Browser test fails for an environmental reason (ChromeDriver version, port collision) fix the environment per the Troubleshooting section in `references/test-configs.md`, then resume the loop.
 
 ### What each agent produces
 
@@ -308,8 +329,7 @@ Nova UI locally without remembering the multi-step incantation.
         "test": "./vendor/bin/pest --testsuite=Unit,Feature",
         "test:unit": "./vendor/bin/pest --testsuite=Unit",
         "test:feature": "./vendor/bin/pest --testsuite=Feature",
-        "test:web": "@composer build && ./vendor/bin/pest -c phpunit.dusk.xml",
-        "test:coverage": "XDEBUG_MODE=coverage ./vendor/bin/pest --testsuite=Unit,Feature --coverage --min=80",
+        "test:browser": "@composer build && ./vendor/bin/pest -c phpunit.dusk.xml",
         "check": "@composer fix && @composer refactor && @composer lint && @composer analyse && @composer test"
     }
 }
@@ -318,10 +338,10 @@ Nova UI locally without remembering the multi-step incantation.
 **Key design decisions**:
 - `composer run build` — single command that **recreates the entire test/workbench environment**: builds workbench, runs seeders, publishes Nova assets to BOTH skeletons, copies the SQLite DB, clears view caches in both skeletons, syncs ChromeDriver. **MUST be runnable from a clean clone after `composer install`.**
 - `composer run serve` — runs Testbench's built-in PHP server with the workbench mounted. Lets the developer browse the actual Nova UI at `http://localhost:8000/nova` to manually verify Resources outside of Dusk.
-- `test:web` chains `build` so Browser tests always run against a freshly rebuilt workbench — eliminates "works on my machine" caused by stale skeletons.
+- `test:browser` chains `build` so Browser tests always run against a freshly rebuilt workbench — eliminates "works on my machine" caused by stale skeletons.
 - **Browser tests run headless by default** — `DUSK_HEADLESS=true` is the default (configured in `DuskTestCase::driver()`). CI never sees a visible browser. To debug a failing Browser test locally with a visible Chrome window, override per-invocation:
   ```bash
-  DUSK_HEADLESS=false composer run test:web
+  DUSK_HEADLESS=false composer run test:browser
   ```
 - `test` runs Unit+Feature only (no ChromeDriver dependency for CI fast path).
 - `check` is the full pipeline: fix → refactor → lint → analyse → test.
@@ -341,7 +361,9 @@ For consistency, mirror the same names in `package.json` (delegating to composer
         "refactor": "composer run refactor",
         "analyse": "composer run analyse",
         "test": "composer run test",
-        "test:web": "composer run test:web",
+        "test:unit": "composer run test:unit",
+        "test:feature": "composer run test:feature",
+        "test:browser": "composer run test:browser",
         "check": "composer run check"
     }
 }
@@ -418,10 +440,15 @@ STATIC ANALYSIS + LINT
 [ ] rector.php configured
 
 SCRIPTS
-[ ] composer scripts: build, serve, lint, fix, refactor, analyse, test, test:unit, test:feature, test:web, test:coverage, check
-[ ] package.json mirrors the same names (build, serve, test, test:web, check, ...)
-[ ] composer run check passes (fix → refactor → lint → analyse → test)
-[ ] composer run test:web passes (Browser tests, headless by default)
+[ ] composer scripts: build, serve, lint, fix, refactor, analyse, test, test:unit, test:feature, test:browser, check
+[ ] package.json mirrors the same names (build, serve, test, test:unit, test:feature, test:browser, check, ...)
+
+VALIDATION LOOP — every suite must actually pass, not just exist
+[ ] composer run build executed end-to-end without errors
+[ ] composer run test passes (Unit + Feature) — green on a clean re-run
+[ ] composer run test:browser passes (Browser tests, headless by default) — green on a clean re-run
+[ ] composer run check passes (fix → refactor → lint → analyse → test) — green on a clean re-run
+[ ] Zero skipped suites, zero "fix later" tests
 ──────────────────────────────────────────────────────
 STATUS: [ ] PASS — opscale-release may proceed
         [ ] FAIL — list blocking items below
@@ -431,7 +458,7 @@ STATUS: [ ] PASS — opscale-release may proceed
 
 ## Domain Rules
 
-1. **The skill configures AND generates** — configuration without generated tests is incomplete. After configuring the stack, the skill MUST walk `src/` and spawn `unit-test-generator`, `feature-test-generator`, and `web-test-generator` agents in parallel to produce real test files.
+1. **The skill configures, generates, AND validates** — configuration without generated tests is incomplete; generated tests that never ran are also incomplete. After configuring the stack and spawning generator agents, the skill MUST run the validation loop (above) until `composer run test`, `composer run test:browser`, and `composer run check` all exit green. Red suites block the skill from completing.
 2. **Strict layer assignment — no overlap:**
    - Unit (`tests/Unit/`) → **Domain only**: Models, Enums, Value Objects, Repositories, Migrations/Schema. One test class per domain component.
    - Feature (`tests/Feature/`) → **Actions only**: one test per class in `src/Services/Actions/`. Hits real DB, asserts events, asserts state. **No DB mocks.**
@@ -440,9 +467,9 @@ STATUS: [ ] PASS — opscale-release may proceed
 4. **Workbench seeders are mandatory** — `workbench/database/seeders/DatabaseSeeder.php` MUST seed: (a) the `admin@laravel.com / password` user used by `loginToNova()`, and (b) 1–3 records per aggregate root so detail-page smoke tests can resolve a real record.
 5. **`composer run build` is the single environment-recreation command** — builds workbench, copies Nova assets to both skeletons, copies SQLite DB, clears view caches, syncs ChromeDriver. MUST work from a clean clone.
 6. **`composer run serve` is mandatory** — runs `testbench serve` so any developer can browse the workbench Nova UI at `http://localhost:8000/nova` outside of Dusk.
-7. **Browser tests run headless by default** — `DUSK_HEADLESS=true` is configured in `DuskTestCase::driver()`. CI never sees a visible browser. Override with `DUSK_HEADLESS=false composer run test:web` to debug locally.
-8. **`test:web` always rebuilds the workbench** — `composer run test:web` chains `composer run build` first. Stale skeletons are the #1 cause of flaky Browser tests.
-9. **Browser tests run separately from `test` / `check`** — via `composer run test:web` with `phpunit.dusk.xml`. They are NOT included in `composer run test` because they require ChromeDriver.
+7. **Browser tests run headless by default** — `DUSK_HEADLESS=true` is configured in `DuskTestCase::driver()`. CI never sees a visible browser. Override with `DUSK_HEADLESS=false composer run test:browser` to debug locally.
+8. **`test:browser` always rebuilds the workbench** — `composer run test:browser` chains `composer run build` first. Stale skeletons are the #1 cause of flaky Browser tests.
+9. **Browser tests run separately from `test` / `check`** — via `composer run test:browser` with `phpunit.dusk.xml`. They are NOT included in `composer run test` because they require ChromeDriver.
 10. **Login via browser form** — use the `loginToNova()` helper that types credentials into the Nova login form. Avoid `loginAs()` as it requires the user to exist in the server's DB.
 11. **PHPStan level 9** — all four `strict-rules` rule sets active. Documented ignores for tests (DIP, helpers), Nova (`__()` translations), controllers (try-catch at HTTP boundary), service providers (Laravel patterns).
 12. **`declare(strict_types=1)`** enforced by Pint via `duster fix`.

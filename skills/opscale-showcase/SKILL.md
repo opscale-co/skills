@@ -31,6 +31,11 @@ stakeholder can sit and watch. When showcase passes, the module is demoable.
 
 ## Why this skill exists
 
+The showcase runs on the **Nova DevTool + Testbench Dusk** stack configured by
+`opscale-test` (Nova DevTool ships the workbench skeleton that Dusk drives, and
+`DuskTestCase` extends `Orchestra\Testbench\Dusk\TestCase` with `WithWorkbench`).
+This skill reuses that infrastructure with a non-headless driver override.
+
 Smoke Browser tests (one per Resource, headless, fast) verify that nothing
 crashes — but they're invisible. A stakeholder watching CI never sees the
 package. The "showcase" pattern was invented during the Teller flow and
@@ -83,7 +88,7 @@ use {PackageNamespace}\Tests\DuskTestCase;
  *
  * Run with:
  *
- *     vendor/bin/pest tests/Browser/{Module}ShowcaseTest.php -c phpunit.dusk.xml
+ *     composer run showcase
  */
 final class {Module}ShowcaseTest extends DuskTestCase
 {
@@ -197,32 +202,81 @@ Render the template with:
 
 Write to `tests/Browser/{Module}ShowcaseTest.php`.
 
-### Step 5 — Smoke gate
+### Step 5 — Register the `composer showcase` command
 
-The showcase is the smoke gate. Run it once headless to validate the
-walkthrough doesn't crash:
+The showcase is invoked on demand, not as part of `composer run test:browser`. To
+keep the invocation memorable and consistent across modules, register a
+**`showcase`** script in `composer.json` (and mirror it in `package.json`).
+This is the single command anyone runs to play the guided walkthrough.
 
-```bash
-# First, ensure the test parses
-php -l tests/Browser/{Module}ShowcaseTest.php
+**`composer.json`** — add to `scripts`:
 
-# Then, with the workbench freshly built and chromedriver running,
-# run the showcase ONCE in headless mode for CI validation
-DUSK_HEADLESS=true vendor/bin/pest tests/Browser/{Module}ShowcaseTest.php -c phpunit.dusk.xml
+```json
+{
+    "scripts": {
+        "showcase": [
+            "@composer build",
+            "@php vendor/bin/pest tests/Browser/{Module}ShowcaseTest.php -c phpunit.dusk.xml"
+        ]
+    }
+}
 ```
 
-If headless passes, the visible version will too. The visible run is what
-the stakeholder watches; the headless run is what CI gates on.
+**`package.json`** — mirror the name:
 
-Note: `DUSK_HEADLESS=true` is **ignored** by this test's overridden `driver()`
-during normal invocation — but for the smoke-gate CI run, you can either
-accept the visible window in CI or temporarily comment the override. The
-recommended CI behavior is to NOT include the showcase test in the default
-`composer run test:web` suite; run it on demand with:
+```json
+{
+    "scripts": {
+        "showcase": "composer run showcase"
+    }
+}
+```
+
+**Why chain `@composer build` first**: the showcase runs against the workbench
+skeleton. If assets, SQLite DB or ChromeDriver drifted, the walkthrough fails on
+a blank page or 500. `build` rebuilds the workbench from scratch so a clean
+clone can run `composer run showcase` and watch the module work.
+
+The on-demand invocation is therefore:
 
 ```bash
-vendor/bin/pest tests/Browser/{Module}ShowcaseTest.php -c phpunit.dusk.xml
+composer run showcase
 ```
+
+Never document or recommend the raw `vendor/bin/pest …` form — it skips `build`
+and breaks on fresh clones.
+
+### Step 6 — Validation loop (MANDATORY — run until green)
+
+The showcase is not complete the moment the file is written. It must actually
+execute end to end against the Nova DevTool workbench. Run this loop until the
+walkthrough exits green:
+
+```
+1. php -l tests/Browser/{Module}ShowcaseTest.php
+   └─ on syntax error: fix the template rendering, re-run.
+
+2. composer run showcase
+   └─ chains `composer run build` (rebuilds the Nova DevTool workbench, syncs
+      ChromeDriver, copies assets) and then runs the showcase test.
+   └─ on failure: inspect tests/Browser/screenshots/ + tests/Browser/console/.
+      Typical fixes:
+        - selector drift     → update the visit()/click()/waitFor() target
+        - timing flake       → raise the waitFor timeout or add a pause
+        - missing seed data  → fix workbench/database/seeders/DatabaseSeeder.php
+        - 500 on a screen    → fix the Nova Resource the process touches
+      Re-run `composer run showcase`. Repeat until it exits 0.
+```
+
+**Stop conditions:**
+- ✅ Exit when `composer run showcase` exits 0 on a clean re-run.
+- ❌ Do NOT mark the skill complete with a red or skipped showcase. A showcase
+  that "should work but didn't run" is a failed skill — the whole point is the
+  uninterrupted reel actually running.
+
+The showcase is invoked on demand via `composer run showcase` — it is NOT
+included in the default `composer run test:browser` suite. CI runs the smoke
+ResourceTests (headless) for gating; the showcase is for stakeholders.
 
 ## Domain Rules
 
@@ -239,10 +293,18 @@ vendor/bin/pest tests/Browser/{Module}ShowcaseTest.php -c phpunit.dusk.xml
    operator do here?". Never end on an index page.
 5. **One test method per module** — don't split the walkthrough into many
    methods. The whole point is the single uninterrupted reel.
-6. **Not in the default test suite** — `composer run test:web` does NOT
-   include the showcase by default; it's invoked on demand. CI runs the
-   smoke ResourceTests (headless) for gating; the showcase is for
-   stakeholders.
+6. **Invoked via `composer run showcase`** — registered as its own composer
+   script (chained with `@composer build` so it always runs against a fresh
+   workbench). NOT included in the default `composer run test:browser` suite.
+   CI runs the smoke ResourceTests (headless) for gating; the showcase is for
+   stakeholders, played on demand with `composer run showcase`.
 7. **Depends on seeded data** — the detail page step relies on
    `opscale-seed` (or equivalent). Missing records → blank detail pages →
    the showcase loses its punch.
+8. **Runs on Nova DevTool + Testbench Dusk** — same workbench skeleton as
+   `opscale-test` Browser suite; only the `driver()` override differs (no
+   `--headless`). If Nova DevTool isn't installed or `composer run build`
+   hasn't been executed, the showcase has nothing to walk.
+9. **Validation is mandatory** — the showcase must actually run green
+   headless before the skill exits. Writing the file without running it
+   defeats the whole purpose.
