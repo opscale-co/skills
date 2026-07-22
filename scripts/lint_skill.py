@@ -125,9 +125,14 @@ def check_scripts_delegation(skill_dir, body):
     scripts_dir = os.path.join(skill_dir, "scripts")
     if not os.path.isdir(scripts_dir):
         return soft
+    # `_`-prefixed modules (e.g. _lib.mjs) are internal helpers imported by the
+    # other scripts, not entry points the body invokes — exclude them, same as
+    # dotfiles. Only entry-point scripts need a pointer from the body.
     scripts = [
         f for f in os.listdir(scripts_dir)
-        if os.path.isfile(os.path.join(scripts_dir, f)) and not f.startswith(".")
+        if os.path.isfile(os.path.join(scripts_dir, f))
+        and not f.startswith(".")
+        and not f.startswith("_")
     ]
     if not scripts:
         return soft
@@ -193,6 +198,9 @@ def _strip_code(text):
     #   - markdown emphasis (**...**, *...*) — used for proper-noun labels like
     #     **Flujo relacionado** that name sections of user-domain artifacts
     #   - quoted strings ("...") — same reason
+    #   - blockquote lines (> ...) — verbatim user-facing prompt dialogue the
+    #     skill must speak in the operator's language (Spanish for LATAM users);
+    #     same rationale as quoted strings, they are example output, not prose
     # We preserve newlines so line numbers reported back stay correct.
     def blank(m):
         return re.sub(r"[^\n]", " ", m.group(0))
@@ -201,6 +209,7 @@ def _strip_code(text):
     text = re.sub(r"\*\*[^*\n]+\*\*", blank, text)
     text = re.sub(r"(?<!\*)\*[^*\n]+\*(?!\*)", blank, text)
     text = re.sub(r"\"[^\"\n]+\"", blank, text)
+    text = re.sub(r"(?m)^[ \t]*>.*$", blank, text)
     return text
 
 

@@ -52,6 +52,12 @@ class {{model_name}} extends Model
 {{/each}}
     ];
 
+    protected $attributes = [
+{{#each attributes}}
+        '{{column}}' => {{value}},
+{{/each}}
+    ];
+
     protected $casts = [
 {{#each casts}}
         '{{column}}' => {{cast}},

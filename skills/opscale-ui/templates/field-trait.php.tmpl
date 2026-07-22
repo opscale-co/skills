@@ -13,6 +13,9 @@ use {{.}};
 {{#each related_resource_imports}}
 use {{.}};
 {{/each}}
+{{#each contract_imports}}
+use {{.}};
+{{/each}}
 
 trait {{model_name}}Fields
 {

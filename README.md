@@ -27,6 +27,10 @@ The workflow stands on two ideas:
 
 For architecture, it follows the conventions defined by [Opscale](https://github.com/opscale-co) for Laravel + Nova projects.
 
+## Ontology
+
+All skills share one vocabulary contract — a hierarchy that ties the business description to the technical artifacts: **Software → Domain (business line) → Subdomain (module = one business process) → Subprocess (wait-bounded segment) → Step (broad business step) → Operation (atomic: CRUD | Logic | Output)**, where each business step decomposes into 1..N operations and a Logic is a set of CRUDs grouped by a business rule. See [ONTOLOGY.md](ONTOLOGY.md) for the full definitions, the artifact each level maps to, and the traceability spine (`process step → operations.md → BPMN task → SIPOC → Action class → test`). When a skill's wording and the ontology disagree, the ontology wins.
+
 ## How It Works
 
 The pipeline has one **setup** step (`init`), three **core harness** phases (`Plan` → `Generate` → `Review`), and a closing **Presentation** phase. Everything up to Presentation produces an **MVP**: a working, tested, releasable module that a human can sit down and demo end-to-end.
@@ -37,6 +41,7 @@ Once the MVP is done, **Iterate** is the loop you run from there on — one user
 init  →  Plan  →  Generate  →  Review  →  Presentation        →  Iterate
 └ setup └────── core harness flow (MVP) ──────┘  └ MVP done ┘    ↺ polish
 
+Map          (app-level, optional): opscale-map — domains → modules → cross-module refs
 Plan         (in order): opscale-process → opscale-dbml → opscale-bpmn → opscale-sipoc
 Generate     (in order): opscale-domain → opscale-ui → opscale-logic
 Review       (flexible, except test → release): opscale-debug, opscale-test, opscale-release
@@ -49,7 +54,7 @@ No phase starts until the previous one is validated. Each phase is a group of sk
 
 Skill: `opscale-init`
 
-Setup step. Assumes you are inside an **existing PHP/Laravel project** (refuses if `composer.json` is missing). Installs spec-kit, configures MCP servers, writes the Opscale constitution, sets the **commit standard** (commitlint + Husky + semantic-release config, so every later commit is conventional), and establishes the per-module `docs/` convention. Every other skill checks `.specify/memory/constitution.md` exists before running.
+Setup step. Assumes you are inside an **existing PHP/Laravel project** (refuses if `composer.json` is missing). Installs spec-kit, configures MCP servers, writes the Opscale constitution, sets the **commit standard** (commitlint + Husky + semantic-release config, so every later commit is conventional), establishes the per-module `docs/` convention, and seeds the **business-types registry** (`.specify/memory/business-types.md`, language-agnostic — read by Plan) plus its Laravel/Nova binding (`.specify/memory/business-types.php` — read by Generate); both project-extensible. Every other skill checks `.specify/memory/constitution.md` exists before running.
 
 ### Plan — understand before building (strict order)
 
@@ -57,10 +62,12 @@ Skills: `opscale-process` → `opscale-dbml` → `opscale-bpmn` → `opscale-sip
 
 The planning phase produces validated spec artifacts — not code. Each skill takes informal input, structures it, spawns validator subagents, and only advances when the artifact passes. The four skills run **in order**; each declares its predecessor as a hard prerequisite.
 
-- **Process** — captures the whole **module** as one connected macro-flow. Writes `spec.md` with four sections — normalized entity names, the emoji-typed connected flow, the **sub-processes identified** inside it, and their relations — plus `docs/process.md` (narrative derived from the flow). Interactive: asks when a name is ambiguous or a step/entity is loose.
-- **DBML** — DDD-aligned data model built from the spec's normalized names, business-only, with a `note` on every module/table/field. Writes `data-model.md` (live) AND `docs/initial.dbml` (frozen snapshot, never overwritten).
-- **BPMN** — process map with one `subProcess` per identified process for legibility. Writes `process.md` (live) AND `docs/initial.bpmn` (frozen snapshot).
-- **SIPOC** — one Suppliers/Inputs/Process/Outputs/Customers document per `businessRuleTask` in the BPMN. Writes `docs/actions/{kebab-id}.sipoc.md` per Action. This is the contract that `opscale-logic` later materializes into PHP — `Inputs` → `parameters()`, `Process` → `handle()` body, `Outputs` → return-array keys.
+Each skill writes two siblings under the spec directory — a `logs/<skill>.md` phase-by-phase Q/A record and a `final/<artifact>` canonical output. See `skills/opscale-init/references/artifact-paths.md` for the full convention.
+
+- **Process** — captures the whole **module** as one connected macro-flow. Writes `final/process.md` with five sections — normalized entity names (*Name normalization*), the lifecycle (*Lifecycle*), the wait-bounded subprocesses with their emoji-typed steps (*Ordered flow*), the entity relations (*Relations*), and a *Narrative* — plus `logs/process.md`. Interactive: asks when a name is ambiguous or a step/entity is loose.
+- **DBML** — DDD-aligned data model built from the spec's normalized names, business-only, with a `note` on every module/table/field, reconciled against an industry modeling standard when one applies. Columns are typed with **business types** from the central language-agnostic registry (`.specify/memory/business-types.md`) via `// type:{slug}` notes — a business type (email, money, phone, …) carries storage, validation semantics, and UI intent, so the same concept behaves identically in every module; the Laravel/Nova binding (`business-types.php`) resolves each slug to concrete fields/rules at Generate time. Writes `final/domain.dbml` (raw DBML), `final/external-refs.md` (if any cross-subdomain refs), `final/naming.md` (name lineage: business name → table → enums → model class), and `logs/dbml.md`.
+- **BPMN** — process map with one `subProcess` per subprocess in *Ordered flow*. Elicits the atomic CRUD sequence first, then groups rule-driven CRUDs into Logics. Writes `final/process.bpmn` (raw BPMN 2.0 XML), `final/operations.md` (atomic + grouped sequences and each Logic's CRUD composition), and `logs/bpmn.md`.
+- **SIPOC** — one Suppliers/Inputs/Process/Outputs/Customers document per `businessRuleTask` in the BPMN. Writes `final/actions/{kebab-id}.sipoc.md` per Action and a combined `logs/sipoc.md`. The Process section is imported from `final/operations.md`, never re-elaborated. This is the contract that `opscale-logic` later materializes into PHP — `Inputs` → `parameters()`, `Process` → `handle()` body, `Outputs` → return-array keys.
 
 Every artifact is cross-validated: the BPMN references only entities from the DBML, the DBML traces back to the spec, each SIPOC traces back to a BPMN task and the Business Rules it cites exist in the spec. Nothing is invented.
 
@@ -110,7 +117,7 @@ Single command that takes a **user story** (`As X / I want Y / So that Z` + Give
 
 Strict gate: refuses to run unless the **MVP pipeline is complete** (Plan + Generate + Review + Presentation done) AND **zero pending tasks** in `tasks.md`. Iterate polishes a finished MVP; it does not finish a half-built one.
 
-Every iteration is archived as `docs/iterations/YYYY-MM-DD-<slug>.md` inside the target module's spec folder — a permanent dated record alongside the frozen `docs/initial.dbml` / `docs/initial.bpmn` snapshots.
+Every iteration is archived as `docs/iterations/YYYY-MM-DD-<slug>.md` inside the target module's spec folder — a permanent dated record alongside the `logs/` Q/A history and the `final/` canonical artifacts.
 
 ## Project Types
 
@@ -177,7 +184,7 @@ When a consumer installs the package, instead of reading the README they invoke 
 ## Architecture
 
 ```
-skills/        → 16 skills (orchestrators — own workflow and user dialogue)
+skills/        → 17 skills (orchestrators — own workflow and user dialogue)
   └─ opscale-{domain,ui,logic}/
        scripts/   → deterministic Node.js generators (.mjs)
        templates/ → mustache-lite PHP templates (.php.tmpl)
@@ -209,34 +216,42 @@ The JSON contract for each generator lives in the header comment of its `.mjs` f
 
 No silent overwrites. No automatic merging.
 
-### Per-module `docs/` convention
+### Per-module spec layout
 
-Every module folder under `.specify/specs/{NNN}-{slug}/` contains a `docs/` subfolder that captures the human-readable history of the module:
+Every module folder under `.specify/specs/{NNN}-{slug}/` splits its artifacts into `logs/` (phase-by-phase Q/A) and `final/` (canonical, downstream-consumable). Spec-kit's own `plan.md` / `tasks.md` and `docs/iterations/` (written by `opscale-iterate`) live at the spec root.
 
 ```
 .specify/specs/{NNN}-{module-name}/
-├── spec.md             ← structured spec (live, evolves)
-├── data-model.md       ← DBML wrapped in narrative (live)
-├── process.md          ← BPMN process map (live)
-├── plan.md             ← tech decisions (live)
-├── tasks.md            ← ordered task ledger (live)
-└── docs/               ← human-readable history (frozen + append-only)
-    ├── process.md      ← narrative derived from the typed flow (opscale-process)
-    ├── initial.dbml    ← frozen DBML snapshot — never overwritten
-    ├── initial.bpmn    ← frozen BPMN snapshot — never overwritten
-    ├── actions/        ← SIPOC per Action (BPMN-driven only)
-    │   └── <kebab-id>.sipoc.md   ← Suppliers/Inputs/Process/Outputs/Customers
-    └── iterations/
-        └── YYYY-MM-DD-<slug>.md   ← one file per opscale-iterate run
+├── plan.md                       ← spec-kit: tech decisions
+├── tasks.md                      ← spec-kit: ordered task ledger
+├── logs/                         ← phase-by-phase Q/A records (replaced each run)
+│   ├── process.md
+│   ├── dbml.md
+│   ├── bpmn.md
+│   └── sipoc.md
+├── final/                        ← canonical, downstream-consumable
+│   ├── process.md                ← opscale-process spec (5 sections)
+│   ├── domain.dbml               ← raw DBML
+│   ├── external-refs.md          ← cross-subdomain ref index (only if ≥1 ref)
+│   ├── naming.md                 ← name lineage: business name → table → enums → model class
+│   ├── process.bpmn              ← raw BPMN 2.0 XML
+│   ├── operations.md             ← atomic + grouped operation sequences, Logic compositions
+│   └── actions/
+│       └── <kebab-id>.sipoc.md   ← one per BPMN businessRuleTask
+└── docs/iterations/
+    └── YYYY-MM-DD-<slug>.md      ← one file per opscale-iterate run
 ```
 
-**Live vs. frozen:** the top-level artifacts evolve with every iteration. `docs/` is the historical baseline — initial snapshots never change, iteration files are written once and never edited. This is what future maintainers read to understand how the module grew.
+App-level (shared across modules): `.specify/memory/domain-map.md` — domains → modules → cross-module reference ownership, written by `opscale-map`.
+
+**Logs vs. final:** `final/` evolves with every re-run and iteration — it's what downstream skills and BPMN/DBML tooling consume. `logs/` captures the Q/A trail for each run, replaced each time. Canonical reference: `skills/opscale-init/references/artifact-paths.md`.
 
 ### Orchestration gates
 
 | Skill | Required before it runs | Order |
 |-------|------------------------|:-----:|
 | `opscale-init` | composer.json + Laravel detected | Bootstrap |
+| `opscale-map` | init | App-level (optional, any time after init) |
 | `opscale-process` | init | Plan #1 (strict) |
 | `opscale-dbml` | init + process | Plan #2 (strict) |
 | `opscale-bpmn` | init + process + dbml | Plan #3 (strict) |
@@ -269,21 +284,22 @@ Agents use three MCP servers configured by `opscale-init`:
 
 | Step | Skill | Purpose | app | module | package | library |
 |------|-------|---------|:---:|:------:|:-------:|:-------:|
-| 0 | `opscale-init` | Bootstrap scaffold, constitution, MCP servers, **commit standard** (commitlint/Husky/semantic-release), `docs/` convention. Refuses if not inside a Laravel/PHP project | Yes | Yes | Yes | Yes |
-| 1 | `opscale-process` | Module macro-flow: normalized names + connected typed flow + identified processes + relations; derived `docs/process.md` | Per module | Yes | -- | -- |
-| 2 | `opscale-dbml` | DDD-aligned DBML from the normalized names (business-only, `note` on module/table/field) + frozen `docs/initial.dbml` snapshot | Per module | Yes | -- | -- |
-| 3 | `opscale-bpmn` | BPMN 2.0 map (one subProcess per identified process) + frozen `docs/initial.bpmn` snapshot | Per module | Yes | -- | -- |
-| 4 | `opscale-sipoc` | One SIPOC per `businessRuleTask` under `docs/actions/{kebab-id}.sipoc.md` — Suppliers/Inputs/Process/Outputs/Customers per Action. Consumed by `opscale-logic` | Per module | Yes | -- | -- |
+| 0 | `opscale-init` | Bootstrap scaffold, constitution, MCP servers, **commit standard** (commitlint/Husky/semantic-release), spec layout convention. Refuses if not inside a Laravel/PHP project | Yes | Yes | Yes | Yes |
+| 0.5 | `opscale-map` | App-level domain map: business lines (domains) → modules (subdomains) → cross-module ref ownership. Writes `.specify/memory/domain-map.md`. Optional but recommended for multi-module apps | Yes | Optional | -- | -- |
+| 1 | `opscale-process` | Module macro-flow: normalized names + lifecycle + wait-bounded subprocesses with typed steps + relations + narrative. Writes `final/process.md` + `logs/process.md` | Per module | Yes | -- | -- |
+| 2 | `opscale-dbml` | DDD-aligned DBML from the normalized names (business-only, `note` on module/table/field). Writes raw `final/domain.dbml` (+ `final/external-refs.md` if any cross-subdomain refs) + `final/naming.md` + `logs/dbml.md` | Per module | Yes | -- | -- |
+| 3 | `opscale-bpmn` | BPMN 2.0 map (one subProcess per subprocess in *Ordered flow*; atomic CRUD sequence → Logic grouping). Writes raw `final/process.bpmn` + `final/operations.md` + `logs/bpmn.md` | Per module | Yes | -- | -- |
+| 4 | `opscale-sipoc` | One SIPOC per `businessRuleTask` under `final/actions/{kebab-id}.sipoc.md` — Suppliers/Inputs/Process/Outputs/Customers per Action. Combined Q/A in `logs/sipoc.md`. Consumed by `opscale-logic` | Per module | Yes | -- | -- |
 | 5 | `opscale-domain` | Spec-kit plan + tasks (one per entity bundle), then models/migrations/enums/VOs/repos. No entity cap | Per module | Yes | Yes | -- |
 | 6 | `opscale-ui` | Spec-kit plan + tasks (one per aggregate bundle), then Resources + Repeatables + Field traits | Per module | Yes | Yes | -- |
-| 7 | `opscale-logic` | Spec-kit plan + tasks (one per Action), then Opscale Actions. Reads `docs/actions/*.sipoc.md` (produced by `opscale-sipoc`) to derive `parameters()` and `handle()` body | Per module | Yes | Yes | -- |
+| 7 | `opscale-logic` | Spec-kit plan + tasks (one per Action), then Opscale Actions. Reads `final/actions/*.sipoc.md` (produced by `opscale-sipoc`) to derive `parameters()` and `handle()` body | Per module | Yes | Yes | -- |
 | 8 | `opscale-debug` | Nova DevTool (UI) + Telescope (domain) + Xdebug (logic), local/staging only | Yes | Yes | Yes | Optional |
 | 9 | `opscale-test` | Stack config (Pest, Dusk, PHPStan, Duster, Rector) + **generates Unit (domain) / Feature (Actions) / Browser (one per identified process) tests**. Headless by default. `composer build`/`serve` | Yes | Yes | Yes | Yes |
 | 10 | `opscale-release` | Code quality for deployment: Duster (PHP+JS), static analysis (strict rules), Rector, SonarQube, GitHub Actions. Refuses without test files | deploy-app | publish-package | publish-package | publish-package |
 
 #### Presentation
 
-Strict order: seed → menu → showcase. Run after Generate to validate the module as a functional demo before Review.
+Strict order: seed → menu → showcase. Runs after Review has signed off on quality (see the lifecycle diagram above) and turns the verified module into a functional demo a human can sit down and watch end to end.
 
 | Skill | Purpose | app | module | package | library |
 |-------|---------|:---:|:------:|:-------:|:-------:|
@@ -307,7 +323,7 @@ Strict order: seed → menu → showcase. Run after Generate to validate the mod
 
 #### Validation (app, module)
 
-Require spec documentation artifacts (spec.md, data-model.md, process.md).
+Require spec documentation artifacts (`final/process.md`, `final/domain.dbml`, `final/process.bpmn`).
 
 | Agent | Spawned by | Purpose |
 |-------|-----------|---------|
@@ -435,10 +451,11 @@ Each skill is invoked as a Claude Code slash command inside the target project d
 
 ```
 /opscale-init          # bootstrap project + commit standard (commitlint/husky/semantic-release)
-/opscale-process       # capture the module macro-flow: names + flow + processes + relations
-/opscale-dbml          # generate data model + frozen docs/initial.dbml
-/opscale-bpmn          # generate process map + frozen docs/initial.bpmn
-/opscale-sipoc         # one SIPOC per Action under docs/actions/ (input for opscale-logic)
+/opscale-map           # app-level domain map: business lines → modules → cross-module refs
+/opscale-process       # capture the module macro-flow: names + lifecycle + subprocesses + relations
+/opscale-dbml          # generate raw final/domain.dbml + external-refs.md + naming.md + logs/dbml.md
+/opscale-bpmn          # generate raw final/process.bpmn + final/operations.md + logs/bpmn.md
+/opscale-sipoc         # one SIPOC per Action under final/actions/ + combined logs/sipoc.md (input for opscale-logic)
 /opscale-domain        # plan + tasks per entity, then generate domain layer
 /opscale-ui            # plan + tasks per aggregate, then generate Nova layer
 /opscale-logic         # plan + tasks per Action, consumes SIPOCs to generate Opscale Actions

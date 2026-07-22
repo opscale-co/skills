@@ -10,49 +10,45 @@ description: >
 
 # opscale-domain
 
-## Purpose
+## Context
+
+### Purpose
 
 Transform the validated DBML into a complete PHP domain layer. Every class generated
-maps 1:1 to an element in `data-model.md`. Nothing is created that cannot be traced
-back to the DBML.
+maps 1:1 to an element in `final/domain.dbml`. Nothing is created that cannot be traced
+back to the DBML. Output files are written to the package source directory and listed
+in `.specify/specs/{NNN}-{module-name}/plan.md` (domain section).
 
-Output files are written to the package source directory and listed in
-`.specify/specs/{NNN}-{module-name}/plan.md` (domain section).
-
----
-
-## Prerequisites — Plan phase MUST be complete
+### Prerequisites — Plan phase MUST be complete
 
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init` first. |
-| 2 | `opscale-process` has been run | `spec.md` exists and PASS | Stop. Run `/opscale-process`. |
-| 3 | `opscale-dbml` has been run | `data-model.md` exists and PASS | Stop. Run `/opscale-dbml`. |
-| 4 | `opscale-bpmn` has been run | `process.md` exists and PASS | Stop. Run `/opscale-bpmn`. |
+| 2 | `opscale-process` has been run | `final/process.md` exists and PASS | Stop. Run `/opscale-process`. |
+| 3 | `opscale-dbml` has been run | `final/domain.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `final/process.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
 
-This skill is **Step 1 of the Generate phase**. The full prerequisite chain `init → process → dbml → bpmn` must be PASS before this skill runs — partial Plan phase is not acceptable. After this skill, `opscale-ui` is next.
+This skill is **Step 1 of the Generate phase**. The full prerequisite chain `init → process → dbml → bpmn` must be PASS before this skill runs. After this skill, `opscale-ui` is next.
 
----
-
-## Generator contract — scaffold, then customize
+### Generator contract — scaffold, then customize
 
 The generators in `scripts/` exist to **minimize the code the LLM writes**, not to finish the class. Each generator emits the **initial scaffold** from the DBML; you then **always customize** what a template cannot anticipate:
 
-- **Repositories** — the scaffold has the base trait and constructor; you add the **query methods** the Actions will need (a template cannot know them up front).
+- **Repositories** — the scaffold has the base trait and constructor; you add the **query methods** the Actions will need.
 - **Models** — confirm relationships, casts, and scopes that depend on business meaning.
 - **Value Objects / Enums** — add the validation and helpers the domain implies.
 
-Rule: run the generator first, then read each generated file and complete it. Never hand-write a class the generator can scaffold; never ship a scaffold the domain needs more than.
+Rule: run the generator first, then read each generated file and complete it.
 
-## Output: File Structure
+### Output file structure
 
 ```
 database/
 └── migrations/
-    └── YYYY_MM_DD_HHMMSS_create_{table}_table.php       (one per table — at package root)
+    └── YYYY_MM_DD_HHMMSS_create_{table}_table.php       (one per table)
 src/
 ├── Contracts/
-│   └── {ContractName}Contract.php                       (one per external-refs slug — only if ≥1 ref)
+│   └── {ContractName}Contract.php                       (only if ≥1 external-ref)
 ├── Models/
 │   ├── Concerns/
 │   │   └── HasContractRelations.php                     (generated once if ≥1 external-ref)
@@ -67,142 +63,65 @@ src/
 
 ### Cross-subdomain virtual relations
 
-When `data-model.md` carries an `external-refs` index, the domain layer emits
-two extra artifacts and wires every cross-subdomain column into a real
-`BelongsTo` resolved through a host-supplied contract — instead of a dangling
-comment.
+When `final/external-refs.md` carries an `external-refs` index, the domain layer emits two extra artifacts (one shared `HasContractRelations` trait + one `{ContractName}Contract` interface per slug) and wires every cross-subdomain column into a real `BelongsTo` resolved through a host-supplied contract. The host binds an implementation; domain registers no default binding. For verbatim PHP templates and the column → relation-method naming convention, see `references/cross-subdomain-contracts.md`.
 
-#### `src/Models/Concerns/HasContractRelations.php` — generated once if there is ≥1 external-ref slug
+### Generation rules
 
-```php
-<?php
+**Subdomain prefix on tables.** In the Opscale ontology **subdomain = module** (do not confuse with *subprocess*, a wait-bounded segment inside the flow). Table names in migrations and models MUST be prefixed with the subdomain (the `MODULE_PREFIX` declared in `.specify/memory/constitution.md`). The DBML keeps entity names un-prefixed — the prefix is applied here, at the infrastructure boundary.
 
-declare(strict_types=1);
+- Migration filename: `YYYY_MM_DD_HHMMSS_create_{prefix}_{table}_table.php`
+- Migration body: `Schema::create('{prefix}_{table}', fn (Blueprint $t) => …)`
+- Eloquent model: `protected $table = '{prefix}_{table}';`
+- Foreign keys inside the same subdomain reference `{prefix}_{other_table}.id`
 
-namespace {Package\Namespace}\Models\Concerns;
+**Why:** in a modular app multiple subdomains share one database. Without prefixing, an `application` entity in `credits` collides with an `application` in `recruitment`. DBML entity names stay un-prefixed (see `opscale-dbml`) so the domain model reads naturally; the prefix is the infrastructure concern emitted by this skill.
 
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (either the line `**Module Prefix:** {value}` or the unsubstituted `[MODULE_PREFIX]` token) and apply it automatically.
 
-trait HasContractRelations
-{
-    /**
-     * Define a BelongsTo against the Eloquent query builder supplied
-     * by the given contract. The related model class comes from
-     * whatever model the host bound to that contract.
-     *
-     * @param  class-string  $contract  Contract whose query() returns the host's Eloquent\Builder
-     */
-    protected function belongsToContract(string $contract, string $foreignKey, string $relation): BelongsTo
-    {
-        $query = app($contract)->query();
-        $related = $query->getModel();
-
-        return $this->newBelongsTo(
-            $query,
-            $this,
-            $foreignKey,
-            $related->getKeyName(),
-            $relation,
-        );
-    }
-}
-```
-
-#### `src/Contracts/{ContractName}Contract.php` — one per slug in the `external-refs` index
-
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace {Package\Namespace}\Contracts;
-
-use Illuminate\Database\Eloquent\Builder;
-
-interface {ContractName}Contract
-{
-    public function query(): Builder;
-
-    /**
-     * @return array<string, string> Associative array of id to user-friendly description.
-     */
-    public function options(): array;
-}
-```
-
-Naming: `users` → `UsersContract`, `agencies` → `AgenciesContract`
-(StudlyCase + `Contract` suffix).
-
-The host is responsible for binding an implementation. Domain does NOT
-register any default binding — that's the host's concern, not the package's.
-
-#### Relation method naming convention
-
-For each cross-subdomain column the model emits a virtual `BelongsTo` method:
-
-| Column shape | Relation method | Example |
-|--------------|-----------------|---------|
-| `agency_id`, `teller_id`, `witness_id` | strip `_id`, camelCase | `agency_id → agency` |
-| `*_witness_id` (qualified witness) | camelCase the qualified prefix | `opening_witness_id → openingWitness` |
-| `*_by` (actor / audit columns) | camelCase + `User` suffix | `opened_by → openedByUser` |
-
-These rules live in `scripts/generate-model.mjs` — extend them there if a new
-shape shows up.
-
----
-
-## Generation Rules
-
-### Migrations
-
-- One migration per DBML table — filename: `YYYY_MM_DD_HHMMSS_create_{table}_table.php`
-- Increment timestamp by 1 second per file to enforce dependency order
+**Migrations:**
+- One migration per DBML table; increment timestamp by 1 second to enforce dependency order
 - `id` → `$table->ulid('id')->primary()`
 - **No `tenant_id` column** — Opscale is single-tenant; isolation is at the database level
 - Enum columns → `$table->string('{col}')->default('{default}')`
 - Timestamps → `$table->timestamps()`
 - Soft deletes → `$table->softDeletes()` only if `deleted_at` in DBML
-- Intra-subdomain FK → `$table->foreign('{col}')->references('id')->on('{table}')->cascadeOnDelete()`
+- Intra-subdomain FK → `$table->foreign('{col}')->references('id')->on('{prefix}_{table}')->cascadeOnDelete()`
 - Cross-subdomain reference → `$table->ulid('{col}')` + comment: `// logical reference to {subdomain}.{table} — no FK constraint`
-- DBML indexes → `$table->index(['{col}'])` or composite `$table->index(['{col1}', '{col2}'])`
+- DBML indexes → `$table->index(['{col}'])` or composite
 
-### Eloquent Models
-
+**Eloquent Models:**
 - `@property` docblock for every column — type must be `string` for ULIDs (not `int`)
-- Use `Validatable` from `opscale/validations` and declare `public static $validationRules` with Laravel validation rules per column
-- Use `{ModelName}Repository` trait (the repository trait for this model)
-- `protected $table` — only when the table name differs from Laravel's convention (plural snake_case of class name)
+- Use `Validatable` from `opscale/validations` and declare `public static $validationRules`
+- Use `{ModelName}Repository` trait
+- `protected $table = '{prefix}_{table}'` — ALWAYS emitted with the subdomain prefix
 - Use `HasUlids` trait — handles PK type and ULID generation automatically
 - `protected $fillable` — all business columns except `id`, timestamps, `deleted_at`
-- `protected $casts` — enum columns → Enum class; VO columns → Cast class; dates → `'datetime'`
-- Relationships only for intra-subdomain FKs — `belongsTo()`, `hasMany()`, `belongsToMany()`
+- `protected $attributes` — default values for columns with DBML `default:`. Emitted as literal PHP value.
+- `protected $casts` — enum columns → Enum class; VO columns → Cast class; dates → `'datetime'`; columns noted `// type:{slug}` in the DBML → the binding's `cast` (and their `rules` go into `$validationRules`) — Laravel binding at `.specify/memory/business-types.php`; canonical slugs defined in `.specify/memory/business-types.md`
+- Relationships only for intra-subdomain FKs
 - Cross-subdomain columns → comment: no Eloquent relationship, query via target repo
 - `SoftDeletes` trait only if `deleted_at` in DBML
 - No business logic in models — only property definitions, casts, relationships, validation rules
 - `declare(strict_types=1)` in every file
 
-### Enums
-
+**Enums:**
 - `enum {Name}: string` (PHP 8.3 backed)
-- Case name: PascalCase — value: **Title Case** string matching the DBML value exactly (e.g. `case InProgress = 'In Progress'`)
-- Every case must have a docblock comment explaining its business meaning (what it means for the entity to be in this state)
-- When the enum is a **status** field (column named `status`), add `canTransitionTo(self $status): bool` — inline `match()` returning bool per state
+- Case name: PascalCase — value: **Title Case** string matching the DBML value exactly
+- Every case must have a docblock comment explaining its business meaning
+- When the enum is a **status** field, add `canTransitionTo(self $status): bool`
 - Docblock describing the business concept
 
-### Repositories
-
-Repository is a **trait**, not a class or interface. It is mixed into the Eloquent Model.
-
+**Repositories:**
+- Repository is a **trait**, not a class or interface. Mixed into the Eloquent Model.
 - Named `{ModelName}Repository` — used as `use {ModelName}Repository;` inside the model
-- Contains a `boot{ModelName}Repository()` static method for model event hooks (e.g. status transition validation on `updating`)
-- Contains Eloquent **scope methods** for all domain-specific queries (e.g. `scopeOpen`, `scopeActive`, `scopeOverdue`, `scopeForAssignee`)
+- Contains a `boot{ModelName}Repository()` static method for model event hooks
+- Contains Eloquent **scope methods** for all domain-specific queries
 - Scope methods receive a `Builder $query` and return `Builder`
-- If the model has a `status` column, the boot method validates the transition on `updating` using `canTransitionTo()`
-- No `scopeForTenant` — the deployment model is one database per implementation; tenancy is not an application concern
+- If the model has a `status` column, the boot method validates the transition on `updating`
+- No `scopeForTenant` — the deployment model is one database per implementation
 - No `findById`, `create`, `update`, `delete` — those are standard Eloquent on the model itself
 
-### Value Objects
-
+**Value Objects:**
 - `readonly class` (PHP 8.3+)
 - Implements `Illuminate\Contracts\Database\Eloquent\CastsAttributes`
 - Constructor validates inputs — throws `\InvalidArgumentException` on invalid data
@@ -210,16 +129,32 @@ Repository is a **trait**, not a class or interface. It is mixed into the Eloque
 - `set()` returns scalar value(s) to store
 - Immutable — no setters, no mutators
 
----
+### Domain Rules
 
-## Workflow
+1. **No entity cap — generate every element the DBML declares.** A module with 120 entities is just as valid as one with 3. If the inventory exceeds the parallel-spawn limit, split into sequential batches. Never drop, defer, or "summarize" entities to reduce work.
+2. **One entity = one bundle task in `tasks.md`.** Migration + Model + Repository trait + owned Enums + owned VOs always ship as a single task. Shared Enums and shared VOs are their own small tasks. spec-kit plan + tasks runs BEFORE any generator agent is spawned.
+3. **Strict traceability** — every class maps to a DBML element. Nothing invented.
+4. **No logic in models** — only `$fillable`, `$attributes`, `$casts`, relationships, `$validationRules`.
+5. **Repository is a trait** — mixed into the model, not a separate class. Scopes + boot method only.
+6. **Enum values are Title Cased** — `case InProgress = 'In Progress'`, never `'in_progress'`.
+7. **Status enums** — when the enum maps to a column named `status`, add `canTransitionTo(self $status): bool` with inline `match()`.
+8. **Models use Validatable** — `use Opscale\Validations\Validatable` and `public static $validationRules`.
+9. **@property docblocks** — every model column documented, ULID columns typed as `string`, not `int`.
+10. **ULID everywhere** — `$table->ulid('id')->primary()` in migrations; `HasUlids` trait in models.
+11. **Generate order** — enums → VOs → migrations → models (with repository trait) → repository traits.
+12. **Cross-subdomain = no FK** — logical reference columns get a comment, never `->foreign()`.
+13. **Single-tenant deployment** — never emit `tenant_id` columns, `scopeForTenant`, or any per-row tenancy filter.
+14. **Value Objects are immutable** — `readonly class`, constructor validation, no setters.
+15. **`declare(strict_types=1)`** — every PHP file without exception.
+16. **Empty `$casts` is literal `[]`** — never emit `[ , ]`. Generators must check `count($casts) > 0` before joining.
+17. **Relation method names derive from FK column, not parent model** — two FKs to the same parent yield distinct method names. Track a `$used` set and append the parent model on collision.
+18. **Conditional relation imports** — `use ...\Relations\BelongsTo` (and `HasMany`) only when the model has ≥ 1 of that relation.
 
-### Phase 1 — Inventory
+## Steps
 
-Read `data-model.md` and present the full generation plan. **There is no cap on
-the number of entities, enums, or Value Objects** — generate every element the
-DBML declares, regardless of count. A 3-entity module and a 120-entity module
-are both valid inputs.
+### Phase 1 — Inventory the DBML
+
+Read `final/domain.dbml` (and `final/external-refs.md` if present) and present the full generation plan. **There is no cap on the number of entities, enums, or Value Objects** — generate every element the DBML declares, regardless of count.
 
 ```
 Domain inventory for [Module Name]:
@@ -242,20 +177,11 @@ Repository traits (mixed into their model): [N]
   - ... (one per model — do NOT truncate)
 
 Total files to generate: [migrations] + [models] + [enums] + [VOs] + [repository traits]
-
-Confirm before generating?
 ```
-
-Wait for confirmation.
 
 #### Strategy: deterministic scripts under parallel agents
 
-Generation is **always deterministic** — every file produced by this skill
-comes out of a Node.js script that renders a template from a JSON input. The
-parallel agents (enum-generator, value-object-generator, migration-generator,
-model-generator, repository-generator) are thin wrappers: their only job is to
-take the JSON the skill hands them, run the corresponding script, and report
-the result. They never write PHP themselves.
+Generation is **always deterministic** — every file produced by this skill comes out of a Node.js script that renders a template from a JSON input. The parallel agents are thin wrappers — they never write PHP themselves.
 
 | Script | Template | Agent |
 |--------|----------|-------|
@@ -266,59 +192,41 @@ the result. They never write PHP themselves.
 | `scripts/generate-repository.mjs` | `templates/repository.php.tmpl` | repository-generator |
 | `scripts/generate-contract.mjs` | `templates/contract.php.tmpl` + `templates/has-contract-relations.php.tmpl` | model-generator (per slug) |
 
-The JSON contract for each script is documented in the header comment of the
-`.mjs` file. The skill is responsible for normalizing the DBML into that JSON
-before spawning the agents — the scripts do **not** parse DBML.
+The JSON contract for each script is documented in the header comment of the `.mjs` file. The skill normalizes the DBML into that JSON before spawning the agents — the scripts do **not** parse DBML.
 
 Conflict policy is consistent across all scripts:
 
 - target missing → WRITE
 - target exists & identical → SKIP
-- target exists & differs → CONFLICT: a `*.opscale-preview` sidecar is written
-  and the real file is left untouched. The skill surfaces the diff to the user.
+- target exists & differs → CONFLICT: a `*.opscale-preview` sidecar is written and the real file is left untouched. The skill surfaces the diff to the user.
 
-Three invariants the JSON normalization must respect (template bugs they prevent):
+Three invariants the JSON normalization must respect:
 
-- Empty `casts` array → the script emits `[]` literally, never joins an empty list.
-- Sibling FKs to the same parent → derive the relation method name from the FK
-  column (not the parent model); track used names per class.
-- `BelongsTo` / `HasMany` imports → only included when ≥ 1 of that relation
-  exists in the input.
+- Empty `casts` array → the script emits `[]` literally.
+- Sibling FKs to the same parent → derive the relation method name from the FK column.
+- `BelongsTo` / `HasMany` imports → only included when ≥ 1 of that relation exists.
 
 #### Batching when N is very large
-
-If even the deterministic generator hits resource limits (60+ entities, deep
-relationships), split the emission phases. Within a phase, all files are
-generated in one pass.
 
 | Inventory size | Strategy |
 |----------------|----------|
 | 21–60 entities | Single generator pass; smoke gate at the end |
 | 60+ entities | Split into chunks (enums → first 20 migrations → first 20 models → next 20 migrations …) to bound peak file-write cost |
 
-Batching is a **performance** decision, never a **scope** decision — every
-entity in the DBML must be generated. Never drop or defer entities to reduce
-work.
+Batching is a **performance** decision, never a **scope** decision.
 
----
+**Wait for user approval before continuing.**
 
 ### Phase 2 — Drive spec-kit: one task per entity (bundle)
 
-Before generating any code, formalize the domain plan through spec-kit so every
-entity becomes a tracked task. This is what `opscale-test` later binds to (one
-Unit-test task per entity bundle) and what `/speckit.implement` checks against.
+Before generating any code, formalize the domain plan through spec-kit so every entity becomes a tracked task. This is what `opscale-test` later binds to and what `/speckit.implement` checks against.
 
-**The atomic unit is the entity bundle** — one task per entity that covers
-**all the files generated for that entity**: migration + model + enums used
-exclusively by it + value objects used exclusively by it + repository trait.
-Shared enums and shared VOs (used by multiple entities) get their own small
-task. Do NOT split an entity into a "model task" + "migration task" + "repo
-task" — those always ship together.
+**The atomic unit is the entity bundle** — one task per entity that covers **all the files generated for that entity**: migration + model + enums used exclusively by it + value objects used exclusively by it + repository trait. Shared enums and shared VOs get their own small task.
 
 **2a. Run `/speckit.plan`** with the domain inventory from Phase 1:
 
 ```
-/speckit.plan "Domain layer for {module-name}: [N] entities from data-model.md.
+/speckit.plan "Domain layer for {module-name}: [N] entities from final/domain.dbml.
 Generate one task per entity covering its full bundle:
   - 1 migration in database/migrations/
   - 1 Eloquent model in src/Models/
@@ -339,20 +247,12 @@ Confirm `plan.md` with the user.
 
 | Task field | Value |
 |------------|-------|
-| Title | `Implement {EntityName}` (for entity bundles) or `Implement {EnumName} enum` / `Implement {VOName} value object` (for shared building blocks) |
+| Title | `Implement {EntityName}` or `Implement {EnumName} enum` / `Implement {VOName} value object` |
 | Description | One sentence from the DBML entity Note |
 | Inputs | DBML table definition, columns, FK targets |
-| Outputs | List of files the bundle produces (migration + model + enums + VOs + repository) |
+| Outputs | List of files the bundle produces |
 | Acceptance | Schema matches DBML; status transitions defined (if status enum) |
-| Depends on | Task IDs of parent entities (FK targets) + shared enum/VO tasks the entity uses |
-
-```
-/speckit.tasks "Generate one task per entity bundle from plan.md, plus one task
-per shared Enum and shared ValueObject. Each entity task lists ALL bundle files
-in its Outputs. Dependency edges follow the FK graph (parent entities first).
-Precede every implementation task with a 'Test {Entity}' task (opscale-test
-fills it later). Do not split an entity into per-file tasks."
-```
+| Depends on | Task IDs of parent entities + shared enum/VO tasks the entity uses |
 
 **Verify `tasks.md`:**
 
@@ -367,63 +267,11 @@ fills it later). Do not split an entity into per-file tasks."
 
 If any check fails, regenerate `tasks.md` before continuing.
 
-### Phase 3 — Generate Enums
+**Wait for user approval before continuing.**
 
-Generate all enum PHP files completely.
-Enums must exist before models reference them in `$casts`.
+### Phase 3 — Generate domain artifacts
 
----
-
-### Phase 4 — Generate Value Objects
-
-Generate all VO PHP files completely.
-
----
-
-### Phase 5 — Generate Migrations
-
-Generate migration files in dependency order (parents before children).
-
----
-
-### Phase 6 — Generate Contracts + HasContractRelations trait
-
-If `data-model.md` carries an `external-refs` index, run
-`scripts/generate-contract.mjs` once per unique slug **before** generating
-models. Each call emits one `src/Contracts/{ContractName}Contract.php` and
-(idempotently) the shared `src/Models/Concerns/HasContractRelations.php`.
-
-If there is no `external-refs` index, skip this phase entirely — no contracts,
-no concern.
-
-Model generation in the next phase will import these contracts and the trait
-when normalizing each model's `cross_subdomain_refs`.
-
----
-
-### Phase 7 — Generate Models
-
-Generate all Eloquent model files.
-
----
-
-### Phase 8 — Generate Repositories
-
-Generate interface first, then implementation — one pair per model.
-
----
-
-### Phase 9 — Update plan.md
-
-Append the generated file list to `.specify/specs/{NNN}-{module-name}/plan.md`, including the `Task ID` from `tasks.md` for each entity bundle so the file → task mapping is traceable.
-
----
-
-## Code Templates
-
-All file generation is performed by the deterministic scripts in `scripts/`,
-each rendering a template from `templates/`. The exhaustive PHP code that used
-to live in this section is now the source of truth in those template files.
+Generation proceeds in strict dependency order. All file generation runs through the deterministic scripts in `scripts/` rendering templates from `templates/`.
 
 | Artifact | Template file | Script |
 |----------|--------------|--------|
@@ -434,84 +282,46 @@ to live in this section is now the source of truth in those template files.
 | Value Object | `templates/value-object.php.tmpl` | `scripts/generate-value-object.mjs` |
 | Contract + Concern | `templates/contract.php.tmpl`, `templates/has-contract-relations.php.tmpl` | `scripts/generate-contract.mjs` |
 
-The JSON input contract for each script is documented in its header comment.
-The skill's job during Phases 3–8 is to normalize the DBML + spec into that
-JSON; the script does the rest.
+**3a. Enums.** Generate all enum PHP files completely. Enums must exist before models reference them in `$casts`.
 
-### Generator pitfalls — verified against real modules
+**3b. Value Objects.** Generate all VO PHP files completely.
 
-These bugs slipped through earlier template versions on ~20+ entity packages.
-The current scripts/templates enforce most of them structurally — they are
-listed here so the **skill** can keep enforcing the one rule it owns
-(collision-free relation method names).
+**3c. Migrations.** Generate migration files in dependency order (parents before children).
 
-1. **Empty `$casts`** — STRUCTURAL: the template renders `protected $casts = [];`
-   literally when no columns are cast. No skill action needed.
+**3d. Contracts + HasContractRelations trait.** If `final/external-refs.md` carries an `external-refs` index, run `scripts/generate-contract.mjs` once per unique slug **before** generating models. Each call emits one `src/Contracts/{ContractName}Contract.php` and (idempotently) the shared `src/Models/Concerns/HasContractRelations.php`. If there is no `final/external-refs.md`, skip this step.
 
-2. **Sibling FK collision** (skill responsibility) — when two columns reference
-   the same parent table (`source_x_id`, `target_x_id`), deriving the relation
-   method from the parent model yields the same name twice → fatal redeclare.
-   When normalizing the JSON, derive method names from the COLUMN
-   (`source_x_id → sourceX()`, `target_x_id → targetX()`). Track used names
-   per class and append the parent model on collision.
+**3e. Models.** Generate all Eloquent model files. Models import contracts and the trait when normalizing each model's `cross_subdomain_refs`.
 
-3. **Conditional imports** — STRUCTURAL: `generate-model.mjs` only imports
-   `BelongsTo` / `HasMany` (etc.) when ≥ 1 of that relation type is present.
+**3f. Repositories.** Generate the repository trait per model.
 
----
+**3g. Complete the name lineage.** Open `final/naming.md` (written by `opscale-dbml`) and fill the **Model class** column: one FQCN per entity row (e.g. `Opscale\Credits\Models\Application`), and the contract class for each external-reference row (e.g. `UsersContract`). If `final/naming.md` does not exist (legacy module), create it from the DBML tables and the generated classes. This closes the trace canonical business name → table → class that keeps stakeholders and developers aligned.
 
-## Phase 10 — Smoke gate (MANDATORY before marking the skill complete)
+**3h. Update plan.md.** Append the generated file list to `.specify/specs/{NNN}-{module-name}/plan.md`, including the `Task ID` from `tasks.md` for each entity bundle so the file → task mapping is traceable.
 
-The auto-reported checkboxes in the completeness gate are not enough — too many
-template bugs (empty `$casts`, sibling-FK collisions, unused imports, missing
-notes) only surface when PHP actually parses and Laravel actually loads the
-classes. Run these three checks in order; any failure means the skill is NOT
-done:
+#### Generator pitfalls — verified against real modules
+
+1. **Empty `$casts`** — STRUCTURAL: the template renders `protected $casts = [];` literally when no columns are cast.
+2. **Sibling FK collision** (skill responsibility) — when two columns reference the same parent table, deriving the relation method from the parent model yields the same name twice → fatal redeclare. When normalizing the JSON, derive method names from the COLUMN. Track used names per class and append the parent model on collision.
+3. **Conditional imports** — STRUCTURAL: `generate-model.mjs` only imports `BelongsTo` / `HasMany` when ≥ 1 of that relation type is present.
+
+**Wait for user approval before continuing.**
+
+### Phase 4 — Smoke gate
+
+The auto-reported checkboxes in the completeness gate are not enough — too many template bugs (empty `$casts`, sibling-FK collisions, unused imports, missing notes) only surface when PHP actually parses and Laravel actually loads the classes. Run three checks in order: (1) `php -l` on every generated file, (2) composer autoload resolves every model class, (3) `testbench migrate:fresh` applies every migration. Any failure means the skill is NOT done.
+
+For the verbatim shell commands, see `references/smoke-gate.md`. Do NOT mark the gate `PASS` based on the file count alone.
+
+**Wait for user approval before continuing.**
+
+## Sample
+
+Model + Repository trait + Enum + migration excerpts — see `references/sample-output.md`.
+
+## Success condition
 
 ```bash
-# 1. Every generated PHP file parses (syntactic guarantee)
-find src/Models database/migrations -name '*.php' -print0 \
-  | xargs -0 -n1 php -l > /dev/null \
-  || { echo "❌ php -l failed"; exit 1; }
-
-# 2. Composer autoload finds every class (autoload + namespace guarantee)
-composer dump-autoload --no-scripts > /dev/null
-php -r 'require "vendor/autoload.php";
-  foreach (glob("src/Models/*.php") as $f) {
-    $class = "[PackageNamespace]\\\\Models\\\\" . basename($f, ".php");
-    if (! class_exists($class)) { fwrite(STDERR, "Missing: $class\n"); exit(1); }
-  }
-  echo "OK\n";'
-
-# 3. Every migration applies to a fresh SQLite db (schema guarantee)
-vendor/bin/testbench workbench:create-sqlite-db --ansi
-vendor/bin/testbench migrate:fresh --ansi
+composer install && vendor/bin/testbench migrate:fresh --env=testing
 ```
 
-If any of the three fails, fix the generator/template before declaring the
-skill complete. Do NOT mark the gate `PASS` based on the file count alone —
-auto-reporting was the #1 source of false-positive completions in earlier
-runs.
-
----
-
-## Domain Rules
-
-1. **No entity cap — generate every element the DBML declares.** A module with 120 entities is just as valid as one with 3. If the inventory exceeds the parallel-spawn limit, split into sequential batches (see Workflow → Phase 1 → Batching). Never drop, defer, or "summarize" entities to reduce work; never ask the user to trim the DBML to fit a quota.
-2. **One entity = one bundle task in `tasks.md`.** Migration + Model + Repository trait + owned Enums + owned VOs always ship as a single task. Shared Enums and shared VOs are their own small tasks. Never split an entity across multiple tasks; never merge two entities into one task. spec-kit plan + tasks runs BEFORE any generator agent is spawned.
-3. **Strict traceability** — every class maps to a DBML element. Nothing invented.
-4. **No logic in models** — only `$fillable`, `$casts`, relationships, `$validationRules`.
-5. **Repository is a trait** — mixed into the model, not a separate class. Scopes + boot method only.
-6. **Enum values are Title Cased** — `case InProgress = 'In Progress'`, never `'in_progress'`.
-7. **Status enums** — when the enum maps to a column named `status`, add `canTransitionTo(self $status): bool` with inline `match()`.
-8. **Models use Validatable** — `use Opscale\Validations\Validatable` and `public static $validationRules`.
-9. **@property docblocks** — every model column documented, ULID columns typed as `string`, not `int`.
-10. **ULID everywhere** — `$table->ulid('id')->primary()` in migrations; `HasUlids` trait in models.
-11. **Generate order** — enums → VOs → migrations → models (with repository trait) → repository traits.
-12. **Cross-subdomain = no FK** — logical reference columns get a comment, never `->foreign()`.
-13. **Single-tenant deployment** — never emit `tenant_id` columns, `scopeForTenant`, or any per-row tenancy filter. Isolation is at the database level; each consuming application installs the module against its own database.
-14. **Value Objects are immutable** — `readonly class`, constructor validation, no setters.
-15. **`declare(strict_types=1)`** — every PHP file without exception.
-16. **Empty `$casts` is literal `[]`** — never emit `[ , ]`. Generators must check `count($casts) > 0` before joining.
-17. **Relation method names derive from FK column, not parent model** — two FKs to the same parent (e.g. `source_x_id` + `target_x_id`) yield distinct method names by deriving from the column. Track a `$used` set and append the parent model on collision.
-18. **Conditional relation imports** — `use ...\Relations\BelongsTo` (and `HasMany`) only when the model has ≥ 1 of that relation. Catalog tables with no FKs get no relation imports.
+Exit code 0 = pass.

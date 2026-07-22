@@ -6,6 +6,8 @@
 //     "table_name":        "orders",
 //     "output_dir":        "src/Database/Migrations",
 //     "timestamp":         "2024_01_15_120000",
+//     "module_prefix":     "crd",                  // optional — overrides constitution lookup; "" means no prefix
+//     "constitution_path": ".specify/memory/constitution.md", // optional — explicit constitution path
 //     "tenant_aware":      true,
 //     "soft_deletes":      false,
 //     "columns": [
@@ -29,10 +31,36 @@
 // Type mapping (see SUPPORTED_TYPES below).
 
 import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { readJsonInput, render, writeOrConflict, loadTemplate, resultLine } from './_lib.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Resolve MODULE_PREFIX from .specify/memory/constitution.md.
+//   - explicit input.module_prefix wins (highest precedence)
+//   - then OPSCALE_MODULE_PREFIX env var
+//   - then parse `**Module Prefix:** {value}` from the constitution
+//   - then the unsubstituted `[MODULE_PREFIX]` token (returns '' so the
+//     skill notices)
+// Returns '' when no prefix can be resolved — the migration is then emitted
+// un-prefixed and the skill is expected to surface the issue.
+function resolveModulePrefix(input) {
+  if (input.module_prefix !== undefined) return String(input.module_prefix);
+  if (process.env.OPSCALE_MODULE_PREFIX) return process.env.OPSCALE_MODULE_PREFIX;
+  const constitutionPath = input.constitution_path
+    ? resolve(input.constitution_path)
+    : resolve(input.output_dir, '..', '..', '.specify', 'memory', 'constitution.md');
+  if (!existsSync(constitutionPath)) return '';
+  const body = readFileSync(constitutionPath, 'utf8');
+  const m = body.match(/\*\*Module Prefix:\*\*\s*([A-Za-z0-9_-]+)/);
+  if (m && m[1] && m[1] !== '[MODULE_PREFIX]') return m[1];
+  return '';
+}
+
+function prefixedTable(prefix, table) {
+  return prefix ? `${prefix}_${table}` : table;
+}
 
 const SUPPORTED_TYPES = new Set([
   'string', 'text', 'longText',
@@ -100,6 +128,9 @@ function main() {
     if (input[k] === undefined) throw new Error(`Missing required field: ${k}`);
   }
 
+  const modulePrefix = resolveModulePrefix(input);
+  const prefixed = prefixedTable(modulePrefix, input.table_name);
+
   // Drop FK columns from the "business columns" list — they're rendered separately as FKs.
   const fkColumnNames = new Set((input.foreign_keys || []).map(fk => fk.column));
   const crossColumnNames = new Set((input.cross_subdomain_refs || []).map(r => r.column));
@@ -114,12 +145,16 @@ function main() {
     .map(columnLine);
 
   const column_lines = [...fkColumnDefs, ...businessColumnLines];
-  const fk_lines        = (input.foreign_keys || []).map(fkLine);
+  // Intra-subdomain FKs reference the prefixed parent table.
+  const fk_lines = (input.foreign_keys || []).map(fk => fkLine({
+    ...fk,
+    on: prefixedTable(modulePrefix, fk.on),
+  }));
   const cross_ref_lines = (input.cross_subdomain_refs || []).map(crossRefLine);
   const index_lines     = (input.indexes || []).map(indexLine);
 
   const context = {
-    table_name:      input.table_name,
+    table_name:      prefixed,
     tenant_aware:    !!input.tenant_aware,
     soft_deletes:    !!input.soft_deletes,
     column_lines,
@@ -133,14 +168,15 @@ function main() {
 
   const template = loadTemplate(join(__dirname, '..', 'templates', 'migration.php.tmpl'));
   const rendered = render(template, context);
-  const filename = `${input.timestamp}_create_${input.table_name}_table.php`;
+  const filename = `${input.timestamp}_create_${prefixed}_table.php`;
   const outPath = resolve(input.output_dir, filename);
   const result = writeOrConflict(outPath, rendered);
 
   console.log(resultLine('STATUS', result.status));
   console.log(resultLine('GENERATED', result.path));
   if (result.preview) console.log(resultLine('PREVIEW', result.preview));
-  console.log(resultLine('TABLE', input.table_name));
+  console.log(resultLine('TABLE', prefixed));
+  console.log(resultLine('MODULE_PREFIX', modulePrefix || '(none)'));
   console.log(resultLine('COLUMNS', input.columns.length));
   console.log(resultLine('FOREIGN_KEYS', fk_lines.length));
   console.log(resultLine('INDEXES', index_lines.length));

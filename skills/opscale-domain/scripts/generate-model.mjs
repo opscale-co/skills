@@ -7,7 +7,9 @@
 //     "table_name":        "orders",
 //     "package_namespace": "Opscale\\LoanModule",
 //     "output_dir":        "src/Models",
-//     "custom_table":      false,                       // emit $table only if name != Laravel default
+//     "module_prefix":     "crd",                       // optional — overrides constitution lookup; "" means no prefix
+//     "constitution_path": ".specify/memory/constitution.md", // optional — explicit constitution path
+//     "custom_table":      false,                       // DEPRECATED — $table is ALWAYS emitted (subdomain prefix)
 //     "tenant_aware":      true,
 //     "has_soft_deletes":  true,
 //     "has_status":        true,
@@ -21,6 +23,11 @@
 //       { "name": "due_at",     "php_type": "\\Illuminate\\Support\\Carbon", "description": "Due date" }
 //     ],
 //     "fillable":   ["code", "status", "amount", "due_at", "customer_id"],
+//     "attributes": [
+//       { "column": "status",   "value": "'pending'" },
+//       { "column": "amount",   "value": "0" },
+//       { "column": "priority", "value": "1" }
+//     ],
 //     "casts": [
 //       { "column": "status", "cast": "OrderStatus::class" },
 //       { "column": "amount", "cast": "MoneyAmount::class" },
@@ -37,7 +44,7 @@
 //       { "column": "agency_id",     "contract_slug": "agencies", "subdomain": "crm",  "table": "agencies" }
 //     ],
 //
-//   `contract_slug` is the slug from the data-model.md `external-refs` index.
+//   `contract_slug` is the slug from the final/external-refs.md `external-refs` index.
 //   The script derives `contract_class` (StudlyCase + `Contract`) and
 //   `relation_method` (see RELATION_METHOD_RULES below) from the column +
 //   contract_slug. When `has_cross_refs` is true, the model `use`s the
@@ -51,12 +58,31 @@
 //   }
 
 import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { readJsonInput, render, writeOrConflict, loadTemplate, resultLine } from './_lib.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const BELONGS_TO_FQN = 'Illuminate\\Database\\Eloquent\\Relations\\BelongsTo';
+
+// See generate-migration.mjs — same resolution rules.
+function resolveModulePrefix(input) {
+  if (input.module_prefix !== undefined) return String(input.module_prefix);
+  if (process.env.OPSCALE_MODULE_PREFIX) return process.env.OPSCALE_MODULE_PREFIX;
+  const constitutionPath = input.constitution_path
+    ? resolve(input.constitution_path)
+    : resolve(input.output_dir, '..', '..', '.specify', 'memory', 'constitution.md');
+  if (!existsSync(constitutionPath)) return '';
+  const body = readFileSync(constitutionPath, 'utf8');
+  const m = body.match(/\*\*Module Prefix:\*\*\s*([A-Za-z0-9_-]+)/);
+  if (m && m[1] && m[1] !== '[MODULE_PREFIX]') return m[1];
+  return '';
+}
+
+function prefixedTable(prefix, table) {
+  return prefix ? `${prefix}_${table}` : table;
+}
 
 // Derive the relation method name from a cross-subdomain FK column.
 //   *_by             → camelCase + 'User'        (opened_by → openedByUser)
@@ -129,6 +155,12 @@ function main() {
     if (input[k] === undefined) throw new Error(`Missing required field: ${k}`);
   }
 
+  const modulePrefix = resolveModulePrefix(input);
+  // The DBML carries un-prefixed entity names; the prefix is applied here.
+  // Always emit `protected $table = '{prefix}_{table}'` regardless of whether
+  // the un-prefixed name would match Laravel's plural convention.
+  const prefixedTableName = prefixedTable(modulePrefix, input.table_name);
+
   const property_docs = input.columns.map(c => {
     const pad = Math.max(1, 16 - c.name.length);
     return `${c.php_type} $${c.name}${' '.repeat(pad)}${c.description || ''}`.trimEnd();
@@ -176,8 +208,10 @@ function main() {
   const context = {
     package_namespace: input.package_namespace,
     model_name:        input.model_name,
-    table_name:        input.table_name,
-    custom_table:      !!input.custom_table,
+    table_name:        prefixedTableName,
+    // Always emit `protected $table` — the subdomain prefix means the table
+    // never matches Laravel's automatic pluralization of the class name.
+    custom_table:      true,
     has_soft_deletes:  !!input.has_soft_deletes,
     property_docs,
     relation_imports,
@@ -185,6 +219,7 @@ function main() {
     vo_imports,
     validation_rules,
     fillable:           input.fillable || [],
+    attributes:         input.attributes || [],
     casts:              input.casts || [],
     relationships,
     has_relationships:  relationships.length > 0,
@@ -202,8 +237,10 @@ function main() {
   console.log(resultLine('GENERATED', result.path));
   if (result.preview) console.log(resultLine('PREVIEW', result.preview));
   console.log(resultLine('MODEL', input.model_name));
-  console.log(resultLine('TABLE', input.table_name));
+  console.log(resultLine('TABLE', prefixedTableName));
+  console.log(resultLine('MODULE_PREFIX', modulePrefix || '(none)'));
   console.log(resultLine('FILLABLE', context.fillable.length));
+  console.log(resultLine('ATTRIBUTES', context.attributes.length));
   console.log(resultLine('CASTS', context.casts.length));
   console.log(resultLine('RELATIONSHIPS', relationships.length));
   console.log(resultLine('TENANT_AWARE', input.tenant_aware ? 'yes' : 'no'));

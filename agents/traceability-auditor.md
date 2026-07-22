@@ -25,8 +25,8 @@ You receive:
 
 ### Chain 1: Spec Entity → DBML Table → Migration → Eloquent Model
 
-For every Entity artifact in `spec.md`:
-1. A DBML table MUST exist in `data-model.md`
+For every Entity artifact in `final/process.md`:
+1. A DBML table MUST exist in `final/domain.dbml`
 2. A migration file MUST exist in `src/Database/Migrations/`
 3. An Eloquent model MUST exist in `src/Models/`
 
@@ -34,7 +34,7 @@ Report: missing links in the chain
 
 ### Chain 2: DBML Enum → PHP Enum
 
-For every Enum block in `data-model.md`:
+For every Enum block in `final/domain.dbml`:
 1. A PHP enum file MUST exist in `src/Models/Enums/`
 2. The enum cases MUST match the DBML values
 
@@ -42,7 +42,7 @@ Report: missing enums, mismatched cases
 
 ### Chain 3: BPMN businessRuleTask → Opscale Action
 
-For every `businessRuleTask` in `process.md`:
+For every `businessRuleTask` in `final/process.bpmn`:
 1. An Action class MUST exist in `src/Services/Actions/`
 2. The Action's `identifier()` MUST match the BPMN `logic.id`
 3. The Action's business rules MUST match those referenced in the BPMN documentation
@@ -51,7 +51,7 @@ Report: unmapped tasks, identifier mismatches
 
 ### Chain 4: BPMN serviceTask → Repository Scope
 
-For every `serviceTask` (crud) in `process.md`:
+For every `serviceTask` (crud) in `final/process.bpmn`:
 1. The referenced entity MUST have a model in `src/Models/`
 2. The model MUST use a repository trait
 3. The repository SHOULD have scopes relevant to the crud operation
@@ -60,7 +60,7 @@ Report: missing models, missing repository traits
 
 ### Chain 5: BPMN sendTask → Output Contract (when implemented)
 
-For every `sendTask` in `process.md`:
+For every `sendTask` in `final/process.bpmn`:
 1. An output contract SHOULD exist in `.specify/specs/{NNN}/contracts/`
 
 Report: unmapped output tasks (warning, not blocking if opscale-outputs not yet run)
@@ -77,9 +77,9 @@ Report: missing Nova files
 ## How to Extract Data
 
 - **Spec entities**: Parse `## Artifacts` section, filter for `type: Entity`
-- **DBML tables**: Parse `Table {name}` blocks from the DBML code block in `data-model.md`
+- **DBML tables**: Parse `Table {name}` blocks directly from raw `final/domain.dbml`
 - **DBML enums**: Parse `Enum {name}` blocks
-- **BPMN tasks**: Parse `<bpmn:serviceTask>`, `<bpmn:businessRuleTask>`, `<bpmn:sendTask>` from XML in `process.md`
+- **BPMN tasks**: Parse `<bpmn:serviceTask>`, `<bpmn:businessRuleTask>`, `<bpmn:sendTask>` directly from raw XML in `final/process.bpmn`
 - **Migrations**: Glob `src/Database/Migrations/*_create_*_table.php`
 - **Models**: Glob `src/Models/*.php` (exclude Enums/, Repositories/, ValueObjects/)
 - **Actions**: Glob `src/Services/Actions/*.php`

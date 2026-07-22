@@ -39,7 +39,7 @@ If `.specify/` does NOT exist (rare — package was never run through
 `opscale-init`), skip this phase and proceed to Phase 4 directly. Otherwise:
 
 **3a. Build a synthetic spec folder for this Action batch.** Standalone mode
-has no `process.md`, so create a minimal `.specify/specs/{NNN}-actions-{date}/`
+has no `final/process.bpmn`, so create a minimal `.specify/specs/{NNN}-actions-{date}/`
 folder and seed it with the Action definitions the user provided.
 
 **3b. Run `/speckit.plan`** with the same payload structure as the BPMN-driven

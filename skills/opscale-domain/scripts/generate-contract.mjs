@@ -2,7 +2,7 @@
 // Deterministic generator for a single Opscale cross-subdomain Contract
 // interface and the shared HasContractRelations trait.
 //
-// One call per unique slug in the data-model.md `external-refs` index. The
+// One call per unique slug in the final/external-refs.md `external-refs` index. The
 // trait file is fixed content — it is emitted alongside the first contract
 // and skipped on subsequent calls (writeOrConflict handles idempotence).
 //

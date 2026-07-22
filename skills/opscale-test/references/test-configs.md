@@ -3,7 +3,14 @@
 Verbatim config files and reference tables extracted from the skill body.
 Read the relevant block when the body points you here.
 
-Contents: Troubleshooting · phpunit.xml (Unit + Feature) · testbench.yaml — Required Providers · tests/DuskTestCase.php · workbench/database/seeders/DatabaseSeeder.php · phpstan.neon · duster.json
+## Table of contents
+
+- [phpunit.xml (Unit + Feature)](#phpunitxml-unit--feature)
+- [phpunit.dusk.xml (Browser — separate config)](#phpunitduskxml-browser--separate-config)
+- [tests/TestCase.php (Unit + Feature)](#teststestcasephp-unit--feature)
+- [tests/Pest.php](#testspestphp) — incl. full testbench.yaml, DuskTestCase, Browser example, Nova selectors, seeders, phpstan.neon, duster.json, pint.json
+- [composer.json — scripts block](#composerjson--scripts-block-the-replicable-test-commands) — build/serve/test/test:browser/check + package.json mirror
+- [Troubleshooting](#troubleshooting) — Dusk 500s, port conflicts, ChromeDriver mismatch, session persistence
 
 ---
 
@@ -55,25 +62,35 @@ and the workbench `.env`.
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<phpunit
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-    bootstrap="vendor/autoload.php"
-    colors="true"
->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         processIsolation="false"
+         stopOnFailure="false"
+         cacheDirectory=".phpunit.cache.dusk">
     <testsuites>
         <testsuite name="Browser">
             <directory>tests/Browser</directory>
         </testsuite>
     </testsuites>
     <php>
-        <env name="APP_KEY" value="base64:YOUR_KEY_HERE"/>
+        <env name="APP_KEY" value="base64:YOUR_KEY_HERE" force="true"/>
+        <env name="APP_LOCALE" value="{locale}" force="true"/>
+        <env name="APP_FALLBACK_LOCALE" value="{locale}" force="true"/>
+        <env name="APP_FAKER_LOCALE" value="{faker_locale}" force="true"/>
     </php>
 </phpunit>
 ```
 
-**CRITICAL**: Only `APP_KEY` goes here. Any other env overrides (session, cache, DB) will
-break the Dusk server because it runs as a separate process and needs real sessions/DB.
+**CRITICAL — what goes here and what must not.** Set exactly `APP_KEY` plus the three
+locale vars, all with `force="true"` so the separate Dusk PHP process matches the
+showcase / production locale (without `force`, the workbench `.env` wins and Browser
+assertions on localized labels fail). Do NOT set `SESSION_DRIVER`, `CACHE_DRIVER`, or
+`DB_*` here — the Dusk server runs as a real process and needs the real sessions/DB it
+inherits from `testbench.yaml`; overriding those breaks it. The
+`processIsolation`/`stopOnFailure`/`cacheDirectory` attributes are required — they keep
+the Browser suite in one process with its own cache dir, separate from `phpunit.xml`.
 
 ---
 
@@ -141,29 +158,73 @@ via class inheritance and run with a separate phpunit config (`phpunit.dusk.xml`
 
 ---
 
-### testbench.yaml — Required Providers
+### testbench.yaml (full file — copy verbatim, then adjust the marked lines)
 
-The Dusk server loads providers from `testbench.yaml`. All providers needed for Nova to
-function must be listed here, including providers that Nova normally auto-discovers:
+The Dusk server boots from `testbench.yaml`. This is the whole file, not just the provider
+list: the `env:` block forces the locale, the `providers:` list supplies everything Nova
+auto-discovers (and Testbench does not), and the `workbench:` block is the exact build
+sequence `composer run build` replays so any contributor or CI recreates an identical,
+seeded Nova workbench. Copy it verbatim; change only the lines marked `# adjust`.
 
 ```yaml
+laravel: '@testbench-dusk'
+
+env:
+  - APP_LOCALE={locale}
+  - APP_FALLBACK_LOCALE={locale}
+  - APP_FAKER_LOCALE={faker_locale}
+  - APP_KEY=base64:YOUR_KEY_HERE          # adjust — must equal phpunit.xml / phpunit.dusk.xml
+
 providers:
-  - Inertia\ServiceProvider            # REQUIRED — Nova uses Inertia, @inertia blade directive
-  - Laravel\Nova\NovaCoreServiceProvider
-  - Laravel\Nova\NovaServiceProvider
+  - Inertia\ServiceProvider                 # REQUIRED — Nova uses Inertia, @inertia blade directive
   - Laravel\Fortify\FortifyServiceProvider  # REQUIRED — Nova auth uses Fortify (StatefulGuard binding)
   - Laravel\Dusk\DuskServiceProvider        # REQUIRED — provides _dusk/login route for loginAs()
+  - Laravel\Nova\NovaCoreServiceProvider
+  - Laravel\Nova\NovaServiceProvider
+  - Lorisleiva\Actions\ActionServiceProvider          # REQUIRED — Opscale Actions run on Laravel Actions
+  - Opscale\Actions\ToolServiceProvider
+  - Opscale\NovaToolbarActions\ToolServiceProvider
   - Laravel\Sanctum\SanctumServiceProvider  # if using Sanctum
   - Orion\OrionServiceProvider              # if using Orion
   - Workbench\App\Providers\WorkbenchServiceProvider
   - Workbench\App\Providers\NovaServiceProvider
-  - [PackageNamespace]\ToolServiceProvider
+  - Acme\YourModule\SubdomainServiceProvider          # adjust — your module's service provider
+
+migrations:
+  - workbench/database/migrations
+
+seeders:
+  - Workbench\Database\Seeders\DatabaseSeeder
+
+workbench:
+  start: /nova
+  build:
+    - package:discover
+    - asset-publish
+    - create-sqlite-db
+    - db:wipe
+    - migrate:refresh
+    - 'db:seed --class="Workbench\Database\Seeders\DatabaseSeeder"'
+  assets:
+    - nova-assets
+  sync: []
+
+purge:
+  directories:
+    - lang/*
+    - public/vendor/*
 ```
 
 **Missing providers cause 500 errors in the Dusk server that are INVISIBLE** — no log output,
 no error details, just a "500 SERVER ERROR" page in the browser screenshot. If you see 500s:
 1. Use the debug script technique (see Troubleshooting below) to get the real exception
 2. The fix is almost always a missing provider in `testbench.yaml`
+
+**The `workbench: build:` order is load-bearing.** `create-sqlite-db` → `db:wipe` →
+`migrate:refresh` → `db:seed` must stay in that sequence — it produces the seeded SQLite
+DB the Browser tests assert against. Skipping or reordering yields empty Nova pages and
+false Browser failures. `composer run build` runs exactly this list, so the same workbench
+is reproducible on every machine.
 
 ---
 
@@ -179,7 +240,9 @@ namespace [PackageNamespace]\Tests;
 use Facebook\WebDriver\Chrome\ChromeOptions;
 use Facebook\WebDriver\Remote\DesiredCapabilities;
 use Facebook\WebDriver\Remote\RemoteWebDriver;
-use Illuminate\Foundation\Application;
+use Illuminate\Support\Env;
+use Illuminate\Support\Facades\Request;
+use Illuminate\Support\Sleep;
 use Laravel\Dusk\Browser;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\Dusk\TestCase as BaseTestCase;
@@ -193,21 +256,18 @@ abstract class DuskTestCase extends BaseTestCase
     protected static $baseServePort = 8089;
 
     /**
-     * Create the RemoteWebDriver instance.
+     * Two modes — keyed off DUSK_HEADLESS:
+     *   true  (default, CI)            → headless Chrome, DUSK_PAUSE_MS defaults to 0
+     *   false (local / stakeholder)    → visible Chrome, DUSK_PAUSE_MS defaults to 3000
+     *                                     (3-second pause before every form / Action submit,
+     *                                      matching opscale-showcase rhythm)
      *
-     * Headless by default. To run with a visible Chrome window (for debugging
-     * a failing Browser test), set DUSK_HEADLESS=false in the environment:
-     *
-     *     DUSK_HEADLESS=false composer run test:browser
+     * DUSK_PAUSE_MS is independently overridable:
+     *   DUSK_HEADLESS=false DUSK_PAUSE_MS=500 composer run test:browser:visual
      */
     #[Override]
     protected function driver(): RemoteWebDriver
     {
-        $headless = filter_var(
-            $_ENV['DUSK_HEADLESS'] ?? getenv('DUSK_HEADLESS') ?? 'true',
-            FILTER_VALIDATE_BOOLEAN
-        );
-
         $args = [
             '--window-size=1920,1080',
             '--disable-gpu',
@@ -215,17 +275,75 @@ abstract class DuskTestCase extends BaseTestCase
             '--disable-dev-shm-usage',
         ];
 
-        if ($headless) {
+        if ($this->isHeadless()) {
             $args[] = '--headless=new';
             $args[] = '--disable-search-engine-choice-screen';
         }
 
         $options = (new ChromeOptions())->addArguments($args);
 
+        $url = $this->readEnv('DUSK_DRIVER_URL') ?? 'http://localhost:9515';
+
+        // ChromeDriver is started asynchronously — poll its /status endpoint for
+        // up to 10s before opening a session so the very first test does not race
+        // the driver's port binding (a common source of one-off Browser failures).
+        $this->waitForChromeDriver($url);
+
         return RemoteWebDriver::create(
-            $_ENV['DUSK_DRIVER_URL'] ?? 'http://localhost:9515',
+            $url,
             DesiredCapabilities::chrome()->setCapability(ChromeOptions::CAPABILITY, $options)
         );
+    }
+
+    /** Whether the current run is headless (CI default). */
+    protected function isHeadless(): bool
+    {
+        $raw = $this->readEnv('DUSK_HEADLESS');
+
+        return ($raw === null || $raw === '')
+            ? true
+            : filter_var($raw, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * Pause budget (ms) used by Browser::submitForm() before every submit.
+     * Headless → 0 (CI is fast). Visual → 3000 (stakeholder rhythm).
+     * Override with DUSK_PAUSE_MS=<int>.
+     */
+    public function pauseMs(): int
+    {
+        $explicit = $this->readEnv('DUSK_PAUSE_MS');
+        if ($explicit !== null && $explicit !== '') {
+            return (int) $explicit;
+        }
+
+        return $this->isHeadless() ? 0 : 3000;
+    }
+
+    /**
+     * Register Browser macros once. Generators call $browser->submitForm()
+     * for every submit and $browser->assertNoErrorToast() right after every
+     * submit. Pause behavior is centralized here.
+     */
+    #[Override]
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $testCase = $this;
+
+        Browser::macro('submitForm', function (string $selector = '@create-button') use ($testCase) {
+            /** @var Browser $this */
+            return $this->pause($testCase->pauseMs())->click($selector);
+        });
+
+        Browser::macro('assertNoErrorToast', function () {
+            /** @var Browser $this */
+            return $this->pause(300)  // toasts surface ~100ms after the response
+                ->assertMissing('.toasted.toasted-error')
+                ->assertMissing('[role="alert"].error')
+                ->assertMissing('.notification--error');
+        });
     }
 
     /**
@@ -264,19 +382,79 @@ abstract class DuskTestCase extends BaseTestCase
             // List Nova resources to expose
         ]);
     }
+
+    /**
+     * Read an env var reliably. getenv() FIRST, because the test:browser /
+     * test:browser:visual composer scripts set DUSK_HEADLESS / DUSK_PAUSE_MS as
+     * shell-prefix vars, and Laravel's Env::get() / $_ENV may miss them — the
+     * dotenv repository caches the first-resolved value, which on a Testbench
+     * bootstrap is empty. getenv() always sees the shell prefix.
+     */
+    private function readEnv(string $key): ?string
+    {
+        $value = getenv($key);
+        if ($value !== false) {
+            return $value;
+        }
+
+        $serverValue = Request::server($key);
+        if (is_string($serverValue)) {
+            return $serverValue;
+        }
+
+        $envValue = Env::get($key);
+
+        return is_string($envValue) ? $envValue : null;
+    }
+
+    /** Poll ChromeDriver's /status until it reports ready (default 10s). */
+    private function waitForChromeDriver(string $url, int $timeoutMs = 10000): void
+    {
+        $deadline = microtime(true) + ($timeoutMs / 1000);
+        $statusUrl = rtrim($url, '/').'/status';
+
+        while (microtime(true) < $deadline) {
+            $ch = curl_init($statusUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT_MS => 500,
+                CURLOPT_TIMEOUT_MS => 1000,
+            ]);
+            $body = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($code === 200 && is_string($body) && str_contains($body, '"ready"')) {
+                return;
+            }
+
+            Sleep::usleep(150_000);
+        }
+    }
 }
 ```
 
-### Browser Test Example — Nova Resource (Smoke Test ONLY)
+### Browser Test Example — Full Flow
 
-Browser tests are **smoke tests only**. Their single job: verify the page renders
-without throwing. No business assertions, no validation flows, no CRUD round-trips.
-Two tests per Resource — create form and detail page. Both assert the page renders
-without 500/exception markers.
+Browser tests drive the **real user flow end to end** — log in, navigate, fill
+forms, submit, open Actions, fill Action modals, submit, assert no error toast
+appears at any step. One file per flow in `final/process.md` *Ordered flow*;
+one test method per flow path (happy path + each gateway branch + each failure
+path that is observable in the UI).
 
-**Why so minimal:** business correctness lives in Feature tests (Actions). The UI
-layer only needs to prove "the resource is wired correctly — fields render, no
-missing relations, no enum mismatches, no provider/binding errors".
+**Layer split — what belongs where:**
+- **Browser test** asserts the **user-visible** outcome: success toast appears,
+  the redirect / list row happens, no error toast at any step.
+- **Feature test** asserts the **business state**: event dispatched, row mutated,
+  side effect persisted, side queue dispatched.
+
+A Browser test that only navigates without filling and submitting is incomplete
+— the flow has not been exercised.
+
+**Submit + toast convention** — every form / Action submit MUST go through
+`$browser->submitForm()` (centralizes the headless-vs-visual pause) and MUST be
+immediately followed by `$browser->assertNoErrorToast()`. Do NOT add raw
+`->pause()` calls; the pause is keyed off `DUSK_HEADLESS` / `DUSK_PAUSE_MS`.
 
 ```php
 <?php
@@ -290,44 +468,46 @@ use [PackageNamespace]\Models\[ModelName];
 use [PackageNamespace]\Tests\DuskTestCase;
 use PHPUnit\Framework\Attributes\Test;
 
-final class [ResourceName]ResourceTest extends DuskTestCase
+/**
+ * One file per flow in final/process.md *Ordered flow*.
+ * Inside: one test method per path (happy + branches + visible failures).
+ */
+final class [FlowName]FlowTest extends DuskTestCase
 {
     #[Test]
-    final public function create_page_renders_without_exceptions(): void
+    final public function happy_path_completes_end_to_end(): void
     {
         $this->browse(function (Browser $browser): void {
             $this->loginToNova($browser)
+                // 1. Create the trigger record via the Nova form
                 ->visit('/nova/resources/[uri-key]/new')
                 ->waitForText('Create [Singular Label]')
-                ->assertDontSee('SERVER ERROR')
-                ->assertDontSee('Whoops')
-                ->assertDontSee('Exception')
-                ->assertSee('Create [Singular Label]');
+                ->type('@[field_a]', '[value_a]')
+                ->select('@[field_b]', '[option_b]')
+                ->submitForm('@create-button')
+                ->assertNoErrorToast()
+                ->waitForText('The [Singular Label] was created!')   // Nova success toast
+
+                // 2. Run the Action that advances the flow
+                ->click('@action-dropdown')
+                ->click('[dusk="action-[action-identifier]"]')
+                ->waitFor('@confirm-action-button')
+                ->type('@[action_field]', '[action_value]')
+                ->submitForm('@confirm-action-button')
+                ->assertNoErrorToast()
+                ->waitForText('The action ran successfully!')        // Nova success toast
+
+                // 3. Assert user-visible outcome — leave business asserts to Feature tests
+                ->visit('/nova/resources/[uri-key]')
+                ->assertSee('[expected list row text]');
         });
     }
 
-    #[Test]
-    final public function detail_page_renders_without_exceptions(): void
-    {
-        $record = [ModelName]::factory()->create();
-
-        $this->browse(function (Browser $browser) use ($record): void {
-            $this->loginToNova($browser)
-                ->visit('/nova/resources/[uri-key]/' . $record->getKey())
-                ->waitFor('[dusk="[uri-key]-detail-component"]', 10)
-                ->assertDontSee('SERVER ERROR')
-                ->assertDontSee('Whoops')
-                ->assertDontSee('Exception');
-        });
-    }
+    // One additional test method per gateway branch, e.g.:
+    //   #[Test] final public function path_when_credit_score_too_low_shows_rejection(): void { ... }
+    //   #[Test] final public function path_when_external_lookup_fails_surfaces_validation(): void { ... }
 }
 ```
-
-**Anti-patterns — do NOT do this in Browser tests:**
-- ❌ Typing into fields and pressing Create (that's a Feature test concern)
-- ❌ Asserting validation error messages (that's a Feature test concern)
-- ❌ Asserting business outcomes after submit (that's a Feature test concern)
-- ❌ Multiple test methods per page (one smoke per page is enough)
 
 ### Nova Dusk Selectors Reference
 
@@ -342,16 +522,42 @@ Nova components expose these Dusk selectors:
 | MorphTo select | `@[attribute]-select` | `->select('@tokenable-select', '1')` |
 | Boolean | `@[attribute]` | `->check('@active')` |
 
+### Nova submit / Action / toast selectors
+
+| Element | Selector | Usage |
+|---------|----------|-------|
+| Submit button (Create form) | `@create-button` | `->submitForm('@create-button')` |
+| Submit button (Update form) | `@update-button` | `->submitForm('@update-button')` |
+| Delete modal trigger | `@open-delete-modal-button` | `->click('@open-delete-modal-button')` |
+| Action dropdown (index/detail) | `@action-dropdown` | `->click('@action-dropdown')` |
+| Action menu item | `[dusk="action-{action-identifier}"]` | `->click('[dusk="action-approve-loan"]')` |
+| Action modal confirm | `@confirm-action-button` | `->submitForm('@confirm-action-button')` |
+| Error toast (Nova 4/5) | `.toasted.toasted-error` | (asserted by `assertNoErrorToast()`) |
+| Error toast (Nova 3 legacy) | `[role="alert"].error` | (asserted by `assertNoErrorToast()`) |
+| Error toast (fallback) | `.notification--error` | (asserted by `assertNoErrorToast()`) |
+| Success toast (Nova 4/5) | `.toasted.toasted-success` | `->waitFor('.toasted.toasted-success')` |
+
 ### Nova UI Text Reference
 
 | Element | Text |
 |---------|------|
 | Login button | `Log In` (with space, NOT "Login") |
 | Dashboard heading | `Get Started` |
-| Create button | `Create [Singular Label]` |
-| Update button | `Update [Singular Label]` |
-| Delete modal trigger | `@open-delete-modal-button` |
+| Create button text | `Create [Singular Label]` |
+| Update button text | `Update [Singular Label]` |
 | Delete confirm button | `Delete` |
+| Resource-created success toast | `The [Singular Label] was created!` |
+| Resource-updated success toast | `The [Singular Label] was updated!` |
+| Action-success toast | `The action ran successfully!` |
+
+### Environment variables — Browser modes
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `DUSK_HEADLESS` | `true` | `true` → headless Chrome; `false` → visible Chrome window. |
+| `DUSK_PAUSE_MS` | derived | `0` when headless, `3000` when visible. Override with any integer (ms). Used by `Browser::submitForm()` as the pause before every submit. |
+
+CI uses the defaults (`DUSK_HEADLESS=true`, `DUSK_PAUSE_MS=0`). Local visual runs use `composer run test:browser:visual` which sets `DUSK_HEADLESS=false DUSK_PAUSE_MS=3000`.
 
 ---
 
@@ -378,7 +584,7 @@ final class DatabaseSeeder extends Seeder
         // Admin user — used by loginToNova()
         \Workbench\Database\Seeders\UserSeeder::run();
 
-        // One record per aggregate root — minimum for Browser smoke tests
+        // One record per aggregate root — minimum for Browser flow tests to resolve a real detail/list page
         [ModelName]::factory()->count(3)->create();
         // ... one factory call per aggregate
     }
@@ -500,6 +706,142 @@ with four strict-rules sets:
 
 **TLint rule**: Always use `use` imports instead of `\Fully\Qualified\Class` in test files.
 TLint warns on backslash-prefixed namespaces and causes lint failure.
+
+---
+
+## composer.json — scripts block (the replicable test commands)
+
+This is the canonical `scripts` block, taken verbatim from the reference module. It is what
+makes the suite reproducible: every contributor and CI runs the same `build` (which replays
+the `testbench.yaml` `workbench:` sequence and syncs ChromeDriver), the same locale-forced
+Browser run, and the same `check` gate. Copy it verbatim. The only per-module substitution
+is the Browser test filenames on the `test:browser`, `test:browser:visual`, and `showcase`
+lines — they list this module's flow / showcase tests (`opscale-process` defines the flows,
+`opscale-showcase` defines the showcase test); a new module lists its own, in the same shape.
+
+```json
+"scripts": {
+    "post-autoload-dump": [
+        "@clear",
+        "@prepare"
+    ],
+    "clear": "@php vendor/bin/testbench package:purge-skeleton --ansi",
+    "prepare": "@php vendor/bin/testbench package:discover --ansi",
+    "build": [
+        "@php vendor/bin/testbench-dusk workbench:build --ansi",
+        "@php vendor/bin/testbench-dusk dusk:chrome-driver --detect"
+    ],
+    "serve": [
+        "Composer\\Config::disableProcessTimeout",
+        "@php vendor/bin/testbench-dusk serve --ansi"
+    ],
+    "lint": "./vendor/bin/duster lint --dirty",
+    "fix": "./vendor/bin/duster fix --dirty",
+    "refactor": "./vendor/bin/rector process",
+    "analyse": "./vendor/bin/phpstan analyse --memory-limit=512M",
+    "test": "./vendor/bin/pest --testsuite=Unit,Feature",
+    "test:unit": "./vendor/bin/pest --testsuite=Unit",
+    "test:feature": "./vendor/bin/pest --testsuite=Feature",
+    "test:browser": "DUSK_HEADLESS=true DUSK_PAUSE_MS=0 ./vendor/bin/pest -c phpunit.dusk.xml --exclude-testsuite=Showcase tests/Browser/AdmissionPreparationFlowTest.php tests/Browser/CommitteeDecisionFlowTest.php tests/Browser/WithdrawalPreparationFlowTest.php tests/Browser/WithdrawalReviewFlowTest.php",
+    "test:browser:visual": "DUSK_HEADLESS=false DUSK_PAUSE_MS=3000 ./vendor/bin/pest -c phpunit.dusk.xml tests/Browser/AdmissionPreparationFlowTest.php tests/Browser/CommitteeDecisionFlowTest.php tests/Browser/WithdrawalPreparationFlowTest.php tests/Browser/WithdrawalReviewFlowTest.php",
+    "showcase": [
+        "@composer build",
+        "DUSK_HEADLESS=false DUSK_PAUSE_MS=3000 ./vendor/bin/pest tests/Browser/MembershipShowcaseTest.php -c phpunit.dusk.xml"
+    ],
+    "check": [
+        "Composer\\Config::disableProcessTimeout",
+        "@fix",
+        "@refactor",
+        "@lint",
+        "@analyse",
+        "@test"
+    ]
+}
+```
+
+Why each load-bearing piece matters for replicability:
+- `post-autoload-dump` → `clear` + `prepare` rebuild the Testbench skeleton on every
+  `composer install`, so a fresh clone boots the same workbench.
+- `build` is two steps: `workbench:build` (replays the `testbench.yaml` `workbench:` block)
+  then `dusk:chrome-driver --detect` (matches ChromeDriver to the local Chrome). Browser
+  runs depend on both.
+- `test:browser` forces `DUSK_HEADLESS=true DUSK_PAUSE_MS=0` (CI), `:visual` forces
+  `false`/`3000` (watch a flow). The `-c phpunit.dusk.xml` flag selects the Dusk config
+  above; `--exclude-testsuite=Showcase` keeps the long showcase out of the CI run.
+- `check` is the single green-gate: fix → refactor → lint → analyse → test, in that order.
+
+### composer.json — test-stack dependencies + config (verbatim from the reference)
+
+The scripts above only run if these packages are installed. This is the exact `require-dev`
+block plus the `config` and `repositories` the stack needs (`repositories` is required —
+`laravel/nova` and `laravel/nova-devtool` resolve from the private Nova registry). Copy
+verbatim; bump versions deliberately. The runtime `require`, `autoload`, and provider
+registration in the same `composer.json` are owned by `opscale-init` / `opscale-domain` —
+do not duplicate them here.
+
+```json
+"require-dev": {
+    "barryvdh/laravel-debugbar": "^4.3",
+    "larastan/larastan": "^3.0",
+    "laravel-lang/common": "^6.8",
+    "laravel/boost": "^2.4",
+    "laravel/nova-devtool": "^1.9",
+    "laravel/telescope": "^5.20",
+    "mockery/mockery": "^1.6",
+    "opscale-co/strict-rules": "^1.3",
+    "orchestra/testbench": "^9.0 || ^10.0",
+    "orchestra/testbench-dusk": "^9.0 || ^10.0",
+    "pestphp/pest": "^3.0",
+    "pestphp/pest-plugin-laravel": "^3.0",
+    "rector/rector": "^2.0",
+    "rector/rector-laravel": "^2.5",
+    "tightenco/duster": "^3.0"
+},
+"config": {
+    "sort-packages": true,
+    "allow-plugins": {
+        "pestphp/pest-plugin": true
+    }
+},
+"repositories": [
+    {
+        "type": "composer",
+        "url": "https://nova.laravel.com"
+    }
+],
+"minimum-stability": "dev",
+"prefer-stable": true
+```
+
+Each package maps to a script: `pestphp/pest` + `pest-plugin-laravel` → `test*`;
+`orchestra/testbench-dusk` → `build` / `serve` / `test:browser`; `tightenco/duster` →
+`lint` / `fix`; `rector/rector` (+ `rector-laravel`) → `refactor`; `larastan/larastan` +
+`opscale-co/strict-rules` → `analyse`; `laravel/telescope` + `barryvdh/laravel-debugbar` +
+`laravel/nova-devtool` → the `opscale-debug` tooling; `mockery/mockery` → Unit/Feature
+doubles. `allow-plugins.pestphp/pest-plugin` is mandatory — without it Composer blocks Pest.
+
+### package.json — npm mirror (optional, for contributors who run npm)
+
+Mirrors the composer scripts one-to-one so `npm run test:browser` works the same:
+
+```json
+"scripts": {
+    "prepare": "husky",
+    "build": "composer run build",
+    "serve": "composer run serve",
+    "lint": "composer run lint",
+    "fix": "composer run fix",
+    "refactor": "composer run refactor",
+    "analyse": "composer run analyse",
+    "test": "composer run test",
+    "test:unit": "composer run test:unit",
+    "test:feature": "composer run test:feature",
+    "test:browser": "composer run test:browser",
+    "test:browser:visual": "composer run test:browser:visual",
+    "showcase": "composer run showcase",
+    "check": "composer run check"
+}
+```
 
 ---
 

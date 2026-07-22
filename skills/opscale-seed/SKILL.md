@@ -12,7 +12,15 @@ description: >
 
 # opscale-seed
 
-## Prerequisites
+## Context
+
+### Purpose — why this skill exists
+
+The demo must let someone **walk a complete flow of the module**, not just see a row in each table. The seeded dataset has to be **coherent and connected** — the records of one process link to the next so `opscale-showcase` can drive each subprocess in `final/process.md` *Ordered flow* end to end, and so empty/half-populated pages don't mask Resource bugs (missing relations, broken casts, enum mismatches). Every module ends up reinventing the seeder; this skill makes the convention explicit.
+
+This skill is **Step 1 of the Presentation phase**. It runs after Review has signed off on quality and is the entry point that turns the module into a functional demo: it produces the seeded baseline that `opscale-menu` then organizes and that `opscale-showcase` walks through end-to-end.
+
+### Prerequisites
 
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
@@ -20,30 +28,13 @@ description: >
 | 2 | `opscale-domain` has been run | `src/Models/` populated | Stop. Run `/opscale-domain` first — nothing to seed. |
 | 3 | Workbench User model exists | `workbench/app/Models/User.php` | Restore from a sibling module or create the standard testbench User model. |
 
-This skill is **Step 1 of the Presentation phase**. It runs after Review has
-signed off on quality and is the entry point that turns the module into a
-functional demo: it produces the seeded baseline that `opscale-menu` then
-organizes and that `opscale-showcase` walks through end-to-end.
-
-## Why this skill exists
-
-The demo must let someone **walk a complete flow of the module**, not just see
-a row in each table. The seeded dataset has to be **coherent and connected** —
-the records of one process link to the next so `opscale-showcase` can drive each
-process in `spec.md` *Procesos identificados* end to end, and so empty/half-
-populated pages don't mask Resource bugs (missing relations, broken casts, enum
-mismatches). Every module ends up reinventing the seeder; this skill makes the
-convention explicit.
-
-## Output
+### Output
 
 Writes / overwrites:
 - `workbench/database/seeders/DatabaseSeeder.php` — the orchestrator
 - (Optional) `workbench/database/factories/{Model}Factory.php` per aggregate
 
-If `DatabaseSeeder.php` already exists with custom content, the skill
-**replaces** the Teller-style scaffolding block delimited by markers but
-preserves any custom blocks the developer added outside the markers:
+If `DatabaseSeeder.php` already exists with custom content, the skill **replaces** the Teller-style scaffolding block delimited by markers but preserves any custom blocks the developer added outside the markers:
 
 ```php
 // >>> opscale-seed:start
@@ -51,35 +42,18 @@ preserves any custom blocks the developer added outside the markers:
 // <<< opscale-seed:end
 ```
 
-## Seeding contract
+### Seeding contract — order matters
 
-**Order matters** — entities must be created in FK-dependency order. The
-skill walks the DBML / models in this order:
+Entities must be created in FK-dependency order. The skill walks the DBML / models in this order:
 
-1. **Cross-subdomain logical IDs** — generate ULIDs for `agency_id`,
-   `teller_id`, `supervisor_id`, `member_id`. Store them locally so the
-   downstream inserts reference the same IDs. (Opscale is single-tenant by
-   design — there is no `tenant_id` to bootstrap.)
-2. **Workbench admin user** — `admin@laravel.com / password`. The Browser
-   `loginToNova()` helper hardcodes this; do NOT change the email.
-3. **Catalog tables** — anything with `is_active` and no FKs:
-   denominations, policies, templates. Real-world defaults
-   (USD denominations 1/5/10/20/50/100 + coins; UIF threshold $10,000;
-   one TransactionTemplate per BPMN logic id that mentions a Template).
-4. **Aggregate roots in topological order** — open day, then vault session
-   + drawer session, then one transaction + one transfer + one count + one
-   discrepancy + one authorization request.
-5. **Resolved states, not pending** — seeded records should be in
-   "operating"/"executed"/"confirmed"/"open" states by default so the
-   detail page exercises the happy path. Add one record in a pending state
-   if the module has a critical pending-flow UI to demonstrate.
-6. **One complete flow per process** — for each process in `spec.md`
-   *Procesos identificados*, seed the connected records needed to walk it from
-   start to finish (the trigger record, the entities each step touches, the
-   final outcome). The dataset is the script `opscale-showcase` follows; if a
-   process can't be walked end to end on the seed, the seed is incomplete.
+1. **Cross-subdomain logical IDs** — generate ULIDs for `agency_id`, `teller_id`, `supervisor_id`, `member_id`. Store them locally so the downstream inserts reference the same IDs. (Opscale is single-tenant by design — there is no `tenant_id` to bootstrap.)
+2. **Workbench admin user** — `admin@laravel.com / password`. The Browser `loginToNova()` helper hardcodes this; do NOT change the email.
+3. **Catalog tables** — anything with `is_active` and no FKs: denominations, policies, templates. Real-world defaults (USD denominations 1/5/10/20/50/100 + coins; UIF threshold $10,000; one TransactionTemplate per BPMN logic id that mentions a Template).
+4. **Aggregate roots in topological order** — open day, then vault session + drawer session, then one transaction + one transfer + one count + one discrepancy + one authorization request.
+5. **Resolved states, not pending** — seeded records should be in "operating"/"executed"/"confirmed"/"open" states by default so the detail page exercises the happy path. Add one record in a pending state if the module has a critical pending-flow UI to demonstrate.
+6. **One complete flow per process** — for each subprocess in `final/process.md` *Ordered flow*, seed the connected records needed to walk it from start to finish (the trigger record, the entities each step touches, the final outcome). The dataset is the script `opscale-showcase` follows; if a process can't be walked end to end on the seed, the seed is incomplete.
 
-## Template
+### Template
 
 ```php
 <?php
@@ -117,10 +91,6 @@ class DatabaseSeeder extends Seeder
 
         // --- 3. Catalogs (no FKs, idempotent) ---
         // {generate one block per catalog table, with real-world defaults}
-        // e.g. denominations: USD 100/50/20/10/5/1 + coin 25c
-        //      operational limit policy: max_cash=25000, min_cash=500
-        //      uif threshold policy: daily_amount=10000
-        //      transaction templates: one per BPMN logic id referencing a template
 
         // --- 4. Aggregate roots in topological order ---
         // {generate $day = AgencyOperatingDay::create([...]);}
@@ -133,16 +103,25 @@ class DatabaseSeeder extends Seeder
 }
 ```
 
-## Workflow
+### Domain Rules
 
-### Step 1 — Inventory
+1. **Single-tenant by design** — never seed a `tenant_id` field, never write per-row tenancy logic. Opscale modules install against one database per implementation; the seeder represents that single installation.
+2. **Admin user is fixed** — `admin@laravel.com / password`. Browser tests hardcode this; changing it breaks `loginToNova()`.
+3. **Catalogs use real-world defaults** — currency, thresholds, denominations, limits should match the regulatory context (e.g. UIF $10,000 for El Salvador). The point is for the Nova UI to look "real" to a stakeholder.
+4. **Resolved states by default** — seeded records are in the operating / executed / confirmed state, NOT pending. Add a single pending record only if the module has a UI specifically for resolving pending items.
+5. **Topological order, never random** — FK parents always inserted before children. The skill walks the FK graph; it does not iterate models alphabetically.
+6. **Markers preserve custom additions** — the generated block lives between `>>> opscale-seed:start` and `<<< opscale-seed:end`. Anything outside the markers survives re-runs.
+7. **No business correctness tests in the seeder** — the seeder is for UI demo + Browser smoke. Business invariants are verified in Feature tests, not by seeded fixtures.
 
-Read `src/Models/` and `src/Models/Enums/`. Build the topological order from
-FK constraints. Identify catalog tables (no FKs to other tables in the
-package + an `is_active` column) and aggregate roots (everything else with
-an FK chain that bottoms out at a catalog or root).
+## Steps
 
-Present the planned order to the user:
+### Phase 1 — Inventory aggregate roots + flows
+
+Read `src/Models/` and `src/Models/Enums/`. Build the topological order from FK constraints. Identify catalog tables (no FKs to other tables in the package + an `is_active` column) and aggregate roots (everything else with an FK chain that bottoms out at a catalog or root).
+
+Cross-reference `final/process.md` *Ordered flow* — each subprocess must have an end-to-end walkable dataset.
+
+Present the planned order:
 
 ```
 Seeding plan for {module}:
@@ -155,20 +134,42 @@ Catalogs (5):
   - transaction_template_steps
 
 Aggregate roots (8):
-  - agency_operating_days   → vault_sessions → cash_drawer_sessions → ...
+  - agency_operating_days   -> vault_sessions -> cash_drawer_sessions -> ...
   - vaults
   - ...
 
-Confirm before generating?
+Flows covered (from Ordered flow):
+  - [flow 1]   - records seeded: ...
+  - [flow 2]   - records seeded: ...
 ```
 
-### Step 2 — Generate / patch
+**Wait for user approval before continuing.**
 
-Render the template above with real model + enum imports, real catalog
-defaults, real aggregate constructors. Overwrite the marked block in
-`DatabaseSeeder.php`; preserve anything outside the markers.
+### Phase 2 — Propose the connected dataset
 
-### Step 3 — Smoke gate
+For each flow in `final/process.md` *Ordered flow*, list the connected chain of records the seed will create so the operator (or `opscale-showcase`) can step through the entire process on the seeded data:
+
+```
+Flow: [name]
+  trigger:    [record + key fields]
+  step 1:     [record + FK back to trigger]
+  step 2:     [record + FK back to step 1]
+  outcome:    [final record in resolved state]
+```
+
+Confirm catalog defaults too (currencies, thresholds, denominations). The dataset is what `opscale-showcase` will demonstrate — if a stakeholder reviewing the seed plan can't recognize the business scenario, refine until they can.
+
+**Wait for user approval before continuing.**
+
+### Phase 3 — Generate the DatabaseSeeder
+
+Render the template with real model + enum imports, real catalog defaults, real aggregate constructors. Overwrite the marked block in `DatabaseSeeder.php`; preserve anything outside the markers.
+
+If `DatabaseSeeder.php` already exists, edit only the content between `// >>> opscale-seed:start` and `// <<< opscale-seed:end`. Never touch developer-added code outside the markers.
+
+**Wait for user approval before continuing.**
+
+### Phase 4 — Verify (migrate:fresh --seed)
 
 ```bash
 # 1. Lints
@@ -190,27 +191,18 @@ foreach ([
 ] as $m) echo $m . ": " . $m::count() . PHP_EOL;'
 ```
 
-If any aggregate ends with 0 records, the seeder is missing it. Fix and re-run.
+If any aggregate ends with 0 records, the seeder is missing it. Fix and re-run until every aggregate root has at least one record AND every flow in *Ordered flow* can be walked end to end on the seeded data.
 
-## Domain Rules
+**Wait for user approval before continuing.**
 
-1. **Single-tenant by design** — never seed a `tenant_id` field, never write
-   per-row tenancy logic. Opscale modules install against one database per
-   implementation; the seeder represents that single installation.
-2. **Admin user is fixed** — `admin@laravel.com / password`. Browser tests
-   hardcode this; changing it breaks `loginToNova()`.
-3. **Catalogs use real-world defaults** — currency, thresholds, denominations,
-   limits should match the regulatory context (e.g. UIF $10,000 for El
-   Salvador). The point is for the Nova UI to look "real" to a stakeholder.
-4. **Resolved states by default** — seeded records are in the operating /
-   executed / confirmed state, NOT pending. Add a single pending record only
-   if the module has a UI specifically for resolving pending items.
-5. **Topological order, never random** — FK parents always inserted before
-   children. The skill walks the FK graph; it does not iterate models
-   alphabetically.
-6. **Markers preserve custom additions** — the generated block lives between
-   `>>> opscale-seed:start` and `<<< opscale-seed:end`. Anything outside the
-   markers survives re-runs.
-7. **No business correctness tests in the seeder** — the seeder is for UI
-   demo + Browser smoke. Business invariants are verified in Feature tests,
-   not by seeded fixtures.
+## Sample
+
+`DatabaseSeeder` excerpt with connected chain — see `references/sample-output.md`.
+
+## Success condition
+
+```bash
+node skills/opscale-seed/scripts/validate-seed.mjs --seeder=workbench/database/seeders/DatabaseSeeder.php
+```
+
+Exit code 0 = pass.

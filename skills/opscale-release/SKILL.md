@@ -1,20 +1,27 @@
 ---
 name: opscale-release
 description: >
-  Configures the code-quality gates and deployment/release CI — Duster
-  (PHP + JS linting), static analysis with Opscale strict rules, Rector,
-  SonarQube, and the GitHub Actions workflows. The commit standard and
-  semantic-release config are set up earlier by opscale-init. Step 10 — final
-  Review step. Trigger: "configure release", "set up code quality", "set up CI".
-  Use it whenever the deployment/CI pipeline or code-quality gates need
-  configuring, even loosely phrased. Requires tests to exist first
-  (opscale-test). Not for the commit standard (opscale-init) or debug tooling
-  (opscale-debug).
+  Configures the deployment/release CI — SonarQube, GitHub Actions workflows,
+  and the semantic-release pipeline that versions and publishes. Step 10 — the
+  final Review step, runs after opscale-test. Trigger: "configure release", "set
+  up CI", "set up code quality", "wire SonarQube", "publish the package", "set
+  up the deploy pipeline". Use it whenever the release/CI pipeline or deployment
+  quality gates need configuring, even loosely phrased. Requires tests to exist
+  first (opscale-test). Not for the commit standard or linter configs
+  (opscale-init owns those on day 1) or debug tooling (opscale-debug).
 ---
 
 # opscale-release
 
-## Prerequisites — tests MUST exist
+## Context
+
+### Purpose
+
+Configure SonarQube and the GitHub Actions workflows so every merge produces a quality-verified, deployable release. Versioning, changelog, and publishing run on `semantic-release`, whose config (`.releaserc.json`, commitlint, the commit-msg hook) was already established by `opscale-init`; this skill wires the CI that invokes it.
+
+**Linter config (Duster, Pint, Rector, Larastan baseline, lint-staged, ESLint) is installed by `opscale-init` on day 1 — this skill only adds the CI workflows that invoke them.** If a project reaches this step without the linter configs in place, stop and re-run `/opscale-init` first.
+
+### Prerequisites — tests MUST exist
 
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
@@ -22,30 +29,12 @@ description: >
 | 2 | `opscale-test` has been run | `tests/Unit/`, `tests/Feature/`, and `tests/Browser/` contain at least one test class each (for `app`/`module`/`package`); `tests/` populated for `library` | Stop. Run `/opscale-test` first — semantic-release will not gate a release without a test suite. |
 | 3 | `composer run check` passes locally | Run it | Fix failures before configuring release pipeline. |
 
-This skill belongs to the **Review phase**. The Review phase (`debug`, `test`, `release`) can be invoked at any point after `opscale-init`, but inside Review the order is fixed: **`release` always runs after `test`**.
+This skill belongs to the **Review phase**. Inside Review the order is fixed: **`release` always runs after `test`**.
 
-## Purpose
-
-Configure the code-quality gates (Duster, static analysis with Opscale strict
-rules, Rector, SonarQube) and the GitHub Actions workflows so every merge
-produces a quality-verified, deployable release. Versioning, changelog, and
-publishing run on `semantic-release`, whose config (`.releaserc.json`,
-commitlint, the commit-msg hook) was already established by `opscale-init`;
-this skill wires the CI that invokes it.
-
-Read the reference files in `references/` before generating any config — they are
-the authoritative templates for this skill.
-
----
-
-## Reference Files
+### Reference files
 
 ```
 references/
-├── lint-staged.config.mjs                   — Pre-commit code-style hook
-├── duster.json                              — Duster linting config
-├── pint.json                                — PHP style rules (Pint preset)
-├── rector.php                               — Rector modernization config
 ├── sonar-project.properties                 — SonarQube project config
 ├── README.md                                — Package README template
 └── .github/
@@ -57,6 +46,8 @@ references/
         └── deploy-app.yml                   — Release workflow for APPS (Vapor + develop sync)
 ```
 
+Linter configuration files (`duster.json`, `pint.json`, `rector.php`, `phpstan.neon`, `lint-staged.config.mjs`, `.eslintrc.cjs`) live in `opscale-init/references/`. They were copied into the project by `opscale-init` Step 4d.
+
 **Release workflow selection — choose ONE based on project type:**
 
 | Project type | Workflow to use | Description |
@@ -64,35 +55,22 @@ references/
 | **Laravel package** (published to Packagist) | `publish-package.yml` | Bumps `composer.json`, triggers Packagist webhook |
 | **Laravel application** (deployed to server/Vapor) | `deploy-app.yml` | Runs Semantic Release + deploys via Vapor, merges back to `develop` |
 
+Copy the chosen file to `.github/workflows/` and replace the `[placeholder]` tokens.
 
-Copy the chosen file to `.github/workflows/` and replace the `[placeholder]` tokens listed below.
+### What each file does
 
----
+- **`.releaserc.json` / commitlint** — configured by `opscale-init`; this skill only wires the CI workflows that invoke `semantic-release`.
+- **Linter configs** — installed by `opscale-init` Step 4d. The CI workflows below invoke these same configs in PRs.
+- **Static analysis (PHPStan + Larastan)** — the deployment gate runs `phpstan analyse` against the `phpstan.neon` baseline written by `opscale-init` (level 8). SonarQube reads its report. A static-analysis failure blocks the release.
+- **`README.md`** — standardized Opscale package README. Replace `[MODULE_DESCRIPTION]`, `[PACKAGE_SLUG]`, `[PACKAGE_NAMESPACE]`. Structure is fixed.
+- **`sonar-project.properties`** — points SonarQube at `src/` and `tests/`. Reads `coverage.xml` and `phpstan-report.json`. `sonar.qualitygate.wait=true` blocks CI if the gate fails.
+- **`auto-check.yml`** — runs on PR to `develop`. Three gates: Duster lint → SonarQube scan + quality gate → Pest tests with coverage. Fails fast on lint or test failures.
+- **`auto-refactor.yml`** — runs on PR to `develop`. Runs Rector dry-run. If changes found: applies them, comments the diff on the PR, then fails the check.
+- **`auto-update.yml`** — auto-merges Dependabot PRs for patch and minor updates. Comments on major updates.
+- **`publish-package.yml`** (packages) — runs on push to `main`. Installs deps (including Nova via `NOVA_USERNAME` + `NOVA_LICENSE_KEY`), then runs `npx semantic-release`.
+- **`deploy-app.yml`** (applications) — runs on push to `main` (and `next`, `beta`, `*.x` maintenance branches). Deploys via `VAPOR_API_TOKEN`. Includes `update-develop` job that merges `main` back into `develop` and syncs the version in `composer.json`.
 
-## Installation
-
-```bash
-# Pre-commit code-style hook (Husky was initialized by opscale-init)
-npm install --save-dev lint-staged
-
-# Rector Laravel extension
-composer require --dev rector/rector rector/rector-laravel
-```
-
-### Husky pre-commit hook
-
-Husky and the `commit-msg` hook (commitlint) were configured by `opscale-init`.
-Add the **pre-commit** hook here, since it needs Duster/lint-staged from this skill:
-
-**`.husky/pre-commit`**
-```bash
-#!/bin/sh
-npx lint-staged
-```
-
----
-
-## Tokens to Replace
+### Tokens to replace
 
 After copying the reference files, replace these tokens:
 
@@ -105,68 +83,7 @@ After copying the reference files, replace these tokens:
 | `README.md` | `[PACKAGE_SLUG]` | Composer package slug e.g. `nova-loan-module` |
 | `README.md` | `[PACKAGE_NAMESPACE]` | PHP namespace segment e.g. `LoanModule` |
 
-
----
-
-## What Each File Does
-
-**`.releaserc.json` / commitlint** — configured by `opscale-init`; this skill only
-wires the CI workflows that invoke `semantic-release`.
-
-**`duster.json`**
-Duster runs Pint (PHP style) and ESLint (JS/Vue). PHPStan is disabled — it runs
-separately via `phpstan analyse`. Includes `src`, `tests`, `workbench/app`.
-
-**Static analysis (PHPStan + Larastan)**
-The deployment gate runs `phpstan analyse` at Opscale's **strict** level (the
-`phpstan.neon` ruleset from the testing/quality stack). SonarQube reads its
-report. A static-analysis failure blocks the release.
-Excludes `tests/fixtures`.
-
-**`rector.php`**
-Rector modernization with `laravelSetup()`: PHP 8.3 sets, code quality, naming,
-dead code, type declarations, PHPUnit 110, and Laravel 110 sets.
-Cache stored at `/tmp/rector-cache`.
-
-**`lint-staged.config.mjs`**
-Runs `duster fix` on staged PHP and JS/Vue/TS files at `git commit` time.
-PHPStan is intentionally excluded — too slow for pre-commit, runs in CI instead.
-
-**`README.md`**
-Standardized Opscale package README. Replace `[MODULE_DESCRIPTION]`, `[PACKAGE_SLUG]`,
-and `[PACKAGE_NAMESPACE]` with the module-specific values. Structure is fixed — do not
-reorder or remove sections.
-
-**`sonar-project.properties`**
-Points SonarQube at `src/` and `tests/`. Reads `coverage.xml` and `phpstan-report.json`.
-`sonar.qualitygate.wait=true` blocks CI if the gate fails.
-
-**`.github/workflows/auto-check.yml`**
-Runs on PR to `develop`. Three gates: Duster lint → SonarQube scan + quality gate →
-Pest tests with coverage. Summary at the end. Fails fast on lint or test failures.
-
-**`.github/workflows/auto-refactor.yml`**
-Runs on PR to `develop`. Runs Rector dry-run. If changes found: applies them,
-comments the diff on the PR, then fails the check to force the author to apply
-changes locally and commit.
-
-**`.github/workflows/auto-update.yml`**
-Auto-merges Dependabot PRs for patch and minor updates. Comments on major updates
-requesting manual review.
-
-**`.github/workflows/publish-package.yml`** — for packages
-Runs on push to `main`. Installs deps (including Nova via `NOVA_USERNAME` +
-`NOVA_LICENSE_KEY`), then runs `npx semantic-release`.
-
-**`.github/workflows/deploy-app.yml`** — for applications
-Runs on push to `main` (and `next`, `beta`, `*.x` maintenance branches).
-Runs Semantic Release via `VAPOR_API_TOKEN` for deployment to Laravel Vapor.
-Includes a `update-develop` job that merges `main` back into `develop` and syncs
-the version in `composer.json` after each release.
-
----
-
-## Required Repository Secrets
+### Required repository secrets
 
 Configure these in GitHub → Settings → Secrets and variables → Actions:
 
@@ -180,9 +97,59 @@ Configure these in GitHub → Settings → Secrets and variables → Actions:
 | `SONAR_TOKEN` | SonarQube authentication token |
 | `SONAR_HOST_URL` | SonarQube server URL |
 
----
+### Commit convention
 
-## package.json scripts
+| Type | Release | Use for |
+|------|---------|---------|
+| `feat` | minor | New feature |
+| `fix` | patch | Bug fix |
+| `perf` | patch | Performance improvement |
+| `refactor` | patch | Code restructure |
+| `revert` | patch | Revert a commit |
+| `docs` | none | Documentation |
+| `style` | none | Formatting |
+| `chore` | none | Build, deps, tooling |
+| `test` | none | Tests |
+| `build` | none | Build system |
+| `ci` | none | CI config |
+| `BREAKING CHANGE` | major | In scope field |
+
+### Domain Rules
+
+1. **Semantic versioning is automated** — never bump versions manually.
+2. **Every commit follows Conventional Commits** — enforced by the commit-msg hook configured in `opscale-init`.
+3. **Duster on pre-commit, PHPStan in CI** — pre-commit is fast (style only), CI is thorough.
+4. **PRs to `develop` pass all three gates** — Duster, SonarQube, and tests before merge.
+5. **Rector failures block PRs** — authors must apply `vendor/bin/rector process` locally.
+6. **Packagist updates automatically** — `@semantic-release/exec` triggers the webhook.
+7. **Dependabot patch/minor auto-merges** — major requires manual review.
+
+## Steps
+
+### Phase 1 — Verify tests exist (prerequisite)
+
+Confirm prerequisites: `.specify/memory/constitution.md` exists; `tests/Unit/`, `tests/Feature/`, and `tests/Browser/` each contain at least one test class for `app`/`module`/`package` projects (or `tests/` populated for `library`). Run `composer run check` locally and fix any failures before proceeding.
+
+If any prerequisite is missing, stop and direct the user back to `opscale-init` or `opscale-test`.
+
+**Wait for user approval before continuing.**
+
+### Phase 2 — Wire CI workflows (choose publish-package.yml OR deploy-app.yml)
+
+Copy the always-on workflows to `.github/workflows/`:
+
+- `auto-check.yml`
+- `auto-refactor.yml`
+- `auto-update.yml`
+
+Then choose **exactly one** release workflow based on project type:
+
+- **Laravel package** (Packagist) → `publish-package.yml`
+- **Laravel application** (Vapor) → `deploy-app.yml`
+
+Never copy both. Read `.specify/memory/constitution.md` to confirm `PROJECT_TYPE`.
+
+Also confirm `package.json` carries the standard release-related scripts:
 
 ```json
 {
@@ -203,37 +170,30 @@ Configure these in GitHub → Settings → Secrets and variables → Actions:
 }
 ```
 
----
+No PHP or npm installs are needed at this step — Duster, Pint, Rector, Larastan, Pest, lint-staged, and ESLint were all installed by `opscale-init` Step 4d. The `commit-msg` hook (commitlint) and the **pre-commit** hook (running `lint-staged`) were also configured by `opscale-init`.
 
-## Commit Convention
+**Wait for user approval before continuing.**
 
-| Type | Release | Use for |
-|------|---------|---------|
-| `feat` | minor | New feature |
-| `fix` | patch | Bug fix |
-| `perf` | patch | Performance improvement |
-| `refactor` | patch | Code restructure |
-| `revert` | patch | Revert a commit |
-| `docs` | none | Documentation |
-| `style` | none | Formatting |
-| `chore` | none | Build, deps, tooling |
-| `test` | none | Tests |
-| `build` | none | Build system |
-| `ci` | none | CI config |
-| `BREAKING CHANGE` | major | In scope field |
+### Phase 3 — SonarQube setup with token replacement
 
----
+Copy `sonar-project.properties` from `references/` to the project root. Replace tokens:
 
-## Completeness Checklist
+- `[package-name]` → composer package name (e.g. `opscale-co/loan-module`)
+- `[Package Display Name]` → human name (e.g. `Opscale Loan Module`)
+
+Confirm the repository has both secrets configured in GitHub → Settings → Secrets and variables → Actions:
+
+- `SONAR_TOKEN` — SonarQube authentication token
+- `SONAR_HOST_URL` — SonarQube server URL
+
+Verify all 7 secrets listed in Context → Required repository secrets are present in the repo settings. Missing secrets will silently break CI.
+
+**Completeness checklist** (verify all before declaring the skill complete):
 
 ```
 RELEASE CONFIGURATION GATE
-──────────────────────────────────────────────────────
-[ ] .releaserc.json + commit-msg hook present (from opscale-init)
-[ ] .husky/pre-commit runs lint-staged
-[ ] lint-staged.config.mjs runs duster fix only (no phpstan)
-[ ] duster.json present with workbench/app included
-[ ] rector.php present with laravelSetup() function
+[ ] .releaserc.json + commit-msg hook + .husky/pre-commit present (from opscale-init)
+[ ] Linter configs present from opscale-init (duster.json, pint.json, rector.php, phpstan.neon, lint-staged.config.mjs)
 [ ] sonar-project.properties present ([package-name] token replaced)
 [ ] .github/workflows/auto-check.yml present
 [ ] .github/workflows/auto-refactor.yml present
@@ -241,19 +201,35 @@ RELEASE CONFIGURATION GATE
 [ ] .github/workflows/publish-package.yml present (packages) OR deploy-app.yml present (apps) — never both
 [ ] All 7 repository secrets configured
 [ ] jq installed in CI (ubuntu-latest has it pre-installed)
-──────────────────────────────────────────────────────
-STATUS: [ ] PASS — opscale-ai may proceed
-        [ ] FAIL — list blocking items below
 ```
 
----
+**Wait for user approval before continuing.**
 
-## Domain Rules
+### Phase 4 — Verify with semantic-release --dry-run
 
-1. **Semantic versioning is automated** — never bump versions manually.
-2. **Every commit follows Conventional Commits** — enforced by the commit-msg hook configured in `opscale-init`.
-3. **Duster on pre-commit, PHPStan in CI** — pre-commit is fast (style only), CI is thorough.
-4. **PRs to `develop` pass all three gates** — Duster, SonarQube, and tests before merge.
-5. **Rector failures block PRs** — authors must apply `vendor/bin/rector process` locally.
-6. **Packagist updates automatically** — `@semantic-release/exec` triggers the webhook.
-7. **Dependabot patch/minor auto-merges** — major requires manual review.
+Run a final verification to confirm semantic-release can read the commit history and would emit a valid release plan:
+
+```bash
+npx semantic-release --dry-run
+```
+
+The dry-run should report:
+- detected commit types
+- the next version it would publish
+- the changelog entries it would generate
+
+If the dry-run fails (missing config, unrecognized branch, broken commit history), stop and fix before declaring the skill complete.
+
+**Wait for user approval before continuing.**
+
+## Sample
+
+`auto-check.yml` + composer scripts + `sonar-project.properties` — see `references/sample-output.md`.
+
+## Success condition
+
+```bash
+node skills/opscale-release/scripts/validate-release.mjs --project-root=.
+```
+
+Exit code 0 = pass.

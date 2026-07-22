@@ -27,7 +27,7 @@ You receive:
 ## Gate Definitions
 
 ### opscale-process Gate
-- [ ] `spec.md` exists in spec_dir
+- [ ] `final/process.md` exists in spec_dir
 - [ ] Bounded Context section is complete (subdomain slug, responsibility, dependencies)
 - [ ] At least one Actor defined
 - [ ] At least one Trigger defined
@@ -39,28 +39,30 @@ You receive:
 *Requires: spec_dir*
 
 ### opscale-dbml Gate
-- [ ] `data-model.md` exists in spec_dir
-- [ ] DBML code block is present and non-empty
-- [ ] Every Entity artifact from spec.md has a corresponding DBML table
+- [ ] `final/domain.dbml` exists in spec_dir (raw DBML, no markdown wrapper)
+- [ ] DBML parses cleanly via `@dbml/core`
+- [ ] Every Entity artifact from final/process.md has a corresponding DBML table
 - [ ] No technical/UI/config entities present
-- [ ] tenant_id present on every table if tenant-aware
+- [ ] No `tenant_id` columns anywhere (Opscale is single-tenant)
 - [ ] All intra-subdomain relationships have FK constraints
 - [ ] Cross-subdomain references are logical only (no FK)
-- [ ] Data dictionary section is complete
-- [ ] Project block and Model Notes block present
+- [ ] `final/external-refs.md` present and consistent (only if ≥1 external-ref slug)
+- [ ] Project block Note present
+- [ ] `logs/dbml.md` written
 
 *Requires: spec_dir*
 
 ### opscale-bpmn Gate
-- [ ] `process.md` exists in spec_dir
-- [ ] BPMN XML code block is present and valid
+- [ ] `final/process.bpmn` exists in spec_dir (raw BPMN 2.0 XML, no markdown wrapper)
+- [ ] BPMN XML is well-formed and parses via bpmn-moddle
 - [ ] Only serviceTask, businessRuleTask, sendTask used
-- [ ] Every crud serviceTask entity exists in data-model.md
+- [ ] Every crud serviceTask entity exists in final/domain.dbml
 - [ ] Every businessRuleTask has a logic id in kebab-case
 - [ ] Every sendTask has channel and trigger attributes
 - [ ] Start event and at least one end event present
 - [ ] Every task has incoming and outgoing flows
 - [ ] Complete BPMNDiagram section with shapes and edges
+- [ ] `logs/bpmn.md` written
 
 *Requires: spec_dir*
 

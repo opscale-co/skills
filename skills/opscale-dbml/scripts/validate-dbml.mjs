@@ -6,18 +6,20 @@
  * Runs from the skill bundle directory during skill execution.
  * Temp files are auto-deleted after validation.
  *
- * Extracts the DBML code block from a data-model.md (or temp) file and validates
- * it using @dbml/core. Reports syntax errors with line numbers and quality warnings.
+ * Validates a DBML source using @dbml/core. Accepts either a raw .dbml file
+ * (canonical form for final/domain.dbml) or a .md file containing a fenced
+ * ```dbml ... ``` block (used by older drafts). Reports syntax errors with line
+ * numbers and quality warnings.
  *
  * Usage:
- *   node validate-dbml.mjs <path-to-file.md>
+ *   node validate-dbml.mjs <path-to-file>
  *
  * Examples:
  *   # Validate a temp draft before writing the final file
- *   node validate-dbml.mjs .specify/specs/001-loans/.data-model.tmp.md
+ *   node validate-dbml.mjs /tmp/.dbml-validate.tmp.dbml
  *
  *   # Validate the final output
- *   node validate-dbml.mjs .specify/specs/001-loans/data-model.md
+ *   node validate-dbml.mjs .specify/specs/001-loans/final/domain.dbml
  *
  * Exit codes:
  *   0 — PASS: no syntax errors, no quality warnings
@@ -29,14 +31,17 @@
  */
 
 import { readFileSync, unlinkSync, existsSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, sep } from 'path';
 
 // ── 1. Read the file ────────────────────────────────────────────────────────
 
 const filePath = process.argv[2];
+// Optional 2nd arg: explicit subdomain stem override (e.g. for temp files
+// where the path doesn't carry the spec folder name).
+const stemOverride = process.argv[3];
 
 if (!filePath) {
-  console.error('❌  Usage: node validate-dbml.mjs <path-to-data-model.md>');
+  console.error('❌  Usage: node validate-dbml.mjs <path-to-file> [subdomain-stem]');
   process.exit(1);
 }
 
@@ -52,18 +57,25 @@ try {
   process.exit(1);
 }
 
-// ── 2. Extract the DBML block from Markdown ─────────────────────────────────
+// ── 2. Extract the DBML source ──────────────────────────────────────────────
 
-const match = raw.match(/```dbml\n([\s\S]*?)```/);
+// .dbml files are raw DBML; .md files carry a fenced ```dbml ... ``` block.
+const isRawDbml = filePath.endsWith('.dbml');
 
-if (!match) {
-  console.error('❌  No ```dbml ... ``` code block found in the file.');
-  console.error('    Make sure the file contains a fenced DBML block.');
-  if (isTmp) cleanupTmp(absolutePath);
-  process.exit(1);
+let dbml;
+if (isRawDbml) {
+  dbml = raw;
+} else {
+  const match = raw.match(/```dbml\n([\s\S]*?)```/);
+  if (!match) {
+    console.error('❌  No ```dbml ... ``` code block found in the markdown file.');
+    console.error('    Make sure the file contains a fenced DBML block, or pass a .dbml file.');
+    if (isTmp) cleanupTmp(absolutePath);
+    process.exit(1);
+  }
+  dbml = match[1];
 }
 
-const dbml = match[1];
 const lineCount = dbml.split('\n').length;
 
 console.log(`\n📄  File  : ${filePath}${isTmp ? ' (draft)' : ''}`);
@@ -187,6 +199,67 @@ enums.forEach(e => {
   });
 });
 
+// ── 6b. Subdomain-stem redundancy check ─────────────────────────────────────
+//
+// Downstream (opscale-domain) automatically prepends the subdomain name to
+// every generated table/file (subdomain `credits` + entity `application`
+// → table `credits_application`). If the entity name in DBML already
+// contains the subdomain stem, the result is redundant
+// (`credits_credit_application`). Flag it here so the name is corrected
+// before generation.
+//
+// Stem derivation:
+//   - If the 2nd CLI arg is supplied, use it as the stem.
+//   - Else, walk the path segments and find one matching
+//     `{NNN}-{slug}` (e.g. `003-credits`) → stem = the part after the
+//     numeric prefix.
+//   - Else, skip the check silently (e.g. ad-hoc validation of a temp
+//     file outside the spec folder layout).
+
+function deriveStem(absPath, override) {
+  if (override) return override.toLowerCase().trim();
+  const parts = absPath.split(sep);
+  // Match e.g. "003-credits", "012-loan-origination" — take everything
+  // after the numeric prefix as the subdomain slug.
+  for (const part of parts) {
+    const m = part.match(/^\d{1,4}-([a-z0-9][a-z0-9-_]*)$/i);
+    if (m) return m[1].toLowerCase();
+  }
+  return null;
+}
+
+function singularize(word) {
+  // Light singularization — enough for the common DBML cases
+  // (entities are singular by convention; subdomain slugs may be either).
+  if (word.endsWith('ies') && word.length > 3) return word.slice(0, -3) + 'y';
+  if (word.endsWith('s') && !word.endsWith('ss') && word.length > 1) return word.slice(0, -1);
+  return word;
+}
+
+const subdomainStemFull = deriveStem(absolutePath, stemOverride);
+const subdomainStemSingular = subdomainStemFull ? singularize(subdomainStemFull) : null;
+
+if (subdomainStemFull) {
+  // Build the set of stem variants to look for as whole-word components
+  // in the table name (split on `_`).
+  const stems = new Set([subdomainStemFull, subdomainStemSingular].filter(Boolean));
+
+  tables.forEach(t => {
+    const tableName = t.name;
+    const segments = tableName.toLowerCase().split('_').filter(Boolean);
+
+    for (const stem of stems) {
+      if (segments.includes(stem)) {
+        const suggested = segments.filter(s => s !== stem).join('_') || tableName;
+        warnings.push(
+          `WARNING: Table '${tableName}' includes subdomain stem '${stem}' — suggest renaming to '${suggested}'.`
+        );
+        break;
+      }
+    }
+  });
+}
+
 // ── 7. Report ───────────────────────────────────────────────────────────────
 
 console.log('\n── Quality Checks ──────────────────────────────────────────');
@@ -195,7 +268,7 @@ if (warnings.length > 0) {
   warnings.forEach(w => console.log(`   ⚠️   ${w}`));
   console.log(`\n   ${warnings.length} warning(s) found`);
   console.log('\n────────────────────────────────────────────────────────────');
-  console.log('⚠️   REVIEW (exit 2) — fix warnings before writing data-model.md\n');
+  console.log('⚠️   REVIEW (exit 2) — fix warnings before writing final/domain.dbml\n');
   if (isTmp) cleanupTmp(absolutePath);
   process.exit(2);
 } else {
@@ -205,7 +278,7 @@ if (warnings.length > 0) {
   console.log('   ✅  All enum values have notes');
   console.log('   ✅  No suspicious technical column names');
   console.log('\n────────────────────────────────────────────────────────────');
-  console.log('✅  PASS (exit 0) — DBML is valid, write data-model.md\n');
+  console.log('✅  PASS (exit 0) — DBML is valid, write final/domain.dbml\n');
   if (isTmp) cleanupTmp(absolutePath);
   process.exit(0);
 }

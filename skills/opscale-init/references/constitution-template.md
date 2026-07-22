@@ -3,6 +3,8 @@
 **Project:** [PROJECT_NAME]
 **Project Type:** [PROJECT_TYPE]
 **Module Prefix:** [MODULE_PREFIX]
+**App Locale:** [APP_LOCALE]
+**Workbench Locale:** [WORKBENCH_LOCALE]
 **Created:** [DATE]
 
 > This constitution is the architectural DNA of every Opscale project.
@@ -14,7 +16,7 @@
 
 ## 0. Project Type
 
-**Type: [PROJECT_TYPE]**
+**Type: [PROJECT_TYPE]** — locked at `opscale-init` time. The skill prompts for one of `app` / `module` / `package` / `library` and substitutes the value into this constitution. The choice is permanent for the project; changing it after the fact requires re-running `opscale-init`.
 
 | Type | Description | Example |
 |------|-------------|---------|
@@ -23,218 +25,43 @@
 | `package` | Standalone project with specific functionality. Can have domain, Nova resources, Actions. Published to Packagist. | `nova-api`, `nova-authorization` |
 | `library` | Pure utility/infrastructure code. No domain, no Nova, no Actions. | `opscale-co/strict-rules`, `opscale-co/actions` |
 
-### What applies per type
+### Type-specific notes
 
-| Skill / Agent | app | module | package | library |
-|---------------|:---:|:------:|:-------:|:-------:|
-| opscale-init | Yes | Yes | Yes | Yes (simplified) |
-| opscale-process | Per module | Yes | -- | -- |
-| opscale-dbml | Per module | Yes | -- | -- |
-| opscale-bpmn | Per module | Yes | -- | -- |
-| opscale-domain | Per module | Yes | Yes (direct) | -- |
-| opscale-ui | Per module | Yes | Yes (direct) | -- |
-| opscale-logic | Per module | Yes | Yes (direct) | -- |
-| opscale-outputs | Per module | Yes | Yes (direct) | -- |
-| opscale-debug | Yes | Yes | Yes | Optional |
-| opscale-test | Yes | Yes | Yes | Yes (adapted) |
-| opscale-release | Yes (deploy-app) | Yes (publish-package) | Yes (publish-package) | Yes (publish-package) |
-| opscale-ai | Per module | Yes | -- | -- |
+- **`library`** — skip the spec, DBML, BPMN, SIPOC, domain, Nova, logic, outputs, and AI steps. Sequence collapses to: write code → `opscale-test` → `opscale-release`. Quality gates (§VIII) still apply in full.
+- **`app`** — container for multiple modules; each module follows the full sequence independently. Cross-module communication uses domain events and IDs only, never direct imports.
+- **`package` vs `module`** — same sequence, different context. A **module** is a bounded context within a larger application (one business subdomain). A **package** is a standalone project that can be used across applications (API tooling, dashboards, authorization).
 
-### Library-type sequence
-
-When `PROJECT_TYPE` is `library`, the development sequence is:
-
-```
-1. Write code (traits, services, helpers, rules, abstracts)
-2. opscale-test   → configure Pest, PHPStan level 8, Duster, Rector
-3. opscale-release → configure Semantic Release, CI/CD, SonarQube
-```
-
-Steps 1–7 and 11 (spec, DBML, BPMN, domain, Nova, logic, outputs, AI) do NOT apply.
-Quality gates still apply in full: PHPStan level 8, Duster, all tests pass, SonarQube.
-
-### App-type orchestration
-
-When `PROJECT_TYPE` is `app`, the application is a container for multiple modules.
-Each module lives in its own package directory and follows the full sequence independently.
-Cross-module concerns:
-- Shared kernel types (if any) live in a dedicated `shared` package
-- Cross-module communication uses domain events and IDs only — no direct imports
-- The app-level constitution governs all modules within it
-
-### Package vs Module
-
-Both `package` and `module` support the full spec-driven sequence. The difference is context:
-- A **module** is a bounded context within a larger application — it handles one business subdomain (loans, KYC, loyalty)
-- A **package** is a standalone project with specific functionality that can be used across applications (API tooling, authorization, dashboards)
-
-### Adopting in Existing Projects
-
-The Opscale workflow can be applied to projects that already have code. When adopting:
-
-1. **Run `opscale-init`** in the existing project root — it detects existing files and uses `--here --force`
-2. **Join at any step** — if the project already has models and migrations, start at a later step:
-   - Has models but no spec → start at `opscale-process` to formalize what exists
-   - Has spec but no DBML → start at `opscale-dbml`
-   - Has everything but no tests → start at `opscale-test`
-3. **Generation agents detect existing files** — when a file already exists at the target path:
-   - Identical files are skipped
-   - Files with extra content are merged (preserving additions)
-   - Conflicting files are flagged for user review — never silently overwritten
-4. **Existing code is the source of truth** until the spec catches up — do not delete or overwrite working code to match a new spec. Instead, update the spec to reflect reality, then iterate.
-5. **Incremental adoption** — it is valid to apply Opscale conventions to one module at a time in an app. Not every module needs to be spec-driven on day one.
+Per-skill applicability matrix: `README.md` (Skills → Development Sequence). Joining an existing project: `opscale-init`'s `SKILL.md`.
 
 ---
 
-## I. Architectural Philosophy
+## I. Design Methodology — sequence constraints
 
-Opscale software is designed in a strict priority order. When there is a conflict between
-levels, the higher level always wins.
+Follow the skill sequence strictly. Each skill declares its own prerequisites and outputs in its `SKILL.md`. Canonical artifact paths: `skills/opscale-init/references/artifact-paths.md`. The constitution only enforces the **per-step constraint** that downstream skills (and reviewers) rely on:
 
-**Priority 1 — Business (Information Flow)**
-The system exists to model how the business works and move information correctly through it.
-This means: modeling real business entities, capturing meaningful data, and making information
-flow between subdomains reliably. A system with correct information flow but a rough UI is
-acceptable. A system with a polished UI but incorrect or incomplete information flow is not.
-Business correctness always comes before implementation elegance.
+| Step | Skill | Constitutional constraint |
+|------|-------|---------------------------|
+| 1 | `opscale-process` | No technical terminology — readable by a business owner. |
+| 2 | `opscale-dbml` | Business entities only; the DBML is the authoritative source — all code generates from it, never the reverse. |
+| 3 | `opscale-bpmn` | Every task references a DBML entity; no new domain concepts may be introduced. Every task classified as exactly one of `crud` / `action` / `output`. |
+| 4 | `opscale-sipoc` | One SIPOC per BPMN `businessRuleTask`; the SIPOC re-states what's in spec+DBML+BPMN — never invents. |
+| 5 | `opscale-domain` | One migration per entity. No Eloquent calls outside Repositories. |
+| 6 | `opscale-ui` | Nova Actions delegate to Opscale Actions — zero business logic inline. |
+| 7 | `opscale-logic` | One BPMN `action` task = one Opscale Action class. No exceptions. Business logic with no BPMN task does not belong in the module. |
+| 8 | `opscale-outputs` | One `output` task = one Output class = one delivery channel. |
+| 9 | `opscale-debug` | Debug tooling (logs, Xdebug, Telescope/Ray) is configured for local + staging only. Nothing in debug config affects production behavior. |
+| 10 | `opscale-test` | Test tasks always precede implementation tasks in `tasks.md`. No implementation task is valid without a preceding test task. |
+| 11 | `opscale-release` | All §VIII quality gates wired into the CI pipeline. |
 
-**Priority 2 — End Users (Interface)**
-Once the information flow is correct, the system must present it through interfaces that are
-appropriate for each user type. UI decisions are secondary to domain decisions — the interface
-adapts to the domain, never the other way around. Nova resources, forms, dashboards, and
-notifications are shaped by what the business domain requires, not by UI convenience.
-
-**Priority 3 — Technical Team (Maintainability)**
-Code quality, patterns, and architecture conventions exist to serve the team maintaining the
-system long term. SOLID principles, Clean Architecture layers, and DDD patterns are tools for
-keeping the codebase understandable and extensible — they are means, not ends. If applying a
-pattern rigorously would harm information flow correctness or user experience, document the
-deviation and move on.
-
-**The three design patterns that serve these priorities:**
-- **DDD** — ensures the domain model reflects the real business (Priority 1)
-- **Clean Architecture** — ensures components communicate predictably (Priority 2 & 3)
-- **SOLID** — ensures code units are maintainable and testable (Priority 3)
-
----
-
-## II. Design Methodology
-
-The Opscale development sequence is skill-driven. Each step below maps to a dedicated skill
-that contains its own generation rules. This section defines the **sequence contract**:
-what each step requires as input, what it must produce as output, and what cross-step
-constraints apply. Do not skip steps. Do not start a step before its required input exists.
-
----
-
-### Step 1 — Process Spec → `opscale-process`
-
-**Requires:** A business description in any form (sentence, paragraph, notes, transcript).
-**Produces:** `.specify/specs/{NNN}/spec.md` — actors, actions, artifacts, business rules, triggers, pre/post conditions.
-**Constraint:** No technical terminology. Must be readable by a business owner, not a developer.
-**Gate:** The spec must pass its completeness checklist before Step 2 begins.
-
----
-
-### Step 2 — Domain Model → `opscale-dbml`
-
-**Requires:** A validated `spec.md` from Step 1.
-**Produces:** `.specify/specs/{NNN}/data-model.md` — DBML with entities, relationships, enums, and data dictionary.
-**Constraint:** Only business entities. No UI fields, no config tables, no infrastructure concerns.
-**Gate:** Every entity in the DBML must trace back to an artifact or actor in `spec.md`.
-The DBML is the authoritative source — all subsequent code is generated from it, never the reverse.
-
----
-
-### Step 3 — Process Model → `opscale-bpmn`
-
-**Requires:** A validated `data-model.md` from Step 2.
-**Produces:** `.specify/specs/{NNN}/process.md` — BPMN task map with typed tasks.
-**Constraint:** Every task must reference at least one entity from the DBML.
-No new domain concepts may be introduced here — if something is missing, go back to Step 2.
-**Gate:** Every task must be classified as exactly one of: `crud`, `action`, or `output`.
-
-→ Run `/speckit.clarify` after this step before proceeding to planning.
-
----
-
-### Step 4 — Domain Classes → `opscale-domain`
-
-**Requires:** `data-model.md` (Step 2) + `process.md` (Step 3).
-**Produces:** Migrations, Models, Enums, Repositories, Value Objects in `plan.md`.
-**Constraint:** One migration per entity. No Eloquent calls outside Repositories.
-
----
-
-### Step 5 — Nova Layer → `opscale-ui`
-
-**Requires:** Domain classes from Step 4.
-**Produces:** Resources, Filters, Lenses, Metrics, Nova Actions in `plan.md`.
-**Constraint:** Nova Actions delegate entirely to an Opscale Action — zero business logic inline.
-
----
-
-### Step 6 — Business Logic → `opscale-logic`
-
-**Requires:** `process.md` (Step 3) + Business Rules from `spec.md` (Step 1).
-**Produces:** One Opscale Action class per `action` task in the BPMN, listed in `plan.md`.
-**Constraint:** One BPMN `action` task = one Opscale Action class. No exceptions.
-Business logic that has no corresponding BPMN task does not belong in this module.
-
-→ Run `/speckit.analyze` after Steps 4–6 to verify cross-artifact consistency before continuing.
-
----
-
-### Step 7 — Outputs → `opscale-outputs`
-
-**Requires:** `process.md` BPMN tasks of type `output`.
-**Produces:** Output class contracts at `.specify/specs/{NNN}/contracts/`.
-**Constraint:** One `output` task = one Output class = one delivery channel.
-
-→ Run `/speckit.tasks` after this step to generate the ordered task breakdown.
-
----
-
-### Step 8 — Debug Config → `opscale-debug`
-
-**Requires:** `plan.md` from Steps 4–7.
-**Produces:** Debug tooling configuration appended to `tasks.md`.
-**Constraint:** Covers logs, Xdebug, Telescope/Ray setup — nothing that affects production behavior.
-
----
-
-### Step 9 — Test Config → `opscale-test`
-
-**Requires:** All Action stubs and Output contracts from Steps 6–7.
-**Produces:** Test task entries in `tasks.md` — one test task per Action, preceding its implementation task.
-**Constraint:** Test tasks always appear before their corresponding implementation task in `tasks.md`.
-No implementation task is valid without a preceding test task.
-
----
-
-### Step 10 — Release Config → `opscale-release`
-
-**Requires:** Completed `tasks.md`.
-**Produces:** CI/CD pipeline config, SonarQube setup, Semantic Release config.
-**Constraint:** All quality gates defined in Article X must be wired into the pipeline.
-
----
-
-→ Run `/speckit.implement` to hand off to Claude Code.
-
----
+Spec-kit checkpoints: `/speckit.clarify` after Step 3, `/speckit.analyze` after Steps 4–6, `/speckit.tasks` after Step 7, `/speckit.implement` after Step 11.
 
 ### Independent — Installer Skill → `opscale-ai`
 
-**Not part of the sequence.** Runs independently after the project is built and published.
-**Produces:** `.claude/skills/{package-slug}-setup.md` — a Claude Code skill that ships with
-the package and guides its installation in a consuming application.
-**Purpose:** Turn the README into an interactive setup conversation — ask config questions,
-run migrations, create seeders, install complementary packages, verify everything works.
+Not part of the sequence. Runs after the project is published. Produces `.claude/skills/{package-slug}-setup.md` — an installer skill that guides a consuming application through configuration, migrations, seeders, and verification.
 
 ---
 
-## III. Clean Architecture Layers
+## II. Clean Architecture Layers
 
 Every class belongs to exactly one layer. No class may contain logic from another layer.
 
@@ -288,7 +115,7 @@ app|src/
 
 ---
 
-## IV. DDD Rules
+## III. DDD Rules
 
 DDD is applied pragmatically within Laravel. The goal is domain clarity, not framework purity.
 
@@ -333,7 +160,7 @@ dependencies via constructor injection.
 
 ---
 
-## V. Opscale Actions (Business Logic Units — NON-NEGOTIABLE)
+## IV. Opscale Actions (Business Logic Units — NON-NEGOTIABLE)
 
 Business logic lives exclusively in **Opscale Actions** (`Services/Actions/`).
 Built on [lorisleiva/laravel-actions](https://github.com/lorisleiva/laravel-actions).
@@ -342,7 +169,7 @@ Using any other class type for business logic is a violation of this constitutio
 **Each Action must:**
 - Represent exactly one business operation — one reason to exist
 - Use `declare(strict_types=1)`
-- Receive typed input: a DTO, Value Object, or typed primitive — never `array` or `$request`
+- Receive typed input: **primitives, `array`, or Model classes only** — never `$request`, no DTOs, no Value Objects in the signature
 - Return typed output — never `void` unless the side effect is the explicit contract
 - Be testable in complete isolation: no HTTP context, no Nova, no seeded database required
 
@@ -354,12 +181,9 @@ Using any other class type for business logic is a violation of this constitutio
 
 This eliminates wrapper classes and duplication. One Action class serves all invocation contexts.
 
-**Mapping:** One BPMN `action` task = one Opscale Action class.
-If a BPMN task requires two Action classes, it should be split into two tasks.
-
 ---
 
-## VI. Nova Layer Rules
+## V. Nova Layer Rules
 
 Nova is the Interaction layer. It contains zero business logic.
 
@@ -376,7 +200,7 @@ Nova is the Interaction layer. It contains zero business logic.
 
 ---
 
-## VII. Outputs (Meaningful Delivery)
+## VI. Outputs (Meaningful Delivery)
 
 Any information leaving the system — email, push notification, PDF, WhatsApp, webhook,
 external API call — is an Output class. Never inline in an Action or Controller.
@@ -390,66 +214,19 @@ external API call — is an Output class. Never inline in an Action or Controlle
 
 ---
 
-## VIII. SOLID Rules
+## VII. SOLID Rules
 
-All PHP files use `declare(strict_types=1)`. PHPStan runs at level 8.
+All PHP files use `declare(strict_types=1)`. PHPStan runs at level 8 (also enforced by §VIII).
 
-**Single Responsibility**
-Every class has one reason to change. A class that handles HTTP input, applies business
-rules, and sends notifications violates SRP. Keep classes small and focused.
-If a class exceeds ~150 lines, it likely has more than one responsibility.
-
-**Open/Closed**
-Classes are extended through interfaces and composition, not by modifying existing methods.
-Overriding a parent method to change its behavior (not extend it) is a violation.
-Use interfaces and dependency injection to vary behavior.
-
-**Liskov Substitution**
-A subclass must be usable wherever its parent is expected without changing system behavior.
-When overriding a parent method, always call `parent::method()` unless the override is
-a complete, intentional replacement documented as such.
-
-**Interface Segregation**
-Interfaces must be narrow and specific. A class that implements an interface but leaves
-methods empty or throwing `NotImplementedException` means the interface is too broad.
-Split it.
-
-**Dependency Inversion**
-High-level classes depend on interfaces, not concrete implementations.
-Never instantiate dependencies with `new ClassName()` inside a class body.
-All dependencies are injected via constructor. The service container resolves them.
+- **Single Responsibility** — one reason to change per class. Classes that touch HTTP input + business rules + notifications violate SRP; split them.
+- **Open/Closed** — extend through interfaces and composition. Overriding a parent method to *change* (not extend) its behavior is a violation.
+- **Liskov Substitution** — a subclass must work wherever its parent is expected. Always call `parent::method()` unless the override is a documented, intentional replacement.
+- **Interface Segregation** — narrow, specific interfaces. Empty implementations or `NotImplementedException` mean the interface is too broad — split it.
+- **Dependency Inversion** — high-level classes depend on interfaces. Constructor injection only.
 
 ---
 
-## IX. Single-Tenant Deployment Model
-
-Opscale modules are designed for **one independent database per implementation**.
-There is no multi-tenancy column, no per-row tenant scoping, no shared-database
-isolation strategy.
-
-- **No `tenant_id` columns.** Domain tables do NOT carry a tenant discriminator.
-- **No tenant scopes on repositories.** Repository traits filter by business
-  state, not by tenant.
-- **Isolation is at the database level.** Each customer / cooperative /
-  consuming application provisions its own database (or schema). Cross-customer
-  data sharing is impossible by construction, not by application-layer filtering.
-- **No "system admin" cross-tenant queries.** Operating across customer
-  boundaries is an infrastructure concern (replication, BI warehouse, regulator
-  reporting pipelines) and lives outside the module.
-
-The rationale: a tenant column is an attack surface (one missing `where` clause
-leaks every tenant), an indexing tax (every query carries an extra predicate),
-and a complexity tax (every Action, Resource, scope and seeder has to remember
-to apply it). A separate database is cheap with modern infrastructure and
-removes the entire class of bugs.
-
-When a customer needs the module, they install it into their own Laravel
-application against their own database. The module exposes the same surface
-in every installation; only the data differs.
-
----
-
-## X. Code Quality Gates
+## VIII. Code Quality Gates
 
 No feature branch merges without passing all of the following:
 
@@ -463,41 +240,16 @@ No feature branch merges without passing all of the following:
 
 ### App and module only (not package or library)
 
-6. ✅ DBML (`data-model.md`) matches actual migrations — zero drift
+6. ✅ DBML (`final/domain.dbml`) matches actual migrations — zero drift
 7. ✅ Every BPMN `action` task maps to an implemented Opscale Action — no orphan tasks
 
 ---
 
-## XI. Spec-Driven Development Sequence
+## IX. Spec-Driven Development Sequence
 
-Every module follows this sequence without skipping steps:
+Canonical sequence + artifact paths: `skills/opscale-init/references/artifact-paths.md`. Prose summary: `README.md`. Per-step constraints: §I of this document.
 
-```
-opscale-process   →  .specify/specs/{NNN}/spec.md          (what & why — no tech)
-opscale-dbml      →  .specify/specs/{NNN}/data-model.md    (DBML — authoritative)
-opscale-bpmn      →  .specify/specs/{NNN}/process.md       (BPMN task map)
-                      /speckit.clarify                      (validate before planning)
-opscale-domain    ↘
-opscale-ui      →  .specify/specs/{NNN}/plan.md          (how — tech decisions)
-opscale-logic     ↗
-opscale-outputs   →  .specify/specs/{NNN}/contracts/       (output contracts)
-                      /speckit.analyze                      (cross-artifact consistency)
-                      /speckit.tasks                        (ordered task breakdown)
-opscale-debug     ↘
-opscale-test      →  .specify/specs/{NNN}/tasks.md         (test tasks before impl tasks)
-opscale-release   ↗
-                      /speckit.implement                    (Claude Code builds it)
-
-# Independent (not part of the sequence):
-opscale-ai        →  .claude/skills/{slug}-setup.md        (installer skill for consumers)
-```
-
-- `spec.md` — what and why, zero technical details, readable by a business owner
-- `data-model.md` — authoritative DBML, all migrations generated from it
-- `process.md` — BPMN task map, every task typed as `crud`, `action`, or `output`
-- `plan.md` — tech decisions, file paths, class names
-- `tasks.md` — test tasks always precede their implementation counterpart
-- No implementation task starts without a completed, validated spec and plan
+No implementation task starts without a completed, validated spec and plan.
 
 ---
 

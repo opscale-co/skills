@@ -18,6 +18,9 @@ use {{package_namespace}}\Models\Enums\{{status_enum}};
 {{#each related_resource_imports}}
 use {{.}};
 {{/each}}
+{{#each contract_imports}}
+use {{.}};
+{{/each}}
 {{#if uses_field_trait}}
 use {{package_namespace}}\Nova\Concerns\{{model_name}}Fields;
 {{/if}}
@@ -36,6 +39,15 @@ class {{model_name}} extends Resource
     public static $title = '{{title_column}}';
 
     public static $search = [{{#each search_columns}}'{{.}}'{{#unless @last}}, {{/unless}}{{/each}}];
+{{#if has_with}}
+
+    /**
+     * Relationships eager-loaded for every Nova query against this Resource.
+     * Counts are placed here (NOT on the Eloquent model's $withCount) so they
+     * never spill into jobs / reports / API consumers — Nova-only N+1 guard.
+     */
+    public static $with = [{{#each with_relations}}'{{.}}'{{#unless @last}}, {{/unless}}{{/each}}];
+{{/if}}
 
     public static function uriKey(): string
     {
@@ -51,6 +63,13 @@ class {{model_name}} extends Resource
     {
         return __('{{singular_label}}');
     }
+{{#if has_index_with_count}}
+
+    public static function indexQuery(NovaRequest $request, $query)
+    {
+        return $query->withCount([{{#each index_with_count}}'{{.}}'{{#unless @last}}, {{/unless}}{{/each}}]);
+    }
+{{/if}}
 {{#unless can_create}}
 
     public static function authorizedToCreate(Request $request): bool
@@ -72,6 +91,17 @@ class {{model_name}} extends Resource
         return false;
     }
 {{/unless}}
+{{#if child_of}}
+
+    /**
+     * After creating a child aggregate, land on the parent's detail page so
+     * the new child is visible inside its tab — not the orphan child detail.
+     */
+    public static function redirectAfterCreate(NovaRequest $request, $resource): string
+    {
+        return "/resources/{{child_of.parent_uri}}/{$resource->{{child_of.foreign_key}}}";
+    }
+{{/if}}
 
     public function fields(NovaRequest $request): array
     {
@@ -111,7 +141,7 @@ class {{model_name}} extends Resource
 
                 Tab::make(__('{{label}}'), [
                     HasMany::make(__('{{label}}'), '{{name}}', {{related_resource}}::class),
-                ]),
+                ]){{#unless creatable_from_ui}}->canSee(fn () => ($this->resource->{{count_column}} ?? 0) > 0){{/unless}},
 {{/each}}
             ]),
         ];

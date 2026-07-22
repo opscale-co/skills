@@ -27,6 +27,17 @@
 //     "dependencies": ["GetExchangeRate"], // other Actions composed via ::run()
 //     "handle_body":  "$loan = $this->get('loan');\n$rate = GetExchangeRate::run(['date' => $this->get('from')]);\n\nreturn ['success' => true, 'interest' => $loan->principal * $rate];",
 //
+//     // Nova registration (optional — when present, generator registers the
+//     // Action in the target Resource's actions() method per SKILL.md +
+//     // references/canSee-patterns.md).
+//     "nova_registration": {
+//       "target_resource":  "Application",                  // Resource class to register on
+//       "resource_dir":     "src/Nova",                     // optional — defaults to <output_dir>/../../Nova
+//       "status_property":  "status",                       // optional — default "status"
+//       "state_enum":       "ApplicationStatus",            // PHP enum class for the state precondition
+//       "allowed_states":   ["PendingReview"]               // empty / omitted → no canSee guard
+//     },
+//
 //     "lang_dir": "lang",     // optional — defaults to <project_root>/lang (derived from output_dir)
 //     "locale":   "en"        // optional — default locale to seed; defaults to "en"
 //   }
@@ -65,6 +76,113 @@ function indentBody(body, spaces) {
 }
 
 function escapeSingle(s) { return String(s).replace(/'/g, "\\'"); }
+
+// ---------------------------------------------------------------------------
+// Nova registration helpers — splice the Action into the target Resource's
+// actions() method, with the right canSee guard for the SIPOC precondition.
+// ---------------------------------------------------------------------------
+
+function buildCanSeeClause(stateEnum, allowedStates, statusProperty = 'status') {
+  if (!stateEnum || !Array.isArray(allowedStates) || allowedStates.length === 0) return '';
+  if (allowedStates.length === 1) {
+    return `->canSee(fn ($request) => $request->findModel()?->${statusProperty}?->is(${stateEnum}::${allowedStates[0]}))`;
+  }
+  const list = allowedStates.map(s => `${stateEnum}::${s}`).join(', ');
+  return `->canSee(fn ($request) => in_array($request->findModel()?->${statusProperty}, [${list}], strict: true))`;
+}
+
+function buildRegistrationLine(actionClassName, canSeeClause) {
+  // Always indent to 12 spaces — matches the `return [` block inside actions().
+  return canSeeClause
+    ? `            ${actionClassName}::make()\n                ${canSeeClause},`
+    : `            ${actionClassName}::make(),`;
+}
+
+function ensureActionUse(resourceSrc, fullyQualified) {
+  // Insert `use {fullyQualified};` once. Place alphabetically after the last
+  // existing use statement so the imports stay sorted-ish.
+  const useLine = `use ${fullyQualified};`;
+  if (resourceSrc.includes(useLine)) return resourceSrc;
+  const lines = resourceSrc.split('\n');
+  let lastUseIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^use\s+[^;]+;/.test(lines[i])) lastUseIdx = i;
+  }
+  if (lastUseIdx === -1) return resourceSrc; // no use block — bail
+  lines.splice(lastUseIdx + 1, 0, useLine);
+  return lines.join('\n');
+}
+
+function injectIntoActionsMethod(resourceSrc, registrationLine) {
+  // Find an existing actions() method. If it exists with `return [];`, replace
+  // it with `return [\n{registrationLine}\n        ];`. If it exists with
+  // entries, splice before the closing `];`. If it does not exist, append a
+  // new actions() method before the final class-closing `}`.
+  const idempotencyMarker = registrationLine.split('\n')[0].trim();
+  if (resourceSrc.includes(idempotencyMarker)) return { src: resourceSrc, action: 'SKIPPED' };
+
+  const actionsMethodRe = /public function actions\(NovaRequest \$request\): array\s*\{\s*return \[([\s\S]*?)\];\s*\}/m;
+  const m = resourceSrc.match(actionsMethodRe);
+
+  if (m) {
+    const innerBody = m[1].trimEnd();
+    const newInner = innerBody.length === 0
+      ? `\n${registrationLine}\n        `
+      : `${innerBody}\n${registrationLine}\n        `;
+    const replacement = `public function actions(NovaRequest $request): array\n    {\n        return [${newInner}];\n    }`;
+    return { src: resourceSrc.replace(actionsMethodRe, replacement), action: 'INJECTED' };
+  }
+
+  // No actions() method yet — append one right before the final '}'.
+  const lastBraceIdx = resourceSrc.lastIndexOf('}');
+  if (lastBraceIdx === -1) return { src: resourceSrc, action: 'SKIPPED' };
+  const head = resourceSrc.slice(0, lastBraceIdx).trimEnd();
+  const tail = resourceSrc.slice(lastBraceIdx);
+  const method = `\n\n    public function actions(NovaRequest $request): array\n    {\n        return [\n${registrationLine}\n        ];\n    }\n`;
+  return { src: head + method + tail, action: 'ADDED' };
+}
+
+function registerOnResource(input, actionClassName) {
+  const reg = input.nova_registration;
+  if (!reg || !reg.target_resource) return { action: 'SKIPPED', reason: 'no nova_registration' };
+
+  const resourceDir = reg.resource_dir
+    ? resolve(reg.resource_dir)
+    : resolve(input.output_dir, '..', '..', 'Nova');
+  const resourcePath = join(resourceDir, `${reg.target_resource}.php`);
+  if (!existsSync(resourcePath)) {
+    return { action: 'SKIPPED', reason: `target resource not found at ${resourcePath}` };
+  }
+
+  let src = readFileSync(resourcePath, 'utf8');
+  src = ensureActionUse(src, `${input.package_namespace}\\Services\\Actions\\${actionClassName}`);
+
+  const canSeeClause = buildCanSeeClause(
+    reg.state_enum,
+    reg.allowed_states || [],
+    reg.status_property || 'status',
+  );
+
+  // Also import the State enum + ensure NovaRequest import already present.
+  if (reg.state_enum) {
+    src = ensureActionUse(src, `${input.package_namespace}\\Models\\Enums\\${reg.state_enum}`);
+  }
+  if (!src.includes('use Laravel\\Nova\\Http\\Requests\\NovaRequest;')) {
+    src = ensureActionUse(src, 'Laravel\\Nova\\Http\\Requests\\NovaRequest');
+  }
+
+  const registrationLine = buildRegistrationLine(actionClassName, canSeeClause);
+  const result = injectIntoActionsMethod(src, registrationLine);
+
+  if (result.action === 'SKIPPED') return { action: 'SKIPPED', reason: 'already registered', path: resourcePath };
+
+  writeFileSync(resourcePath, result.src);
+  return {
+    action: result.action,
+    path: resourcePath,
+    canSee: canSeeClause ? 'yes' : 'no',
+  };
+}
 
 // Resolve the project's lang/ directory. If the caller passes one, honor it.
 // Otherwise derive from output_dir by walking up to the project root: a typical
@@ -132,6 +250,8 @@ function main() {
   const locale  = input.locale || 'en';
   const langResult = seedTranslation(langDir, locale, input.name, input.name);
 
+  const regResult = registerOnResource(input, input.action_class_name);
+
   console.log(resultLine('STATUS', result.status));
   console.log(resultLine('GENERATED', result.path));
   if (result.preview) console.log(resultLine('PREVIEW', result.preview));
@@ -142,6 +262,10 @@ function main() {
   console.log(resultLine('LANG_STATUS', langResult.action));
   console.log(resultLine('LANG_PATH',   langResult.path));
   console.log(resultLine('LANG_KEY',    langResult.key));
+  console.log(resultLine('NOVA_REGISTRATION', regResult.action));
+  if (regResult.path)   console.log(resultLine('NOVA_REGISTRATION_PATH', regResult.path));
+  if (regResult.canSee) console.log(resultLine('NOVA_CAN_SEE', regResult.canSee));
+  if (regResult.reason) console.log(resultLine('NOVA_REGISTRATION_REASON', regResult.reason));
 }
 
 try { main(); } catch (e) {

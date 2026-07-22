@@ -95,6 +95,27 @@ def validate(skill_dir):
     if body_lines > 500:
         warnings.append(f"SKILL.md body is {body_lines} lines (>500 tripwire — consider refactoring)")
 
+    # Required structural sections (in order) and approval-gate line
+    required_sections = ["## Context", "## Steps", "## Sample", "## Success condition"]
+    last_idx = -1
+    out_of_order = False
+    for section in required_sections:
+        idx = body.find("\n" + section)
+        if idx == -1 and body.lstrip().startswith(section):
+            idx = body.find(section)
+        if idx == -1:
+            errors.append(f"SKILL.md missing required section: {section}")
+        else:
+            if idx < last_idx:
+                out_of_order = True
+            last_idx = idx
+    if out_of_order:
+        errors.append("SKILL.md required sections are out of order (expected Context → Steps → Sample → Success condition)")
+
+    approval_line = "**Wait for user approval before continuing.**"
+    if approval_line not in body:
+        errors.append(f"SKILL.md missing required approval-gate line: {approval_line}")
+
     return errors, warnings
 
 
@@ -110,7 +131,12 @@ def main(argv):
             failed = True
             print(f"FAIL  {name}")
             for e in errs:
-                print(f"      ✗ {e}")
+                # The structural-section errors are spec'd to render with the
+                # warning-style "!" prefix while still counting as hard errors.
+                if e.startswith("SKILL.md missing required section:") or e.startswith("SKILL.md required sections are out of order") or e.startswith("SKILL.md missing required approval-gate line:"):
+                    print(f"      ! {e}")
+                else:
+                    print(f"      ✗ {e}")
         else:
             print(f"PASS  {name}")
         for w in warns:

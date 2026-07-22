@@ -1,0 +1,103 @@
+# Aggregates as tabs of root — pattern reference
+
+Every child aggregate of an aggregate root is rendered as a `Tab::make(...)`
+inside the root resource's `fields()` via `Tab::group(...)`. Child aggregates
+NEVER appear as top-level resources in the Nova sidebar — they appear inside
+their root.
+
+## Visibility rule
+
+| Child kind | Tab visibility |
+|------------|----------------|
+| Creatable from UI (operator can add the first child via Nova) | ALWAYS visible — operator needs the entry point to add the first row |
+| System-only (created exclusively by Actions or system events)  | HIDDEN when count = 0 — an empty tab the operator can't populate is noise |
+
+Detection rule for the skill: a child is "creatable from UI" when the child
+Resource has `can_create = true` (set in Phase 3 per-resource authorization).
+Otherwise it is system-only.
+
+## Counts MUST go through Nova, not the Model
+
+Place `withCount`-style loads on the **Resource**, never on the Eloquent
+model.
+
+```php
+// In src/Nova/Application.php — CORRECT
+public static $with = ['quotas'];
+
+// or, to load counts only when the Resource is queried via Nova:
+public static function indexQuery(NovaRequest $request, $query)
+{
+    return $query->withCount('quotas');
+}
+```
+
+```php
+// In src/Models/Application.php — WRONG
+protected $withCount = ['quotas']; // runs on EVERY query — jobs, reports, API, exports
+```
+
+Model-level `withCount` is the canonical source of N+1 on index pages and
+spills into every query the model is involved in (jobs, reports, exports).
+
+## Canonical Resource shape
+
+```php
+use Laravel\Nova\Fields\HasMany;
+use Laravel\Nova\Fields\Tab;
+use Laravel\Nova\Http\Requests\NovaRequest;
+
+class Application extends Resource
+{
+    public static $model = \Acme\Credits\Models\Application::class;
+
+    public static $with = ['quotas'];
+
+    public function fields(NovaRequest $request): array
+    {
+        return [
+            Tab::group(default: __('Details'), tabs: [
+                Tab::make(__('Details'), [
+                    // own fields …
+                ]),
+
+                // Creatable child → always visible.
+                Tab::make(__('Quotas'), [
+                    HasMany::make(__('Quotas'), 'quotas', Quota::class),
+                ]),
+
+                // System-only child → hidden when count = 0.
+                Tab::make(__('Audit entries'), [
+                    HasMany::make(__('Audit entries'), 'auditEntries', AuditEntry::class),
+                ])->canSee(fn () => ($this->resource->audit_entries_count ?? 0) > 0),
+            ]),
+        ];
+    }
+}
+```
+
+The `canSee` closure reads `{relation}_count` (the column `withCount` adds).
+The `?? 0` guard avoids a notice when `withCount` wasn't loaded for the
+current request (e.g. when an Action loads the model bare).
+
+## JSON contract additions for the generator
+
+For each entry in `has_many_relationships`:
+
+```json
+{
+  "name": "quotas",
+  "label_en": "Quotas",
+  "label_es": "Cupos",
+  "related_resource": "Quota",
+  "creatable_from_ui": true,
+  "count_column": "quotas_count"
+}
+```
+
+When `creatable_from_ui` is `false`, the generator wraps the tab in
+`->canSee(fn () => ($this->resource->{count_column} ?? 0) > 0)`. Otherwise
+the tab is emitted without a `canSee` guard.
+
+The generator also adds the relation to `public static $with = [...]` (or
+`indexQuery()` withCount, configurable via `count_strategy` in the JSON).

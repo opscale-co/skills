@@ -9,40 +9,78 @@
 //     "title_column":         "code",
 //     "search_columns":       ["code"],
 //     "uri_key":              "orders",
-//     "label":                "Orders",
-//     "singular_label":       "Order",
+//     "label":                "Orders",                 // EN plural — contextual
+//     "singular_label":       "Order",                  // EN singular — contextual
+//     "label_es":             "Pedidos",                // ES plural — contextual
+//     "singular_label_es":    "Pedido",                 // ES singular — contextual
 //     "uses_field_trait":     true,
 //     "has_status":           true,
 //     "status_enum":          "OrderStatus",
 //     "status_badge": {
 //       "map":    [{ "case": "Pending", "color": "warning" }, ...],
-//       "labels": [{ "case": "Pending", "label": "Pending" }, ...]
+//       "labels": [{ "case": "Pending", "label_en": "Pending", "label_es": "Pendiente" }, ...]
 //     },
 //     "has_many_relationships": [
-//       { "name": "items", "label": "Items", "related_resource": "OrderItem" }
+//       {
+//         "name":              "items",
+//         "label_en":          "Items",
+//         "label_es":          "Artículos",
+//         "related_resource":  "OrderItem",
+//         "creatable_from_ui": true,            // → tab always visible; otherwise hidden when count=0
+//         "count_column":      "items_count"    // optional; defaults to "{name}_count"
+//       }
+//     ],
+//     "count_strategy":     "with",              // "with" → public static $with; "index" → indexQuery withCount
+//
+//     "child_of": {                              // optional — when set, redirectAfterCreate is emitted
+//       "parent_uri":  "applications",           // uriKey() of the parent root Resource
+//       "foreign_key": "application_id"          // column on this aggregate that points to the parent
+//     },
+//
+//     "virtual_relations": [                     // optional — cross-subdomain logical refs
+//       {
+//         "label_en":       "Counterparty",
+//         "label_es":       "Contraparte",
+//         "attribute":      "counterparty_id",
+//         "contract_class": "CounterpartyContract"
+//       }
 //     ],
 //
 //     "can_create": true,     // optional — default true; when false, emit authorizedToCreate
 //     "can_update": true,     // optional — default true; when false, emit authorizedToUpdate
 //     "can_delete": true,     // optional — default true; when false, emit authorizedToDelete
 //
-//     "lang_dir": "lang",     // optional — defaults to <project_root>/lang (derived from output_dir)
-//     "locale":   "en"        // optional — default locale to seed; defaults to "en"
+//     "lang_dir": "lang"      // optional — defaults to <project_root>/lang (derived from output_dir)
 //   }
 //
 // Tab structure is applied automatically when has_many_relationships is
-// non-empty (per Opscale UI convention).
+// non-empty. Each tab gets a `->canSee(...)` guard when its relation is NOT
+// creatable_from_ui (per references/aggregate-tabs.md).
 //
-// Translation seeding: the script appends to `{lang_dir}/{locale}.json`:
-//   - the resource label and singular label
-//   - each status badge label (when has_status)
-//   - each HasMany tab label
-//   - "Details", "Created At", "Updated At", "Status" (the standard fixed labels)
-// The file is created (as `{}`) if missing. Existing keys are never overwritten.
+// Translation seeding: appends to BOTH `{lang_dir}/en.json` AND
+// `{lang_dir}/es.json`:
+//   - the resource label and singular label (per locale)
+//   - each status badge label (per locale, when has_status)
+//   - each HasMany tab label (per locale)
+//   - fixed UI strings ("Details", "Created At", "Updated At", "Status")
+//     resolved from the built-in EN/ES dictionary
+// Existing keys are never overwritten. ES-only or EN-only seeding is NOT
+// supported — both files are seeded in one pass.
 
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readJsonInput, render, writeOrConflict, loadTemplate, resultLine, seedTranslations } from './_lib.mjs';
+
+// EN → ES dictionary for fixed UI strings. The dictionary is intentionally
+// small — it only covers labels the generator emits literally. Domain labels
+// (resource names, tab names tied to entities, status badge labels, enum
+// option labels) are always user-supplied per locale.
+const FIXED_STRINGS = {
+  'Details':     { en: 'Details',      es: 'Detalles' },
+  'Status':      { en: 'Status',       es: 'Estado' },
+  'Created At':  { en: 'Created At',   es: 'Creado en' },
+  'Updated At':  { en: 'Updated At',   es: 'Actualizado en' },
+};
 
 function resolveLangDir(input) {
   if (input.lang_dir) return resolve(input.lang_dir);
@@ -57,16 +95,42 @@ function main() {
   for (const k of ['model_name', 'package_namespace', 'output_dir', 'title_column', 'uri_key', 'label', 'singular_label']) {
     if (!input[k]) throw new Error(`Missing required field: ${k}`);
   }
+  // ES labels are required — EN-only is no longer accepted.
+  if (!input.label_es)           throw new Error('Missing required field: label_es (Spanish plural label)');
+  if (!input.singular_label_es)  throw new Error('Missing required field: singular_label_es (Spanish singular label)');
 
-  const has_many = input.has_many_relationships || [];
+  const rawHasMany = input.has_many_relationships || [];
+  const has_many = rawHasMany.map(r => ({
+    name:              r.name,
+    label:             r.label_en || r.label || r.name,
+    label_es:          r.label_es || r.label_en || r.label || r.name,
+    related_resource:  r.related_resource,
+    creatable_from_ui: r.creatable_from_ui !== false, // default: creatable, always visible
+    count_column:      r.count_column || `${r.name}_count`,
+  }));
   const has_tabs = has_many.length > 0;
 
-  // Field imports — always include the basics; add HasMany only when needed.
+  // Eager loads: by default, every child relation is added to $with so the
+  // _count column is available for the canSee guard. Callers can switch to
+  // indexQuery-based loading via count_strategy: "index".
+  const count_strategy = input.count_strategy === 'index' ? 'index' : 'with';
+  const with_relations    = count_strategy === 'with'  ? has_many.map(r => r.name) : [];
+  const index_with_count  = count_strategy === 'index' ? has_many.map(r => r.name) : [];
+
+  const virtualRels = (input.virtual_relations || []).map(v => ({
+    label:          v.label_en || v.label,
+    label_es:       v.label_es || v.label_en || v.label,
+    attribute:      v.attribute,
+    contract_class: v.contract_class,
+  }));
+
+  // Field imports — always include the basics; add HasMany / Select only when needed.
   const fieldImports = new Set([
     'Laravel\\Nova\\Fields\\DateTime',
   ]);
-  if (input.has_status) fieldImports.add('Laravel\\Nova\\Fields\\Badge');
-  if (has_many.length)   fieldImports.add('Laravel\\Nova\\Fields\\HasMany');
+  if (input.has_status)     fieldImports.add('Laravel\\Nova\\Fields\\Badge');
+  if (has_many.length)      fieldImports.add('Laravel\\Nova\\Fields\\HasMany');
+  if (virtualRels.length)   fieldImports.add('Laravel\\Nova\\Fields\\Select');
 
   const field_imports = [...fieldImports].sort();
 
@@ -75,9 +139,34 @@ function main() {
     .filter((v, i, a) => a.indexOf(v) === i)
     .sort();
 
+  const contract_imports = Array.from(new Set(
+    virtualRels.map(v => `${input.package_namespace}\\Contracts\\${v.contract_class}`)
+  )).sort();
+
   const can_create = input.can_create !== false; // default true
   const can_update = input.can_update !== false;
   const can_delete = input.can_delete !== false;
+
+  // Normalize status_badge.labels — accept either { case, label } (legacy
+  // EN-only) or { case, label_en, label_es } (new). Template still reads
+  // `.label`, so we project to that field; the ES copy is seeded separately
+  // into the lang file below.
+  const status_badge = input.status_badge || { map: [], labels: [] };
+  const status_badge_normalized = {
+    map: status_badge.map || [],
+    labels: (status_badge.labels || []).map(entry => ({
+      case:  entry.case,
+      label: entry.label_en || entry.label,
+    })),
+  };
+  const status_badge_es_labels = (status_badge.labels || []).map(entry => ({
+    en: entry.label_en || entry.label,
+    es: entry.label_es || entry.label_en || entry.label,
+  }));
+
+  const child_of = input.child_of && input.child_of.parent_uri && input.child_of.foreign_key
+    ? { parent_uri: input.child_of.parent_uri, foreign_key: input.child_of.foreign_key }
+    : null;
 
   const context = {
     package_namespace:        input.package_namespace,
@@ -93,11 +182,17 @@ function main() {
     uses_field_trait:         input.uses_field_trait !== false, // default true
     has_status:               !!input.has_status,
     status_enum:              input.status_enum || '',
-    status_badge:             input.status_badge || { map: [], labels: [] },
+    status_badge:             status_badge_normalized,
     has_many_relationships:   has_many,
     has_tabs,
     field_imports,
     related_resource_imports,
+    contract_imports,
+    has_with:                 with_relations.length > 0,
+    with_relations,
+    has_index_with_count:     index_with_count.length > 0,
+    index_with_count,
+    child_of,
   };
 
   const template = loadTemplate(join(__dirname, '..', 'templates', 'resource.php.tmpl'));
@@ -105,21 +200,34 @@ function main() {
   const outPath = resolve(input.output_dir, `${input.model_name}.php`);
   const result = writeOrConflict(outPath, rendered);
 
-  // Seed translation keys for every user-visible string the template emits.
-  const translationKeys = new Set([
-    input.label,
-    input.singular_label,
-    'Details',
-    'Created At',
-    'Updated At',
-  ]);
-  if (input.has_status) translationKeys.add('Status');
-  for (const entry of (context.status_badge.labels || [])) translationKeys.add(entry.label);
-  for (const rel of has_many) translationKeys.add(rel.label);
+  // Build per-locale translation maps. The key is the English string the
+  // template emits inside __(). The value is the translation for the target
+  // locale.
+  const enEntries = new Map();
+  const esEntries = new Map();
+
+  function add(en, es) {
+    if (!en) return;
+    if (!enEntries.has(en)) enEntries.set(en, en);
+    if (!esEntries.has(en)) esEntries.set(en, es || en);
+  }
+
+  add(input.label,          input.label_es);
+  add(input.singular_label, input.singular_label_es);
+
+  // Fixed UI strings emitted by the template.
+  for (const key of ['Details', 'Created At', 'Updated At']) {
+    add(key, FIXED_STRINGS[key].es);
+  }
+  if (input.has_status) add('Status', FIXED_STRINGS['Status'].es);
+
+  for (const entry of status_badge_es_labels) add(entry.en, entry.es);
+  for (const rel of has_many)                 add(rel.label, rel.label_es);
+  for (const v of virtualRels)                add(v.label, v.label_es);
 
   const langDir = resolveLangDir(input);
-  const locale  = input.locale || 'en';
-  const langResult = seedTranslations(langDir, locale, translationKeys);
+  const enResult = seedTranslations(langDir, 'en', enEntries);
+  const esResult = seedTranslations(langDir, 'es', esEntries);
 
   console.log(resultLine('STATUS', result.status));
   console.log(resultLine('GENERATED', result.path));
@@ -128,13 +236,18 @@ function main() {
   console.log(resultLine('MODEL', `${input.package_namespace}\\Models\\${input.model_name}`));
   console.log(resultLine('TABS', has_tabs ? 1 + has_many.length : 0));
   console.log(resultLine('HAS_MANY', has_many.length));
+  console.log(resultLine('VIRTUAL_RELATIONS', virtualRels.length));
   console.log(resultLine('USES_TRAIT', context.uses_field_trait ? 'yes' : 'no'));
   console.log(resultLine('STATUS_BADGE', input.has_status ? 'yes' : 'no'));
   console.log(resultLine('CAN_CREATE', can_create ? 'yes' : 'no'));
   console.log(resultLine('CAN_UPDATE', can_update ? 'yes' : 'no'));
   console.log(resultLine('CAN_DELETE', can_delete ? 'yes' : 'no'));
-  console.log(resultLine('LANG_PATH',  langResult.path));
-  console.log(resultLine('LANG_ADDED', langResult.added.length));
+  console.log(resultLine('CHILD_OF', child_of ? `${child_of.parent_uri}.${child_of.foreign_key}` : '(root)'));
+  console.log(resultLine('COUNT_STRATEGY', count_strategy));
+  console.log(resultLine('LANG_EN_PATH',  enResult.path));
+  console.log(resultLine('LANG_EN_ADDED', enResult.added.length));
+  console.log(resultLine('LANG_ES_PATH',  esResult.path));
+  console.log(resultLine('LANG_ES_ADDED', esResult.added.length));
 }
 
 try { main(); } catch (e) {

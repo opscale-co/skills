@@ -246,3 +246,36 @@ php artisan boost:install
 > the result in the browser — all within a single Claude Code session.
 
 ---
+
+## Workbench locale configuration
+
+The workbench must boot in the project's locale (read from
+`.specify/memory/constitution.md`, line `**Workbench Locale:** {locale}`,
+defaulting to `es`) so demos render in the stakeholder's language.
+
+### `.env` block
+
+For `app` projects edit the root `.env`; for `module`/`package` projects
+edit `workbench/.env`:
+
+```env
+APP_LOCALE={locale}
+APP_FALLBACK_LOCALE=en
+```
+
+### Publish Nova's locale files
+
+```bash
+php artisan vendor:publish --tag=nova-lang --force
+```
+
+After publishing, verify `lang/vendor/nova/{locale}.json` exists.
+
+### Manual fallback
+
+If the locale file is not shipped by Nova, download it from
+[`laravel-lang/lang`](https://github.com/laravel-lang/lang) and drop it into
+`lang/vendor/nova/{locale}.json` manually. Boot the workbench and confirm
+the Nova top bar renders in the configured locale.
+
+---

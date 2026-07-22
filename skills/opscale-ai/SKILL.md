@@ -10,12 +10,11 @@ description: >
 
 # opscale-ai
 
-## Purpose
+## Context
 
-Generate a Claude Code skill that ships with the project and guides its
-installation in a consuming application. Instead of reading a README and
-running commands manually, the consumer invokes the skill and Claude Code
-walks them through everything interactively.
+### Purpose
+
+Generate a Claude Code skill that ships with the project and guides its installation in a consuming application. Instead of reading a README and running commands manually, the consumer invokes the skill and Claude Code walks them through everything interactively.
 
 The generated skill is essentially the README turned into a conversation:
 - If there's a config file → ask the right questions and fill it in
@@ -24,13 +23,9 @@ The generated skill is essentially the README turned into a conversation:
 - If there are complementary packages → install and configure them
 - If there are env variables → ask for values and set them
 
-**This is NOT part of the development sequence (Steps 0–10).** It runs
-independently, after the project is published. The development sequence
-produces the code; this skill produces the installer.
+**This is NOT part of the development sequence (Steps 0–13).** It runs independently, after the project is published. The development sequence produces the code; this skill produces the installer. The `PROJECT_TYPE` written by `opscale-init` into `.specify/memory/constitution.md` determines what the installer must cover (app vs module vs package vs library) — cross-link there for downstream consumer expectations.
 
----
-
-## Input Requirements
+### Input requirements
 
 The project must be built and published (or ready to publish):
 - `composer.json` exists with package name and dependencies
@@ -40,18 +35,50 @@ The project must be built and published (or ready to publish):
 - Migrations exist (if the package has a database)
 - Service providers exist
 
----
+### Output structure of the generated installer skill
 
-## Workflow
+Writes `.claude/skills/{package-slug}-setup.md`. The installer skill must mirror everything the README says but ask the user instead of assuming:
 
-### Phase 1 — Analyze the project's installation surface
+- composer install (and optional companion packages)
+- publish config (and ask for each key)
+- env variables (ask for each value)
+- run migrations
+- create seeders where needed (with confirmation)
+- register in Nova (if applicable)
+- verify installation and report results
 
-Read the project and identify everything a consumer needs to do:
+The skill is also registered in `composer.json` so it ships with the package:
+
+```json
+{
+  "extra": {
+    "claude": {
+      "skills": [".claude/skills/{package-slug}-setup.md"]
+    }
+  }
+}
+```
+
+### Domain Rules
+
+1. **Not part of the build sequence** — this runs independently after Steps 0–13 are done.
+2. **Interactive README** — the skill does everything the README says, but as a conversation.
+3. **Ask, don't assume** — for every config value and env variable, ask the user. Never hardcode.
+4. **Seeders are contextual** — only create seeders when the module needs initial data (enum records, default settings, sample data). Ask before seeding.
+5. **Complementary packages are optional** — always ask before installing companion packages.
+6. **Verify everything** — after each step, verify it worked before moving to the next.
+
+## Steps
+
+### Phase 1 — Inventory existing artifacts + project type
+
+Read the project and identify everything a consumer needs to do. Cross-link `PROJECT_TYPE` from `.specify/memory/constitution.md` — the type changes what the installer covers (apps don't need composer require; modules need Nova provider registration; libraries skip migrations).
 
 ```
 Installation Surface Analysis:
 
 Package: {vendor}/{package-slug}
+Project type: {app | module | package | library}
 
 1. Composer dependencies:
    - This package: {vendor}/{package-slug}
@@ -86,29 +113,37 @@ Package: {vendor}/{package-slug}
 8. Post-install verification:
    - {check description}
    - ...
-
-Generate installer skill?
 ```
 
-Wait for confirmation.
+Then parse the project's `README.md` to extract installation commands (composer require, artisan commands), configuration instructions, usage examples, and any manual steps the downstream consumer performs. The generated skill must cover everything the README covers, but interactively.
 
----
+**Wait for user approval before continuing.**
 
-### Phase 2 — Read the README
+### Phase 2 — Propose installer skill structure
 
-Parse the project's `README.md` to extract:
-- Installation commands (composer require, artisan commands)
-- Configuration instructions
-- Usage examples
-- Any manual steps the user must perform
+Draft the installer skill outline before writing the file. Confirm the section breakdown with the user — at minimum:
 
-The generated skill must cover everything the README covers, but interactively.
+```
+Proposed installer skill: .claude/skills/{package-slug}-setup.md
 
----
+Steps:
+  1. Prerequisites check (Laravel app, composer, DB)
+  2. composer require {vendor}/{package-slug} (+ confirm companions)
+  3. Publish + configure config/{slug}.php (one question per key)
+  4. Set environment variables (one question per var)
+  5. Run migrations + verify tables
+  6. Create + run seeders (with confirmation)
+  7. Register in Nova (if applicable)
+  8. Verify installation + report
+```
 
-### Phase 3 — Generate the installer skill
+Confirm the question wording for each config key and env var with the user — the questions are the installer's user interface.
 
-Write `.claude/skills/{package-slug}-setup.md`:
+**Wait for user approval before continuing.**
+
+### Phase 3 — Generate `.claude/skills/{slug}-setup.md`
+
+Write the installer skill:
 
 ```markdown
 ---
@@ -133,105 +168,49 @@ If any prerequisite is missing, guide the user to set it up first.
 
 ## Step 1 — Install the package
 
-```bash
+\`\`\`bash
 composer require {vendor}/{package-slug}
-```
+\`\`\`
 
-{If there are complementary packages:}
-
-Ask the user:
-> "Do you also want to install {companion-package}? It provides {description}."
-
-If yes:
-```bash
-composer require {vendor}/{companion-package}
-```
+{If there are complementary packages, ask the user before installing each.}
 
 ## Step 2 — Publish configuration
 
-```bash
+\`\`\`bash
 php artisan vendor:publish --provider="{ProviderClass}"
-```
+\`\`\`
 
-Then open the published config file and ask the user for each configurable value:
-
-{For each config key:}
-> "{key}: {explanation of what this controls}. What value do you want?"
-> Default: {default_value}
-
-Write the user's answers to `config/{slug}.php`.
+For each config key, ask the user for the value (default: {default_value}).
 
 ## Step 3 — Set environment variables
 
 For each required env variable, ask:
 > "{VAR_NAME}: {what this is for}. What's the value?"
 
-Add to `.env`:
-```env
-{VAR_NAME}={user_value}
-```
+Add to `.env`.
 
 ## Step 4 — Run migrations
 
-```bash
+\`\`\`bash
 php artisan migrate
-```
+\`\`\`
 
-Verify the tables were created:
-{For each expected table:}
-- [ ] `{table_name}` exists
+Verify the tables were created.
 
 ## Step 5 — Create seeders (if needed)
 
-{For each table that needs seed data:}
-
-Generate a seeder at `database/seeders/{TableName}Seeder.php`:
-
-```php
-// Seed with {description of what data}
-```
-
-Ask the user:
-> "Should I seed the {table} table with default data now?"
-
-If yes:
-```bash
-php artisan db:seed --class={TableName}Seeder
-```
+For each table that needs seed data, generate a seeder and ask the user before running.
 
 ## Step 6 — Register in Nova (if applicable)
 
-{If the package has Nova resources or tools:}
-
-Add to `NovaServiceProvider`:
-```php
-// Register resources, tools, menu items
-```
+Add to `NovaServiceProvider` — resources, tools, menu items.
 
 ## Step 7 — Verify installation
 
-Run verification checks:
-{For each check:}
-- [ ] {description}
-
-Report results to the user:
-```
-Installation complete:
-✅ Package installed
-✅ Config published and configured
-✅ Migrations ran — {count} tables created
-✅ Seeders executed
-✅ Nova resources registered
+Run verification checks and report results to the user.
 ```
 
-If any check fails, explain what went wrong and how to fix it.
-```
-
----
-
-### Phase 4 — Register the skill in composer.json
-
-Add to `composer.json` so the skill ships with the package:
+Then register the skill in `composer.json` (merge `extra.claude.skills`):
 
 ```json
 {
@@ -245,13 +224,14 @@ Add to `composer.json` so the skill ships with the package:
 
 Read `composer.json` first, merge the `extra.claude` key, write back.
 
----
+**Wait for user approval before continuing.**
 
-### Phase 5 — Verify
+### Phase 4 — Self-install dry run
+
+Verify the generated installer is well-formed and reads cleanly:
 
 ```
 AI CONFIGURATION CHECK
-──────────────────────────────────────────────────────
 [ ] .claude/skills/{package-slug}-setup.md exists
 [ ] Skill covers all README installation steps
 [ ] Skill asks for every config value
@@ -261,16 +241,25 @@ AI CONFIGURATION CHECK
 [ ] Skill installs complementary packages (with confirmation)
 [ ] Skill has verification checklist
 [ ] composer.json has extra.claude.skills reference
-──────────────────────────────────────────────────────
 ```
 
----
+Then run the installer skill against a scratch Laravel app (or dry-run mentally if no scratch app is available) and walk every prompt to confirm:
 
-## Domain Rules
+- every question maps to a real config key or env var
+- the commands execute without error in order
+- the verification step reports green when everything is in place
+- the verification step fails loudly when anything is missing
 
-1. **Not part of the build sequence** — this runs independently after Steps 0–10 are done.
-2. **Interactive README** — the skill does everything the README says, but as a conversation.
-3. **Ask, don't assume** — for every config value and env variable, ask the user. Never hardcode.
-4. **Seeders are contextual** — only create seeders when the module needs initial data (enum records, default settings, sample data). Ask before seeding.
-5. **Complementary packages are optional** — always ask before installing companion packages.
-6. **Verify everything** — after each step, verify it worked before moving to the next.
+**Wait for user approval before continuing.**
+
+## Sample
+
+Generated installer skill excerpt — see `references/sample-output.md`.
+
+## Success condition
+
+```bash
+node skills/opscale-ai/scripts/validate-installer.mjs --installer-file=.claude/skills/{slug}-setup.md
+```
+
+Exit code 0 = pass.

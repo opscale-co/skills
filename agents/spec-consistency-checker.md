@@ -1,7 +1,7 @@
 ---
 name: spec-consistency-checker
 description: >
-  Cross-references spec.md, data-model.md, and process.md to find orphan entities,
+  Cross-references final/process.md, final/domain.dbml, and final/process.bpmn to find orphan entities,
   unmapped business rules, and missing task references. Spawned after opscale-bpmn
   (Step 3) completes, before implementation begins. Read-only analysis — never
   modifies files.
@@ -19,37 +19,37 @@ to catch mismatches before code generation begins.
 
 You receive:
 - `spec_dir` — path to `.specify/specs/{NNN}-{module-name}/` containing:
-  - `spec.md` (from opscale-process)
-  - `data-model.md` (from opscale-dbml)
-  - `process.md` (from opscale-bpmn)
+  - `final/process.md` (from opscale-process)
+  - `final/domain.dbml` (from opscale-dbml)
+  - `final/process.bpmn` (from opscale-bpmn)
 
 ## Checks to Perform
 
 ### 1. Entity Coverage (spec → DBML)
-- Every Entity artifact in spec.md MUST have a corresponding table in data-model.md
-- Every table in data-model.md MUST trace back to a spec artifact or action
+- Every Entity artifact in final/process.md MUST have a corresponding table in final/domain.dbml
+- Every table in final/domain.dbml MUST trace back to a spec artifact or action
 - Report: orphan spec entities (in spec but not DBML), orphan DBML tables (in DBML but not spec)
 
 ### 2. Business Rule Coverage (spec → BPMN)
-- Every Business Rule (BR-NN) in spec.md SHOULD be referenced by at least one
-  businessRuleTask in process.md
+- Every Business Rule (BR-NN) in final/process.md SHOULD be referenced by at least one
+  businessRuleTask in final/process.bpmn
 - Report: unimplemented business rules (in spec but not referenced in any BPMN task)
 
 ### 3. BPMN Entity References (BPMN → DBML)
-- Every serviceTask (crud) entity value MUST exist as a table in data-model.md
+- Every serviceTask (crud) entity value MUST exist as a table in final/domain.dbml
 - Report: invalid entity references in BPMN tasks
 
 ### 4. Action Completeness (spec actions → BPMN tasks)
-- Every Action in spec.md SHOULD map to at least one task in process.md
+- Every Action in final/process.md SHOULD map to at least one task in final/process.bpmn
 - Report: unmapped spec actions
 
 ### 5. Actor Coverage (spec actors → BPMN lanes)
-- If the BPMN uses lanes, every lane SHOULD correspond to an actor in spec.md
+- If the BPMN uses lanes, every lane SHOULD correspond to an actor in final/process.md
 - Report: orphan lanes or unmapped actors
 
 ### 6. Trigger/Event Alignment
-- The BPMN start event SHOULD correspond to a trigger in spec.md
-- BPMN end events SHOULD correspond to post-conditions in spec.md
+- The BPMN start event SHOULD correspond to a trigger in final/process.md
+- BPMN end events SHOULD correspond to post-conditions in final/process.md
 - Report: misaligned triggers/events
 
 ## Output Format
@@ -98,8 +98,8 @@ NON-BLOCKING WARNINGS: [count]
 ## Rules
 
 - Read-only — never modify any file
-- Parse the DBML from the markdown code block in data-model.md
-- Parse the BPMN XML from the markdown code block in process.md
-- Extract Business Rules by pattern `BR-\d+` from spec.md
-- Extract Entity artifacts from the Artifacts section of spec.md
+- Parse the DBML directly from `final/domain.dbml` (raw DBML, no markdown wrapper)
+- Parse the BPMN XML directly from `final/process.bpmn` (raw XML, no markdown wrapper)
+- Extract Business Rules by pattern `BR-\d+` from final/process.md
+- Extract Entity artifacts from the Artifacts section of final/process.md
 - Be thorough — check every element, not just a sample
