@@ -1,0 +1,82 @@
+[
+  {
+    "query": "generate the nova resources for the billing module",
+    "should_trigger": true
+  },
+  {
+    "query": "create the admin panel from the dbml and bpmn",
+    "should_trigger": true
+  },
+  {
+    "query": "build the UI layer — one resource per aggregate root",
+    "should_trigger": true
+  },
+  {
+    "query": "domain layer is done, build the admin",
+    "should_trigger": true
+  },
+  {
+    "query": "expose invoice, customer and their items in nova with proper tabs",
+    "should_trigger": true
+  },
+  {
+    "query": "nova resources for recruitment please, with translated labels",
+    "should_trigger": true
+  },
+  {
+    "query": "the models exist, generate the resources with BelongsTo fields and CRUD authorization",
+    "should_trigger": true
+  },
+  {
+    "query": "build the invoice resource with its items as a tab, not a top-level resource",
+    "should_trigger": true
+  },
+  {
+    "query": "crea los resources de nova del modulo de creditos",
+    "should_trigger": true
+  },
+  {
+    "query": "wire the admin screens for the publishing module aggregates",
+    "should_trigger": true
+  },
+  {
+    "query": "generate the eloquent models and migrations first",
+    "should_trigger": false
+  },
+  {
+    "query": "implement the Issue Invoice action class",
+    "should_trigger": false
+  },
+  {
+    "query": "organize the nova sidebar menu around the operator's tasks",
+    "should_trigger": false
+  },
+  {
+    "query": "seed demo data so the invoice index page isn't empty",
+    "should_trigger": false
+  },
+  {
+    "query": "write dusk browser tests for the invoice creation form",
+    "should_trigger": false
+  },
+  {
+    "query": "build a guided nova walkthrough for stakeholders",
+    "should_trigger": false
+  },
+  {
+    "query": "configure nova devtool for debugging the UI",
+    "should_trigger": false
+  },
+  {
+    "query": "model the domain entities in dbml",
+    "should_trigger": false
+  },
+  {
+    "query": "detail the sipoc for the publish article action",
+    "should_trigger": false
+  },
+  {
+    "query": "set up the ci pipeline for the nova package",
+    "should_trigger": false
+  }
+]

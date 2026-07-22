@@ -1,0 +1,82 @@
+[
+  {
+    "query": "create the data model for the billing module from final/process.md",
+    "should_trigger": true
+  },
+  {
+    "query": "generate the dbml for orders, the spec passed validation this morning",
+    "should_trigger": true
+  },
+  {
+    "query": "model the domain for the recruitment module",
+    "should_trigger": true
+  },
+  {
+    "query": "define the entities for subscriptions — plans, subscribers, payments",
+    "should_trigger": true
+  },
+  {
+    "query": "we finished the process spec for credits, what's next? model this",
+    "should_trigger": true
+  },
+  {
+    "query": "need the er model for the publishing module, article reviewer checklist and all that",
+    "should_trigger": true
+  },
+  {
+    "query": "turn the normalized names in .specify/specs/003-orders/final/process.md into a data model",
+    "should_trigger": true
+  },
+  {
+    "query": "hey can you modle the invoice and customer entities? (typo intended, i mean the data model)",
+    "should_trigger": true
+  },
+  {
+    "query": "the billing spec mentions customer, invoice and invoice_item — define their tables, enums and relations",
+    "should_trigger": true
+  },
+  {
+    "query": "which columns should invoice carry? build the full domain data model for the module",
+    "should_trigger": true
+  },
+  {
+    "query": "generate the PHP models and migrations from the dbml",
+    "should_trigger": false
+  },
+  {
+    "query": "create the BPMN process map for billing",
+    "should_trigger": false
+  },
+  {
+    "query": "spec the billing module from my notes about how invoicing works",
+    "should_trigger": false
+  },
+  {
+    "query": "detail the Issue Invoice action as a SIPOC",
+    "should_trigger": false
+  },
+  {
+    "query": "build the nova resource for the invoice aggregate",
+    "should_trigger": false
+  },
+  {
+    "query": "write the seeder so the invoices index isn't empty in nova",
+    "should_trigger": false
+  },
+  {
+    "query": "the dbml is done — generate the domain layer now",
+    "should_trigger": false
+  },
+  {
+    "query": "add a status transition guard to the InvoiceStatus enum class",
+    "should_trigger": false
+  },
+  {
+    "query": "set up telescope so I can debug the invoice events",
+    "should_trigger": false
+  },
+  {
+    "query": "map which module owns the customer entity across the whole app",
+    "should_trigger": false
+  }
+]

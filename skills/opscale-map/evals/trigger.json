@@ -1,0 +1,82 @@
+[
+  {
+    "query": "map the domains of this app",
+    "should_trigger": true
+  },
+  {
+    "query": "add the billing module to the domain map",
+    "should_trigger": true
+  },
+  {
+    "query": "which module owns the customer entity?",
+    "should_trigger": true
+  },
+  {
+    "query": "build the app-level map: business lines and the modules inside each",
+    "should_trigger": true
+  },
+  {
+    "query": "domain map for the whole product — sales, finance, content",
+    "should_trigger": true
+  },
+  {
+    "query": "how do modules reference each other across the app? keep the map current",
+    "should_trigger": true
+  },
+  {
+    "query": "el mapa de dominios de la aplicacion, con las referencias cruzadas",
+    "should_trigger": true
+  },
+  {
+    "query": "we're adding a subscriptions module — where does it sit among the business lines?",
+    "should_trigger": true
+  },
+  {
+    "query": "portfolio of modules per domain, with cross-module refs",
+    "should_trigger": true
+  },
+  {
+    "query": "update the map: recruitment now references billing's customer",
+    "should_trigger": true
+  },
+  {
+    "query": "spec the billing module's internal process",
+    "should_trigger": false
+  },
+  {
+    "query": "model the billing entities in dbml",
+    "should_trigger": false
+  },
+  {
+    "query": "initialize the new subscriptions module",
+    "should_trigger": false
+  },
+  {
+    "query": "generate the cross-subdomain contract interfaces in php",
+    "should_trigger": false
+  },
+  {
+    "query": "draw the bpmn for the sales process",
+    "should_trigger": false
+  },
+  {
+    "query": "document how the finance area works step by step",
+    "should_trigger": false
+  },
+  {
+    "query": "create the nova resources for the customer entity",
+    "should_trigger": false
+  },
+  {
+    "query": "wire the external_ref notes in the dbml columns",
+    "should_trigger": false
+  },
+  {
+    "query": "organize the nova menu by domain",
+    "should_trigger": false
+  },
+  {
+    "query": "write an adr about the modular architecture",
+    "should_trigger": false
+  }
+]

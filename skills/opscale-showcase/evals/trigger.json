@@ -1,0 +1,82 @@
+[
+  {
+    "query": "showcase the billing module",
+    "should_trigger": true
+  },
+  {
+    "query": "demo nova to the stakeholders — guided, end to end",
+    "should_trigger": true
+  },
+  {
+    "query": "guided walkthrough of every process in the module",
+    "should_trigger": true
+  },
+  {
+    "query": "build the dusk script that drives the whole flow visibly, pausing before each main action",
+    "should_trigger": true
+  },
+  {
+    "query": "prepare the stakeholder demo: browser opens, walks invoicing then settlement",
+    "should_trigger": true
+  },
+  {
+    "query": "non-headless walkthrough so the client can watch the module work",
+    "should_trigger": true
+  },
+  {
+    "query": "quiero mostrar el modulo funcionando de punta a punta en nova",
+    "should_trigger": true
+  },
+  {
+    "query": "the menu and seed data are ready — create the visual demo",
+    "should_trigger": true
+  },
+  {
+    "query": "make a self-driving demo of the publishing module in nova",
+    "should_trigger": true
+  },
+  {
+    "query": "walkthrough that creates an invoice, issues it and records payment while we watch",
+    "should_trigger": true
+  },
+  {
+    "query": "write headless dusk tests for ci",
+    "should_trigger": false
+  },
+  {
+    "query": "seed the demo data the walkthrough needs",
+    "should_trigger": false
+  },
+  {
+    "query": "organize the menu the demo will navigate",
+    "should_trigger": false
+  },
+  {
+    "query": "record a video of me clicking through nova",
+    "should_trigger": false
+  },
+  {
+    "query": "generate the nova resources the demo drives",
+    "should_trigger": false
+  },
+  {
+    "query": "the walkthrough fails on the login screen, debug it",
+    "should_trigger": false
+  },
+  {
+    "query": "write feature tests for the invoicing flow",
+    "should_trigger": false
+  },
+  {
+    "query": "deploy the demo environment to staging",
+    "should_trigger": false
+  },
+  {
+    "query": "build a powerpoint about the module",
+    "should_trigger": false
+  },
+  {
+    "query": "configure the ci smoke tests",
+    "should_trigger": false
+  }
+]

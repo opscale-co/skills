@@ -1,0 +1,122 @@
+# Skill pipeline CI — three gates:
+#   lint    every push, whole skills/ tree, seconds, no API
+#   eval    only skills touched by the push (layers 2-3 spend API credit,
+#           so they never run without a path filter); thresholds come from
+#           skills.config.yml, matrix is one job per changed skill
+#   package main branch only, only if eval passed; .skill files as artifacts
+name: skills
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Linter unit tests
+        run: python3 -m unittest discover tools/tests
+      - name: Lint all skills
+        run: python3 tools/lint_skills.py --json | tee lint-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-report
+          path: lint-report.json
+
+  detect-changed:
+    runs-on: ubuntu-latest
+    outputs:
+      skills: ${{ steps.diff.outputs.skills }}
+      any: ${{ steps.diff.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        name: Detect skills modified in this push
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if ! git cat-file -e "$BASE" 2>/dev/null; then BASE=$(git rev-parse HEAD~1 2>/dev/null || git hash-object -t tree /dev/null); fi
+          CHANGED=$(git diff --name-only "$BASE" HEAD -- skills/ | cut -d/ -f2 | sort -u)
+          SKILLS=$(for s in $CHANGED; do [ -f "skills/$s/SKILL.md" ] && echo "$s"; done | jq -R . | jq -cs .)
+          echo "skills=$SKILLS" >> "$GITHUB_OUTPUT"
+          echo "any=$([ "$SKILLS" != "[]" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "changed skills: $SKILLS"
+
+  eval:
+    needs: [lint, detect-changed]
+    if: needs.detect-changed.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: ${{ fromJSON(needs.detect-changed.outputs.skills) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Trigger evals (layer 2)
+        if: hashFiles(format('skills/{0}/evals/trigger.json', matrix.skill)) != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          pip install pyyaml
+          python3 tools/run_trigger_evals.py "skills/${{ matrix.skill }}" \
+            --json "trigger-results-${{ matrix.skill }}.json"
+      - name: Functional evals (layer 3)
+        # Runs only when the skill declares functional evals AND its fixture
+        # resolves on this runner. Stack toolchains (php, composer deps, ...)
+        # are the fixture's responsibility — nothing here names a language.
+        if: hashFiles(format('skills/{0}/evals/functional.json', matrix.skill)) != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          FIXTURE=$(python3 -c "
+          import sys; sys.path.insert(0, 'tools')
+          from pipeline_config import load_config, skill_settings
+          print(skill_settings(load_config(), '${{ matrix.skill }}').get('fixture') or '')")
+          if [ -n "$FIXTURE" ] && [ -d "$FIXTURE" ]; then
+            python3 tools/run_functional_evals.py "skills/${{ matrix.skill }}" \
+              --out "benchmark-${{ matrix.skill }}"
+          else
+            echo "fixture '$FIXTURE' not available on this runner — skipping layer 3"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-results-${{ matrix.skill }}
+          path: |
+            trigger-results-*.json
+            benchmark-*/benchmark.*
+          if-no-files-found: ignore
+
+  package:
+    needs: [eval, detect-changed]
+    if: github.ref == 'refs/heads/main' && needs.detect-changed.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        skill: ${{ fromJSON(needs.detect-changed.outputs.skills) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Package skill (evals/ and fixtures excluded from the bundle)
+        run: |
+          pip install pyyaml
+          cd tools/vendor/skill-creator
+          python3 -m scripts.package_skill "../../../skills/${{ matrix.skill }}" ../../../dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skill-${{ matrix.skill }}
+          path: dist/*.skill

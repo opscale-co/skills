@@ -1,0 +1,82 @@
+[
+  {
+    "query": "generate the SIPOC for each businessRuleTask in the billing bpmn",
+    "should_trigger": true
+  },
+  {
+    "query": "detail the actions of the publishing process",
+    "should_trigger": true
+  },
+  {
+    "query": "describe each action in final/process.bpmn — inputs, process, outputs",
+    "should_trigger": true
+  },
+  {
+    "query": "the bpmn passed, write the sipoc documents next",
+    "should_trigger": true
+  },
+  {
+    "query": "what goes into the Issue Invoice action? detail it properly before we code it",
+    "should_trigger": true
+  },
+  {
+    "query": "author the suppliers/inputs/process/outputs/customers doc for Record Payment",
+    "should_trigger": true
+  },
+  {
+    "query": "we need the bridge between the bpmn tasks and the future handle() bodies",
+    "should_trigger": true
+  },
+  {
+    "query": "detail the actions for the credits module, there are 4 businessRuleTasks",
+    "should_trigger": true
+  },
+  {
+    "query": "prep the contracts opscale-logic will materialize — one doc per logic task",
+    "should_trigger": true
+  },
+  {
+    "query": "los sipoc de recruitment, el bpmn ya esta validado",
+    "should_trigger": true
+  },
+  {
+    "query": "write the actual handle() code for Issue Invoice",
+    "should_trigger": false
+  },
+  {
+    "query": "generate the bpmn from the spec and dbml",
+    "should_trigger": false
+  },
+  {
+    "query": "create the Action classes from the sipocs",
+    "should_trigger": false
+  },
+  {
+    "query": "model the invoice entity and its relations",
+    "should_trigger": false
+  },
+  {
+    "query": "spec how the billing area works from my notes",
+    "should_trigger": false
+  },
+  {
+    "query": "generate migrations for the billing tables",
+    "should_trigger": false
+  },
+  {
+    "query": "the sipocs are done — build the logic layer",
+    "should_trigger": false
+  },
+  {
+    "query": "build nova resources for each aggregate root",
+    "should_trigger": false
+  },
+  {
+    "query": "write a feature test for the payment recording action",
+    "should_trigger": false
+  },
+  {
+    "query": "set up xdebug to step through the invoice action",
+    "should_trigger": false
+  }
+]

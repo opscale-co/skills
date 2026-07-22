@@ -1,0 +1,82 @@
+[
+  {
+    "query": "generate the BPMN for the billing module",
+    "should_trigger": true
+  },
+  {
+    "query": "map the process for order fulfillment, the dbml passed this morning",
+    "should_trigger": true
+  },
+  {
+    "query": "define the flow for the publishing module as a process diagram",
+    "should_trigger": true
+  },
+  {
+    "query": "create the process diagram from final/process.md and final/domain.dbml",
+    "should_trigger": true
+  },
+  {
+    "query": "we have spec and data model for credits, produce the bpmn xml",
+    "should_trigger": true
+  },
+  {
+    "query": "turn the ordered flow of the recruitment spec into subprocesses and tasks",
+    "should_trigger": true
+  },
+  {
+    "query": "necesito el diagrama del proceso de facturacion, ya está el modelo de datos",
+    "should_trigger": true
+  },
+  {
+    "query": "what are the atomic operations for issuing an invoice? build the process file",
+    "should_trigger": true
+  },
+  {
+    "query": "draw the flow: create invoice, issue invoice, wait for payment, record payment",
+    "should_trigger": true
+  },
+  {
+    "query": "the plan needs the process map next — spec and dbml are both PASS",
+    "should_trigger": true
+  },
+  {
+    "query": "model the entities for the billing module first",
+    "should_trigger": false
+  },
+  {
+    "query": "write one SIPOC per businessRuleTask in the billing bpmn",
+    "should_trigger": false
+  },
+  {
+    "query": "spec the module — sales quotes it, manager approves, then we invoice",
+    "should_trigger": false
+  },
+  {
+    "query": "generate the Action classes for Issue Invoice and Record Payment",
+    "should_trigger": false
+  },
+  {
+    "query": "the bpmn is validated, generate the domain layer",
+    "should_trigger": false
+  },
+  {
+    "query": "build a nova bpmn viewer field for the process file",
+    "should_trigger": false
+  },
+  {
+    "query": "write browser tests that walk the invoicing flow",
+    "should_trigger": false
+  },
+  {
+    "query": "showcase the module end to end in nova for the stakeholders",
+    "should_trigger": false
+  },
+  {
+    "query": "organize the sidebar menu by process instead of alphabetically",
+    "should_trigger": false
+  },
+  {
+    "query": "configure the release pipeline once tests pass",
+    "should_trigger": false
+  }
+]

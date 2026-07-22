@@ -1,0 +1,82 @@
+[
+  {
+    "query": "start a new module for subscriptions",
+    "should_trigger": true
+  },
+  {
+    "query": "set up spec-kit in this laravel project",
+    "should_trigger": true
+  },
+  {
+    "query": "initialize the project for spec driven development",
+    "should_trigger": true
+  },
+  {
+    "query": "create the constitution for the billing module",
+    "should_trigger": true
+  },
+  {
+    "query": "bootstrap this nova package with the opscale conventions",
+    "should_trigger": true
+  },
+  {
+    "query": "new opscale module: recruitment. set this up",
+    "should_trigger": true
+  },
+  {
+    "query": "configure the mcp servers and commit standard for a fresh module",
+    "should_trigger": true
+  },
+  {
+    "query": "arranca el modulo de creditos, todavia no hay nada inicializado",
+    "should_trigger": true
+  },
+  {
+    "query": "prep this repo so the other opscale skills can run — constitution, spec-kit, husky",
+    "should_trigger": true
+  },
+  {
+    "query": "kick off the orders module from zero, composer.json already exists",
+    "should_trigger": true
+  },
+  {
+    "query": "add a feature to the already-initialized billing module",
+    "should_trigger": false
+  },
+  {
+    "query": "spec the billing process from my notes",
+    "should_trigger": false
+  },
+  {
+    "query": "generate the dbml for the module we initialized yesterday",
+    "should_trigger": false
+  },
+  {
+    "query": "write the constitution section about testing into the existing constitution",
+    "should_trigger": false
+  },
+  {
+    "query": "configure the release pipeline and semantic-release",
+    "should_trigger": false
+  },
+  {
+    "query": "set up the testing stack with phpunit and dusk",
+    "should_trigger": false
+  },
+  {
+    "query": "map the app's domains and modules",
+    "should_trigger": false
+  },
+  {
+    "query": "make this package installable by consumers",
+    "should_trigger": false
+  },
+  {
+    "query": "configure telescope for debugging",
+    "should_trigger": false
+  },
+  {
+    "query": "build the domain layer for billing",
+    "should_trigger": false
+  }
+]

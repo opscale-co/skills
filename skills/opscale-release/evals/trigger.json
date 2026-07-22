@@ -1,0 +1,82 @@
+[
+  {
+    "query": "configure release for the billing package",
+    "should_trigger": true
+  },
+  {
+    "query": "set up ci — github actions and semantic-release",
+    "should_trigger": true
+  },
+  {
+    "query": "wire sonarqube for the module",
+    "should_trigger": true
+  },
+  {
+    "query": "set up the deploy pipeline, tests are green",
+    "should_trigger": true
+  },
+  {
+    "query": "version and publish the package automatically on merge",
+    "should_trigger": true
+  },
+  {
+    "query": "configura el pipeline de release del paquete nova",
+    "should_trigger": true
+  },
+  {
+    "query": "quality gates and the publishing workflow for this repo",
+    "should_trigger": true
+  },
+  {
+    "query": "the review phase needs its final step — releases",
+    "should_trigger": true
+  },
+  {
+    "query": "automate versioning from conventional commits and publish to packagist",
+    "should_trigger": true
+  },
+  {
+    "query": "set up the release workflow now that opscale-test passed",
+    "should_trigger": true
+  },
+  {
+    "query": "set up the commit standard and husky hooks (that's day 1 init work)",
+    "should_trigger": false
+  },
+  {
+    "query": "configure the linters, pint and rector",
+    "should_trigger": false
+  },
+  {
+    "query": "write the tests the release gate requires",
+    "should_trigger": false
+  },
+  {
+    "query": "set up telescope for staging debugging",
+    "should_trigger": false
+  },
+  {
+    "query": "create a github action that only runs the test suite",
+    "should_trigger": false
+  },
+  {
+    "query": "bump the version manually and tag it",
+    "should_trigger": false
+  },
+  {
+    "query": "make the package installable/configurable by downstream consumers",
+    "should_trigger": false
+  },
+  {
+    "query": "initialize the module with spec-kit and the constitution",
+    "should_trigger": false
+  },
+  {
+    "query": "seed demo data before the stakeholder demo",
+    "should_trigger": false
+  },
+  {
+    "query": "fix the failing sonarqube scan — the token expired",
+    "should_trigger": false
+  }
+]

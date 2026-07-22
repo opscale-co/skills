@@ -1,0 +1,6 @@
+{
+  "skill_name": "overfit-skill",
+  "evals": [
+    {"id": "reconcile", "prompt": "reconcile the InvoiceReconciliation batch for march", "assertions": []}
+  ]
+}

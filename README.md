@@ -432,6 +432,23 @@ opscale-test (skill — orchestrates)
   └─ Spawns 1x gate-checker            (sequential)
 ```
 
+## Validation Pipeline
+
+Reproducible creation/validation flow for every skill in `skills/` (discovered automatically — any directory with a `SKILL.md`). Generic by design: nothing in `tools/` knows a language or framework; all stack coupling lives in `skills.config.yml` (compilers map, per-skill fixture + `verify` commands), in each skill's `evals/`, and in pluggable `tools/graders/`. The trigger-eval engine, benchmark aggregation and packaging are reused verbatim from Anthropic's skill-creator (vendored in `tools/vendor/skill-creator/`).
+
+| Layer | Tool | Cost | What it checks |
+|---|---|---|---|
+| 1 Lint | `python3 tools/lint_skills.py [--json]` | free, seconds | frontmatter, kebab-case name, description 50-500, referenced paths exist in the bundle, scripts compile (via config `compilers`), no secrets; warnings: >500-line SKILL.md, imperative walls, reference TOCs, eval overfitting, cross-bundle paths |
+| 2 Trigger | `python3 tools/run_trigger_evals.py skills/<name>` | headless API | `evals/trigger.json` — 10 positive phrasings + 10 near-miss negatives per skill, `runs` times each, pass-rate vs config `threshold` |
+| 3 Functional | `python3 tools/run_functional_evals.py skills/<name>` | headless API | `evals/functional.json` against a tmpdir copy of the fixture; assertions in priority order `verify` (config toolchain) > `script` (graders, fed the manifest of files the agent actually generated) > `llm` (last resort); always runs a no-skill baseline and reports the delta in `benchmark.json` |
+| 4 Improve | `python3 tools/improve_loop.py skills/<name>` | headless API | 60/40 train/test split (reviser never sees test), revise-and-re-eval until convergence, 2-strike test-score stagnation triggers rollback, `token_budget` aborts; winner chosen by test score; snapshots per iteration in `<skill>-workspace/` |
+
+Grader contract (`tools/graders/README.md`): a grader receives the output dir, exits 0/1, prints one message — that is all the runner knows. Budgets in `skills.config.yml` are aligned to the Claude Max 20x plan: layers 2-4 run via `claude -p`, which bills the separate headless monthly credit (~200 USD), not the interactive 5-hour window; `token_budget` caps one improve-loop run at about half a window (220k tokens) and `headless_daily_usd` keeps a month of nightly CI inside the credit.
+
+CI (`.github/workflows/skills.yml`): `lint` on every push; `eval` only for skills touched by the push (matrix per skill — layers 2-3 spend credit, so they never run unfiltered); `package` on main only after `eval`, publishing `.skill` bundles (evals/fixtures excluded) as artifacts.
+
+Linter tests: `python3 -m unittest discover tools/tests`.
+
 ## Installation
 
 Symlink all skills into Claude Code's default skills directory:

@@ -1,0 +1,54 @@
+Project billing {
+  Note: 'Billing module: customers, invoices and their line items. Status: PASS'
+}
+
+Enum invoice_status {
+  Draft     [note: 'Being edited, not yet sent to the customer']
+  Issued    [note: 'Sent to the customer, awaiting payment']
+  Paid      [note: 'Payment received in full']
+  Cancelled [note: 'Voided before payment; kept for audit']
+}
+
+Table customer {
+  id ulid [pk, note: 'ULID primary key']
+  legal_name varchar(255) [not null, note: 'Registered business or person name']
+  contact_email varchar(255) [not null, unique, note: 'Billing contact // type:email']
+  tax_id varchar(50) [note: 'Government tax identifier // type:document']
+  created_at timestamp
+  updated_at timestamp
+
+  Note: 'A party that receives invoices.'
+}
+
+Table invoice {
+  id ulid [pk, note: 'ULID primary key']
+  customer_id ulid [not null, note: 'Issuing target']
+  number varchar(50) [not null, unique, note: 'Human-readable invoice number']
+  status invoice_status [not null, default: 'Draft', note: 'Lifecycle state']
+  total_amount decimal(12,2) [not null, default: 0, note: 'Sum of line totals // type:money']
+  issued_at timestamp [null, note: 'When status moved to Issued']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (status, created_at)
+  }
+
+  Note: 'A bill sent to a customer; moves Draft -> Issued -> Paid/Cancelled.'
+}
+
+Table invoice_item {
+  id ulid [pk, note: 'ULID primary key']
+  invoice_id ulid [not null, note: 'Owning invoice']
+  description varchar(500) [not null, note: 'What is being charged']
+  quantity int [not null, default: 1, note: 'Units billed']
+  unit_price decimal(12,2) [not null, note: 'Price per unit // type:money']
+  line_total decimal(12,2) [not null, note: 'quantity * unit_price // type:money']
+  created_at timestamp
+  updated_at timestamp
+
+  Note: 'One billable line inside an invoice.'
+}
+
+Ref: invoice.customer_id > customer.id
+Ref: invoice_item.invoice_id > invoice.id

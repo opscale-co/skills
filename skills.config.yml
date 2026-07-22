@@ -1,0 +1,56 @@
+# skills.config.yml — the ONLY coupling point between the generic pipeline in
+# tools/ and any concrete stack. Language/framework/toolchain specifics live
+# here (or in per-skill evals/ and pluggable tools/graders/), never in tools/.
+
+defaults:
+  runs: 3              # runs per functional eval (agents are non-deterministic)
+  threshold: 0.8       # pass-rate needed to converge in the improve loop
+  max_iter: 5          # improve-loop iteration cap
+  # Hard token cap per improve-loop run; the loop aborts and reports past it.
+  # Sized against the Claude Max 20x plan: one 5-hour interactive window is
+  # ~440k tokens (post May-2026 doubling), so one loop run is capped at half
+  # a window. Note: layers 2-4 run headless (claude -p), which bills against
+  # the separate monthly headless credit (budgets below), not the 5h window.
+  token_budget: 220000
+
+# Plan alignment for everything that spends API/subscription usage.
+# tools/ reads only the numbers; which plan they describe lives here.
+budgets:
+  plan: max-20x
+  session_window_tokens: 440000     # interactive 5h window (~, Max 20x)
+  headless_monthly_credit_usd: 200  # claude -p / SDK monthly credit (Max 20x)
+  # Soft daily ceiling for headless pipeline spend so a month of nightly CI
+  # eval runs stays inside the credit: 200 USD / 30 days ≈ 6.6 USD/day.
+  headless_daily_usd: 6
+
+# Syntax verifiers dispatched by extension in layer 1 (tools/lint_skills.py).
+# The command receives the file path as its last argument and must exit 0 on
+# valid syntax. An extension without an entry here is a lint warning, not an
+# error. A registered command whose binary is missing on the host is also a
+# warning (environment problem, not a skill problem).
+compilers:
+  ".py": "python3 -m py_compile"
+  ".sh": "bash -n"
+  ".php": "php -l"
+  ".mjs": "node --check"
+  ".js": "node --check"
+
+# Lint policy knobs (layer 1). Example: `description_max: 1024` would relax
+# the description ceiling for a repo that carries longer trigger-optimized
+# descriptions — policy lives here, never hardcoded in tools/.
+lint: {}
+
+skills:
+  opscale-domain:
+    languages: [php]
+    # Base skeleton the functional evals copy into a tmpdir (vendor/ and
+    # node_modules/ are symlinked, everything else copied). No skeleton exists
+    # inside this repo — this points at the sibling nova-template project,
+    # which ships pint + phpunit preinstalled (no phpstan/pest there, hence
+    # the verify commands below). Each eval then overlays its own committed
+    # files from skills/opscale-domain/evals/fixtures/<name>/ on top.
+    fixture: ../nova-template
+    verify:
+      # scoped to generated dirs: the pristine template's config/ fails pint
+      - {id: style, cmd: "vendor/bin/pint --test src database"}
+      - {id: tests, cmd: "vendor/bin/phpunit"}

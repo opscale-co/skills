@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="billing" targetNamespace="http://opscale.co/billing">
+  <bpmn:process id="billing_process" isExecutable="false">
+    <bpmn:startEvent id="start"/>
+    <bpmn:userTask id="register_customer" name="Register the customer"/>
+    <bpmn:userTask id="create_invoice" name="Create the invoice"/>
+    <bpmn:businessRuleTask id="issue_invoice" name="Issue Invoice"/>
+    <bpmn:intermediateCatchEvent id="wait_payment" name="Wait for payment"/>
+    <bpmn:businessRuleTask id="record_payment" name="Record Payment"/>
+    <bpmn:endEvent id="end"/>
+  </bpmn:process>
+</bpmn:definitions>

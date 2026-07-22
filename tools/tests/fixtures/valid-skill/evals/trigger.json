@@ -1,0 +1,4 @@
+[
+  {"query": "arrange q3 finance export into the standard layout", "should_trigger": true},
+  {"query": "plot the finance numbers as a bar chart", "should_trigger": false}
+]

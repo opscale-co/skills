@@ -1,0 +1,82 @@
+[
+  {
+    "query": "generate the domain layer for the billing module, the dbml is validated",
+    "should_trigger": true
+  },
+  {
+    "query": "create the models from final/domain.dbml",
+    "should_trigger": true
+  },
+  {
+    "query": "build the domain layer — migrations, models, enums, repositories",
+    "should_trigger": true
+  },
+  {
+    "query": "the plan phase is complete for orders, start the generate phase",
+    "should_trigger": true
+  },
+  {
+    "query": "turn the dbml into php: one migration per table, models with casts and relations",
+    "should_trigger": true
+  },
+  {
+    "query": "build the models for recruitment, constitution says prefix rec_",
+    "should_trigger": true
+  },
+  {
+    "query": "necesito las migraciones y modelos del modulo de creditos desde el dbml",
+    "should_trigger": true
+  },
+  {
+    "query": "generate the InvoiceStatus enum and the repositories from the data model",
+    "should_trigger": true
+  },
+  {
+    "query": "scaffold the eloquent layer for the publishing module",
+    "should_trigger": true
+  },
+  {
+    "query": "dbml passed, whats next? build the php domain",
+    "should_trigger": true
+  },
+  {
+    "query": "generate the dbml from the process spec",
+    "should_trigger": false
+  },
+  {
+    "query": "create the nova resources for the invoice aggregate",
+    "should_trigger": false
+  },
+  {
+    "query": "implement the business logic actions from the sipocs",
+    "should_trigger": false
+  },
+  {
+    "query": "write the bpmn for billing",
+    "should_trigger": false
+  },
+  {
+    "query": "seed the workbench database with demo invoices",
+    "should_trigger": false
+  },
+  {
+    "query": "add a computed accessor to the existing Invoice model (iterate on the finished module)",
+    "should_trigger": false
+  },
+  {
+    "query": "configure phpstan and the quality stack for the domain layer",
+    "should_trigger": false
+  },
+  {
+    "query": "set up telescope to watch model events while I debug",
+    "should_trigger": false
+  },
+  {
+    "query": "write unit tests for the InvoiceStatus transitions",
+    "should_trigger": false
+  },
+  {
+    "query": "make the package installable by downstream consumers",
+    "should_trigger": false
+  }
+]

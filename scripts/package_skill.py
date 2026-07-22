@@ -13,6 +13,9 @@ import sys, os, argparse, zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 EXCLUDE_DIRS = {"node_modules", ".git", "__pycache__", ".pytest_cache"}
 EXCLUDE_FILES = {".DS_Store"}
+# evals/ (queries + fixtures) is validation material, never part of the
+# distributed bundle — same rule as the vendored skill-creator packager.
+ROOT_EXCLUDE_DIRS = {"evals"}
 
 
 def package(skill_dir, out_dir):
@@ -23,7 +26,8 @@ def package(skill_dir, out_dir):
     count = 0
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         for root, dirs, files in os.walk(skill_dir):
-            dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+            dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS
+                       and not (root == skill_dir and d in ROOT_EXCLUDE_DIRS)]
             for fn in files:
                 if fn in EXCLUDE_FILES:
                     continue

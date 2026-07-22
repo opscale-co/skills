@@ -1,0 +1,82 @@
+[
+  {
+    "query": "ok so let me explain how billing works here: sales creates a draft invoice, finance reviews it, then it goes out to the customer and we wait for payment. sometimes they cancel",
+    "should_trigger": true
+  },
+  {
+    "query": "I need to spec the recruitment module before we start building it",
+    "should_trigger": true
+  },
+  {
+    "query": "document how the warehouse receiving area works, the guys scan pallets and then a supervisor approves discrepancies",
+    "should_trigger": true
+  },
+  {
+    "query": "formalize this process: editors submit articles, a reviewer checks them, then we publish",
+    "should_trigger": true
+  },
+  {
+    "query": "can you turn my notes about the credits module into a proper spec? they're pretty messy",
+    "should_trigger": true
+  },
+  {
+    "query": "describe this module: it's about vendor onboarding, legal checks docs then procurement activates the vendor",
+    "should_trigger": true
+  },
+  {
+    "query": "we have a new area called subscriptions, people sign up, get billed monthly, can pause or cancel. need this written up formally",
+    "should_trigger": true
+  },
+  {
+    "query": "spec the module for order fulfillment, picking packing shipping and returns",
+    "should_trigger": true
+  },
+  {
+    "query": "el flujo es asi: el cliente pide una cotizacion, ventas la arma, gerencia aprueba y se envia. write the spec",
+    "should_trigger": true
+  },
+  {
+    "query": "map out how invoice approval works before we model anything",
+    "should_trigger": true
+  },
+  {
+    "query": "generate the DBML for the billing module from the spec we wrote yesterday",
+    "should_trigger": false
+  },
+  {
+    "query": "create the BPMN diagram for the publishing process",
+    "should_trigger": false
+  },
+  {
+    "query": "the spec is done, now detail each action with its SIPOC",
+    "should_trigger": false
+  },
+  {
+    "query": "build the migrations and models for the recruitment module",
+    "should_trigger": false
+  },
+  {
+    "query": "initialize spec-kit and the constitution for this new module",
+    "should_trigger": false
+  },
+  {
+    "query": "add a user story to the finished orders module: as an operator I want to bulk-cancel invoices",
+    "should_trigger": false
+  },
+  {
+    "query": "the process spec looks good, generate the nova resources next",
+    "should_trigger": false
+  },
+  {
+    "query": "write unit tests for the invoice approval flow",
+    "should_trigger": false
+  },
+  {
+    "query": "organize the nova menu around the billing process",
+    "should_trigger": false
+  },
+  {
+    "query": "seed demo data that walks the whole publishing flow end to end",
+    "should_trigger": false
+  }
+]

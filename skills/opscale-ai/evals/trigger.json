@@ -1,0 +1,82 @@
+[
+  {
+    "query": "generate the installer skill for this package",
+    "should_trigger": true
+  },
+  {
+    "query": "create a setup skill that ships with the module",
+    "should_trigger": true
+  },
+  {
+    "query": "make this installable by downstream consumers",
+    "should_trigger": true
+  },
+  {
+    "query": "consumers should install and configure the package by invoking a skill, not reading the readme",
+    "should_trigger": true
+  },
+  {
+    "query": "ship an installer with the nova package",
+    "should_trigger": true
+  },
+  {
+    "query": "make it installable: a skill that configures the consumer's project",
+    "should_trigger": true
+  },
+  {
+    "query": "genera el skill instalador del paquete",
+    "should_trigger": true
+  },
+  {
+    "query": "the module is finished — produce the skill a consumer runs to set it up",
+    "should_trigger": true
+  },
+  {
+    "query": "package a guided install experience for whoever pulls this in via composer",
+    "should_trigger": true
+  },
+  {
+    "query": "downstream teams keep misconfiguring the package, give them an install skill",
+    "should_trigger": true
+  },
+  {
+    "query": "install this package into my own project right now",
+    "should_trigger": false
+  },
+  {
+    "query": "write the readme installation section",
+    "should_trigger": false
+  },
+  {
+    "query": "build the module itself — domain, ui, logic",
+    "should_trigger": false
+  },
+  {
+    "query": "publish the package to packagist via the release pipeline",
+    "should_trigger": false
+  },
+  {
+    "query": "configure spec-kit for a new module",
+    "should_trigger": false
+  },
+  {
+    "query": "create a skill that generates dbml (that's pipeline work, not an installer)",
+    "should_trigger": false
+  },
+  {
+    "query": "write the composer post-install scripts",
+    "should_trigger": false
+  },
+  {
+    "query": "make the walkthrough demo installable on staging",
+    "should_trigger": false
+  },
+  {
+    "query": "document the package configuration options",
+    "should_trigger": false
+  },
+  {
+    "query": "add the package to the app-level domain map",
+    "should_trigger": false
+  }
+]

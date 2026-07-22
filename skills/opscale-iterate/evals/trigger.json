@@ -1,0 +1,82 @@
+[
+  {
+    "query": "add a feature to the billing module: as an operator I want to bulk-cancel invoices so that cleanup is fast",
+    "should_trigger": true
+  },
+  {
+    "query": "iterate on orders — given a shipped order, when the customer requests a return, then a return record is created",
+    "should_trigger": true
+  },
+  {
+    "query": "the mvp is done, here's a user story for the next polish pass",
+    "should_trigger": true
+  },
+  {
+    "query": "as a reviewer I want to reject an article with a reason so that the author can fix it — add this to publishing",
+    "should_trigger": true
+  },
+  {
+    "query": "change request on the finished credits module: applications need an expiry date",
+    "should_trigger": true
+  },
+  {
+    "query": "nueva historia de usuario para el modulo terminado de facturacion",
+    "should_trigger": true
+  },
+  {
+    "query": "fix this behavior in the completed module: cancelled invoices should keep their number",
+    "should_trigger": true
+  },
+  {
+    "query": "extend the recruitment module with an interview feedback form, pipeline is complete and tasks.md is empty",
+    "should_trigger": true
+  },
+  {
+    "query": "user story for billing: as finance I want a monthly statement per customer",
+    "should_trigger": true
+  },
+  {
+    "query": "apply this small change to the shipped module without breaking the specs",
+    "should_trigger": true
+  },
+  {
+    "query": "start a brand new module for subscriptions",
+    "should_trigger": false
+  },
+  {
+    "query": "spec the billing module for the first time",
+    "should_trigger": false
+  },
+  {
+    "query": "generate the initial domain layer from the dbml",
+    "should_trigger": false
+  },
+  {
+    "query": "the mvp isn't finished — complete the pending tasks in tasks.md first",
+    "should_trigger": false
+  },
+  {
+    "query": "write tests for the bulk-cancel feature I just merged",
+    "should_trigger": false
+  },
+  {
+    "query": "seed demo data for the new return flow",
+    "should_trigger": false
+  },
+  {
+    "query": "update the nova menu after adding the returns resource",
+    "should_trigger": false
+  },
+  {
+    "query": "document how the returns area works as a process spec",
+    "should_trigger": false
+  },
+  {
+    "query": "configure ci so iterations deploy automatically",
+    "should_trigger": false
+  },
+  {
+    "query": "showcase the new feature to stakeholders in nova",
+    "should_trigger": false
+  }
+]

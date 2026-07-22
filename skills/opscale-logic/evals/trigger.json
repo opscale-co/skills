@@ -1,0 +1,82 @@
+[
+  {
+    "query": "generate the actions from the sipocs",
+    "should_trigger": true
+  },
+  {
+    "query": "implement the business logic for the billing module",
+    "should_trigger": true
+  },
+  {
+    "query": "build the logic layer — the sipocs are all validated",
+    "should_trigger": true
+  },
+  {
+    "query": "materialize the Issue Invoice sipoc into an Action class",
+    "should_trigger": true
+  },
+  {
+    "query": "create the opscale action classes for the publishing module",
+    "should_trigger": true
+  },
+  {
+    "query": "implement the logic: inputs to parameters(), process to handle(), outputs to the return array",
+    "should_trigger": true
+  },
+  {
+    "query": "the ui layer is done, implement the logic next",
+    "should_trigger": true
+  },
+  {
+    "query": "implementa las acciones del modulo de creditos desde los sipoc",
+    "should_trigger": true
+  },
+  {
+    "query": "write the RecordPayment action for this standalone package",
+    "should_trigger": true
+  },
+  {
+    "query": "turn each businessRuleTask contract into its verb+noun Action class",
+    "should_trigger": true
+  },
+  {
+    "query": "author the sipoc documents for each businessRuleTask",
+    "should_trigger": false
+  },
+  {
+    "query": "generate the nova resources for the aggregates",
+    "should_trigger": false
+  },
+  {
+    "query": "create the domain models the actions will use",
+    "should_trigger": false
+  },
+  {
+    "query": "write feature tests for the IssueInvoice action",
+    "should_trigger": false
+  },
+  {
+    "query": "set up xdebug so I can step through handle() at runtime",
+    "should_trigger": false
+  },
+  {
+    "query": "generate the bpmn the actions trace back to",
+    "should_trigger": false
+  },
+  {
+    "query": "add a new action to the finished module: as an operator I want bulk-cancel",
+    "should_trigger": false
+  },
+  {
+    "query": "seed the workbench db so I can run the actions on demo data",
+    "should_trigger": false
+  },
+  {
+    "query": "configure sonarqube for the logic package",
+    "should_trigger": false
+  },
+  {
+    "query": "organize the menu so operators find the actions easily",
+    "should_trigger": false
+  }
+]
