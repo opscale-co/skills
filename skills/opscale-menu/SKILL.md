@@ -218,7 +218,7 @@ Nova `MenuSection` block with marker — see `references/sample-output.md`.
 ## Success condition
 
 ```bash
-node skills/opscale-menu/scripts/validate-menu.mjs --provider=workbench/app/Providers/NovaServiceProvider.php
+node scripts/validate-menu.mjs --provider=workbench/app/Providers/NovaServiceProvider.php
 ```
 
 Exit code 0 = pass.

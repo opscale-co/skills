@@ -2,11 +2,11 @@
 name: opscale-debug
 description: >
   Sets up debug tooling mapped to what you are debugging: Nova DevTool /
-  workbench for the UI, Telescope for the domain (jobs, events), and Xdebug for
-  the logic at runtime — for local and staging. Step 8 — first step of Review,
-  runs after opscale-logic. Trigger: "configure debug", "set up Telescope",
-  "enable Xdebug", "debug the UI". Use it whenever local/staging debug tooling
-  needs setting up, even loosely phrased. Not for the test/quality stack
+  workbench for the UI, Telescope for the domain (jobs, events), Xdebug for
+  the logic — local and staging. Step 8 — first step of Review, after
+  opscale-logic. Trigger: "configure debug", "set up Telescope", "enable
+  Xdebug", "debug the UI". Use it whenever local/staging debug tooling needs
+  setting up, even loosely phrased. Not for the test/quality stack
   (opscale-test) or the release pipeline (opscale-release).
 ---
 
@@ -324,7 +324,7 @@ DEBUG CONFIGURATION GATE
 ## Success condition
 
 ```bash
-node skills/opscale-debug/scripts/validate-debug.mjs --project-root=.
+node scripts/validate-debug.mjs --project-root=.
 ```
 
 Exit code 0 = pass.

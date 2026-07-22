@@ -2,13 +2,12 @@
 name: opscale-release
 description: >
   Configures the deployment/release CI — SonarQube, GitHub Actions workflows,
-  and the semantic-release pipeline that versions and publishes. Step 10 — the
-  final Review step, runs after opscale-test. Trigger: "configure release", "set
-  up CI", "set up code quality", "wire SonarQube", "publish the package", "set
-  up the deploy pipeline". Use it whenever the release/CI pipeline or deployment
-  quality gates need configuring, even loosely phrased. Requires tests to exist
-  first (opscale-test). Not for the commit standard or linter configs
-  (opscale-init owns those on day 1) or debug tooling (opscale-debug).
+  and the semantic-release pipeline that versions and publishes. Step 10 —
+  final Review step, after opscale-test. Trigger: "configure release", "set up
+  CI", "wire SonarQube", "set up the deploy pipeline". Use it whenever the
+  release/CI pipeline or quality gates need configuring, even loosely phrased;
+  requires tests first (opscale-test). Not for commit/linter configs
+  (opscale-init) or debug tooling (opscale-debug).
 ---
 
 # opscale-release
@@ -229,7 +228,7 @@ If the dry-run fails (missing config, unrecognized branch, broken commit history
 ## Success condition
 
 ```bash
-node skills/opscale-release/scripts/validate-release.mjs --project-root=.
+node scripts/validate-release.mjs --project-root=.
 ```
 
 Exit code 0 = pass.

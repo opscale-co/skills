@@ -1,15 +1,13 @@
 ---
 name: opscale-map
 description: >
-  Builds and maintains the app-level domain map — business lines (domains) and
-  the modules (subdomains) inside each, plus the cross-module references between
-  them. Step 0.5 — runs after opscale-init, before or alongside any module's
-  Plan phase. Trigger: "map the domains", "what business lines does this app
-  cover", "add a module to the map", "domain map", "portfolio of modules",
-  "which module owns X". Use it whenever the conversation is about how modules
-  group into business lines or reference each other, even if not asked
-  explicitly. Not for planning a single module's process (opscale-process) or
-  its data (opscale-dbml).
+  Builds and maintains the app-level domain map — business lines (domains),
+  their modules (subdomains), and cross-module references. Step 0.5 — after
+  opscale-init, before any module's Plan phase. Trigger: "map the domains",
+  "add a module to the map", "domain map", "which module owns X". Use it
+  whenever the talk is about how modules group into business lines or
+  reference each other, even if not asked explicitly. Not for one module's
+  process (opscale-process) or data (opscale-dbml).
 ---
 
 # opscale-map
@@ -45,7 +43,7 @@ Modules are **not** required — the map can be drawn before any module is plann
 
 ### Output
 
-One artifact, app-level (canonical paths: `skills/opscale-init/references/artifact-paths.md`):
+One artifact, app-level (canonical paths: `references/artifact-paths.md`):
 
 ```
 .specify/memory/domain-map.md

@@ -16,7 +16,7 @@ description: >
 
 Generate Laravel Nova Resource classes that expose domain entities in the admin panel. Every field, relationship, and authorization rule is derived directly from the DBML and spec — nothing is invented. Output files are written to `src/Nova/` and listed in `.specify/specs/{NNN}-{module-name}/plan.md` (Nova section).
 
-### Prerequisites — Plan phase + opscale-domain MUST be complete
+### Prerequisites — Plan phase + opscale-domain must be complete
 
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
@@ -64,11 +64,11 @@ Every Resource follows a fixed structure: static properties → URI + labels →
 
 ### URI + Labels — contextual translation, MANDATORY on every Resource
 
-`uriKey()`, `label()`, `singularLabel()` are non-optional and labels MUST be **contextual translations**, not literal `subdomain · entity` joins. The generator prompts the user for EN and ES per resource. Both label methods go through `__()`.
+`uriKey()`, `label()`, `singularLabel()` are non-optional and labels must be **contextual translations**, not literal `subdomain · entity` joins. The generator prompts the user for EN and ES per resource. Both label methods go through `__()`.
 
 ### i18n — seed BOTH `lang/en.json` AND `lang/es.json`
 
-Every `__()`-wrapped string MUST have keys in both `lang/en.json` and `lang/es.json` immediately after generation. EN-only seeding shifts work to the user post-generation and gets silently dropped. Existing keys are never overwritten — re-runs only fill gaps.
+Every `__()`-wrapped string must have keys in both `lang/en.json` and `lang/es.json` immediately after generation. EN-only seeding shifts work to the user post-generation and gets silently dropped. Existing keys are never overwritten — re-runs only fill gaps.
 
 For the full i18n contract — the three sources of translation values, the URI+label method shape, the contextual-label rules and example — see `references/lang-seeding.md`.
 
@@ -78,22 +78,22 @@ Non-root aggregate resources emit `redirectAfterCreate()` so the operator lands 
 
 ### Aggregates rendered as tabs of their root (mandatory)
 
-Every child aggregate of an aggregate root is rendered as a `Tab::make(...)` inside the **root** resource's `fields()` via `Tab::group(...)` — NEVER as a top-level resource visible in the menu. The full pattern, including the visibility table, the `withCount` placement, and the canonical code block, lives in `references/aggregate-tabs.md`.
+Every child aggregate of an aggregate root is rendered as a `Tab::make(...)` inside the **root** resource's `fields()` via `Tab::group(...)` — never as a top-level resource visible in the menu. The full pattern, including the visibility table, the `withCount` placement, and the canonical code block, lives in `references/aggregate-tabs.md`.
 
 The two rules the skill enforces every time:
 
 1. **Visibility per tab:**
-   - **Creatable from UI** (operator can add the first child via Nova) → tab ALWAYS visible.
+   - **Creatable from UI** (operator can add the first child via Nova) → tab always visible.
    - **System-only** (children only created by Actions / events) → tab HIDDEN when count = 0.
-2. **Counts via Nova, not Eloquent.** Use `public static $with = [...]` or `indexQuery()` `withCount(...)` on the Resource — NEVER `$withCount` on the Model. A model-level withCount runs on every query and is the canonical source of N+1 on index pages.
+2. **Counts via Nova, not Eloquent.** Use `public static $with = [...]` or `indexQuery()` `withCount(...)` on the Resource — never `$withCount` on the Model. A model-level withCount runs on every query and is the canonical source of N+1 on index pages.
 
 ### Virtual (cross-subdomain) relations — Select, searchable, filterable
 
-Logical refs across subdomains (no foreign-key constraint, resolved through a `*Contract` per `opscale-domain`) are NOT rendered as `Text::make(...)->help('Logical reference…')`. They are rendered as a real `Select::make(...)->options(fn () => app({Repo}::class)->forSelect())->searchable()->filterable()->displayUsingLabels()`. The foreign repository contract MUST expose `forSelect(): array` returning `[id => label]`. See `references/virtual-relations.md` for the full Select pattern and contract extension.
+Logical refs across subdomains (no foreign-key constraint, resolved through a `*Contract` per `opscale-domain`) are NOT rendered as `Text::make(...)->help('Logical reference…')`. They are rendered as a real `Select::make(...)->options(fn () => app({Repo}::class)->forSelect())->searchable()->filterable()->displayUsingLabels()`. The foreign repository contract must expose `forSelect(): array` returning `[id => label]`. See `references/virtual-relations.md` for the full Select pattern and contract extension.
 
 ### Fields
 
-Layout rule: if the model has any `HasOne` or `HasMany` relationship, fields MUST be wrapped in `Tab::group()` with `Tab::make(__('Details'), [...])` for own fields plus one tab per relationship — see `references/aggregate-tabs.md` for the visibility-guard pattern. Flat `fields()` is only allowed when the model has zero HasOne/HasMany. Never expose `id` as a Nova field.
+Layout rule: if the model has any `HasOne` or `HasMany` relationship, fields must be wrapped in `Tab::group()` with `Tab::make(__('Details'), [...])` for own fields plus one tab per relationship — see `references/aggregate-tabs.md` for the visibility-guard pattern. Flat `fields()` is only allowed when the model has zero HasOne/HasMany. Never expose `id` as a Nova field.
 
 For the full per-column-type field selection table, standard modifiers, the canonical `created_at`/`updated_at` and `Badge` status patterns, the color convention, and when to extract `fieldsForCreate()`, see `references/fields-catalog.md`.
 
@@ -119,13 +119,13 @@ The JSON contract for each is documented at the top of the matching `scripts/gen
 1. **One aggregate = one bundle task in `tasks.md`** — Resource + Repeatable + Fields trait always ship together as a single tracked task. Each Nova bundle task `depends_on` its corresponding `opscale-domain` bundle task.
 2. **One Resource per aggregate root** — child entities shown via `HasMany` inside tabs do not get their own standalone Resource unless they appear independently in the sidebar.
 3. **No business logic** — Nova Resources are pure UI. No calculations, no service calls, no Eloquent queries inline.
-4. **All strings translatable — zero exceptions** — every user-visible string MUST be wrapped in `__()`. Only technical identifiers stay untranslated.
+4. **All strings translatable — zero exceptions** — every user-visible string must be wrapped in `__()`. Only technical identifiers stay untranslated.
 5. **Never expose `id` as a Nova field** — no `ID::make()`, no `Text::make('ID', 'id')`. Human-meaningful business identifiers live in their own column.
-6. **Foreign keys MUST use relationship fields** — any column ending in `_id` or marked as `ref:` in the DBML MUST be exposed via `BelongsTo::make()` (or `MorphTo::make()` for polymorphic). Always add `->searchable()`.
+6. **Foreign keys must use relationship fields** — any column ending in `_id` or marked as `ref:` in the DBML must be exposed via `BelongsTo::make()` (or `MorphTo::make()` for polymorphic). Always add `->searchable()`.
 7. **Tabs MANDATORY for HasOne/HasMany** — wrap fields in `Tab::group()` with `Tab::make(__('Details'), [...])` for own fields plus one `Tab::make` per relationship.
 8. **Badge for status** — status columns always use `Badge`. Color convention: success/warning/danger/info.
 9. **DateTime always diffForHumans** — `->displayUsing(fn ($v) => $v?->diffForHumans())->exceptOnForms()`.
-10. **Authorization confirmed per resource** — for every aggregate the skill MUST ask `can create? / can update? / can delete?` and pass answers to `generate-resource.mjs`.
+10. **Authorization confirmed per resource** — for every aggregate the skill must ask `can create? / can update? / can delete?` and pass answers to `generate-resource.mjs`.
 11. **`fieldsForCreate()` when needed** — extract create/edit fields when they differ from the display view.
 12. **Actions only from BPMN** — only add `actions()` when the BPMN has `businessRuleTask` or `sendTask` nodes for this entity.
 13. **`@extends Resource<Model>`** — always add the generic docblock for IDE type inference.
@@ -134,8 +134,8 @@ The JSON contract for each is documented at the top of the matching `scripts/gen
 16. **Rules via `Model::$validationRules`** — never duplicate rules inline. Use spread: `->rules(...Model::$validationRules['col'])`.
 17. **`uriKey()`, `label()`, `singularLabel()` MANDATORY — labels are CONTEXTUAL translations.** `uri_key`, `label`, `singular_label`, `label_es`, `singular_label_es` are required JSON inputs.
 18. **Lang seeded for BOTH `en` and `es` automatically** — `generate-resource.mjs` and `generate-field-trait.mjs` append every user-visible string to BOTH `lang/en.json` AND `lang/es.json` in a single run. Existing keys are never overwritten. EN-only seeding is forbidden.
-19. **Aggregates render as tabs of the root, never as top-level resources.** Tab visibility follows the creatable-from-UI rule. Counts are loaded via Nova `$with` / `indexQuery()` withCount on the **Resource**, NEVER on the Eloquent model.
-20. **Non-root aggregate Resources MUST emit `redirectAfterCreate()`.** The generator emits this method automatically when the JSON contract carries `child_of: { resource, foreign_key }`.
+19. **Aggregates render as tabs of the root, never as top-level resources.** Tab visibility follows the creatable-from-UI rule. Counts are loaded via Nova `$with` / `indexQuery()` withCount on the **Resource**, never on the Eloquent model.
+20. **Non-root aggregate Resources must emit `redirectAfterCreate()`.** The generator emits this method automatically when the JSON contract carries `child_of: { resource, foreign_key }`.
 21. **Cross-subdomain logical refs render as Select, never Text** — `Select::make(...)->options(fn () => app({Repo}::class)->forSelect())->searchable()->filterable()->displayUsingLabels()`. Text + `->help('Logical reference…')` is no longer accepted.
 
 ## Steps
@@ -200,7 +200,7 @@ If any check fails, regenerate `tasks.md` before continuing.
 
 ### Phase 3 — Per-resource authorization confirmation
 
-For each aggregate in the inventory, **ask the user** which CRUD operations the Resource should expose in Nova. The defaults are not assumed — the skill MUST prompt explicitly:
+For each aggregate in the inventory, **ask the user** which CRUD operations the Resource should expose in Nova. The defaults are not assumed — the skill must prompt explicitly:
 
 ```
 For each aggregate, confirm Nova CRUD access:

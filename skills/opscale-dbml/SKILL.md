@@ -17,9 +17,9 @@ Transform a validated business spec into a DBML data model that reflects the rea
 
 `opscale-process` captured the module **as it runs today** — possibly with manual steps, ad-hoc names, and workarounds. `opscale-dbml` models the **systematized to-be**: a coherent schema fit for a software system. The two are not the same shape, and this skill is where the gap is reconciled — by aligning the spec against a domain standard when one applies, and limiting, renaming, merging, or reformulating entities and relationships accordingly.
 
-Outputs are written to `.specify/specs/{NNN}-{module-name}/final/domain.dbml` (raw DBML), `final/external-refs.md` (external-ref index), `final/naming.md` (name-lineage table), and `.specify/specs/{NNN}-{module-name}/logs/dbml.md` (phase-by-phase Q/A record). Canonical paths: `skills/opscale-init/references/artifact-paths.md`.
+Outputs are written to `.specify/specs/{NNN}-{module-name}/final/domain.dbml` (raw DBML), `final/external-refs.md` (external-ref index), `final/naming.md` (name-lineage table), and `.specify/specs/{NNN}-{module-name}/logs/dbml.md` (phase-by-phase Q/A record). Canonical paths: `references/artifact-paths.md`.
 
-### Prerequisites — MUST be satisfied (ordered)
+### Prerequisites — must be satisfied (ordered)
 
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
@@ -33,7 +33,7 @@ This skill is **Step 2 of the Plan phase** and must run **AFTER `opscale-process
 
 **Terminology:** in the Opscale ontology, **subdomain = module** — one business process, one spec directory. Do not confuse it with a **subprocess**, which is a wait-bounded segment *inside* the module's flow (see `final/process.md` *Ordered flow*). This skill uses "subdomain" only in the module sense.
 
-The subdomain name (the module's slug — `loans`, `kyc`, `credits`, `loyalty`, …) is **automatically prepended** by `opscale-domain` to every table, migration, model, and file name it generates downstream. Entity names declared here in DBML must therefore NEVER include the subdomain stem.
+The subdomain name (the module's slug — `loans`, `kyc`, `credits`, `loyalty`, …) is **automatically prepended** by `opscale-domain` to every table, migration, model, and file name it generates downstream. Entity names declared here in DBML must therefore never include the subdomain stem.
 
 | Subdomain | DBML entity | Generated table | Verdict |
 |---|---|---|---|
@@ -88,7 +88,7 @@ When in doubt, **ask**. The cost of one extra question is far lower than the cos
 
 **Four artifacts, four purposes:**
 - `final/domain.dbml` — **raw DBML**, no markdown wrapper, no narrative, no Data Dictionary table. Parseable directly by `@dbml/core`. This is the live model downstream skills (domain, ui, logic) read.
-- `logs/dbml.md` — phase-by-phase record of what was asked and answered during this run (Phase 0 standard choice, Phase 1 entity confirmations, Phase 2 external-reference declarations, Phase 3 relationship confirmations, Phase 4 enum confirmations, Phase 5 per-attribute answers, Phase 6 index decisions, Phase 8 external-ref index cross-check). Replaced on each re-run. Use the shared skeleton at `skills/opscale-process/assets/log-template.md`.
+- `logs/dbml.md` — phase-by-phase record of what was asked and answered during this run (Phase 0 standard choice, Phase 1 entity confirmations, Phase 2 external-reference declarations, Phase 3 relationship confirmations, Phase 4 enum confirmations, Phase 5 per-attribute answers, Phase 6 index decisions, Phase 8 external-ref index cross-check). Replaced on each re-run. Use the shared skeleton at `assets/log-template.md`.
 - `final/external-refs.md` — companion index emitted in Phase 8; structured list of cross-subdomain columns grouped by contract slug, in a fenced `external-refs` block. `opscale-domain` reads this file to generate contract interfaces and virtual `BelongsTo` methods.
 - `final/naming.md` — name-lineage table built from the Phase 1 reconciliation: one row per entity mapping the canonical business name (as it appears in `process.md` *Name normalization*) to the DBML table and its enums. `opscale-domain` later appends the generated model class per row. This is the artifact that keeps management, users, and developers looking at the same concept under one traceable name — the reconciliation must not die in the logs.
 
@@ -101,7 +101,7 @@ When in doubt, **ask**. The cost of one extra question is far lower than the cos
 - Business documents that persist (Receipt, Certificate, Report record)
 - Domain events as entities only when they carry business value that must be stored (Approval, Rejection)
 
-**Exclude ALWAYS:**
+**Exclude always:**
 - Technical infrastructure: API, Endpoint, Request, Response, Webhook, Queue, Job, Cache, Log, Session
 - Configuration: Setting, Config, Parameter, FeatureFlag
 - UI/UX: Screen, Page, Form, Button, Modal
@@ -125,13 +125,13 @@ If an element from the spec is ambiguous — could be technical or business — 
 
 5. **ULID always** — `varchar(26)`, generated at the application layer. No auto-increment integers.
 
-6. **Logical cross-subdomain references** — store the ID, never the FK constraint. The column note MUST follow the structured form `// external_ref:{contract_slug} | {subdomain}.{table}` (e.g. `// external_ref:users | auth.users`, `// external_ref:agencies | crm.agencies`). `opscale-domain` parses `external_ref:{slug}` to generate the contract, trait wiring, and virtual `BelongsTo` method. The free-text portion after `|` is for human reference only.
+6. **Logical cross-subdomain references** — store the ID, never the FK constraint. The column note must follow the structured form `// external_ref:{contract_slug} | {subdomain}.{table}` (e.g. `// external_ref:users | auth.users`, `// external_ref:agencies | crm.agencies`). `opscale-domain` parses `external_ref:{slug}` to generate the contract, trait wiring, and virtual `BelongsTo` method. The free-text portion after `|` is for human reference only.
 
 7. **DBML is the source of truth** — the migration must match the DBML exactly. If a migration needs a column not in the DBML, update the DBML first.
 
 8. **Never invent** — do not add entities or columns that cannot be traced to the spec. If something seems missing, ask the user before adding it.
 
-9. **Business types over raw types** — before typing any column as a bare `varchar`/`text`/`decimal`, check the central **language-agnostic registry** (`.specify/memory/business-types.md`, fallback: `skills/opscale-init/references/business-types.md`). If a business type matches (email, money, phone, url, quantity, …), use its **storage mapping** for the DBML column type and add the structured note `// type:{slug}` (e.g. `// type:email`). **Why:** a bare `varchar` for an email drops the format validation and the correct UI capture — the business type carries the full semantics, and Generate-phase skills resolve `type:{slug}` through the stack binding to apply them. The DBML stays implementation-agnostic: only the slug appears, never a framework class or rule string. Precedence: **external ref** (column owned elsewhere) > **Enum** (closed, module-owned value set) > **business type** (universal format) > raw type (only when nothing matches — and consider proposing a new registry entry first).
+9. **Business types over raw types** — before typing any column as a bare `varchar`/`text`/`decimal`, check the central **language-agnostic registry** (`.specify/memory/business-types.md`, fallback: `references/business-types.md`). If a business type matches (email, money, phone, url, quantity, …), use its **storage mapping** for the DBML column type and add the structured note `// type:{slug}` (e.g. `// type:email`). **Why:** a bare `varchar` for an email drops the format validation and the correct UI capture — the business type carries the full semantics, and Generate-phase skills resolve `type:{slug}` through the stack binding to apply them. The DBML stays implementation-agnostic: only the slug appears, never a framework class or rule string. Precedence: **external ref** (column owned elsewhere) > **Enum** (closed, module-owned value set) > **business type** (universal format) > raw type (only when nothing matches — and consider proposing a new registry entry first).
 
 ### Output templates
 
@@ -291,7 +291,7 @@ Confirm the external-reference list? Yes / No / edit
 The confirmed list governs everything downstream:
 
 - **Phase 3 (relationships)** — any pair where one side is in this list is **cross-subdomain** (logical reference, no FK constraint). Pairs where both sides are in the Phase 1 entity list are intra-subdomain (real FK).
-- **Phase 5 (attributes)** — any column that points at an external reference MUST carry the structured note `// external_ref:{slug} | {subdomain}.{table}` using the slug confirmed here. The skill rejects any new contract slug invented during Phase 5 — go back and amend Phase 2 if a missing reference shows up.
+- **Phase 5 (attributes)** — any column that points at an external reference must carry the structured note `// external_ref:{slug} | {subdomain}.{table}` using the slug confirmed here. The skill rejects any new contract slug invented during Phase 5 — go back and amend Phase 2 if a missing reference shows up.
 - **Phase 8 (emit external-ref index)** — `final/external-refs.md` is built directly from this list cross-checked against the actual columns that ended up using each slug. A slug declared here with zero referencing columns is flagged (likely a typo or a forgotten attribute); a column with a slug not declared here fails validation.
 
 **Wait for user approval before continuing.**
@@ -360,7 +360,7 @@ Only after entities, relationships, and enums are locked. Process **one entity a
 
 For each attribute, resolve its type in the Domain Rule 9 precedence order: external ref → Enum → **business type from the registry** (`// type:{slug}` note + storage mapping from `.specify/memory/business-types.md`) → raw type. Present the chosen business type per attribute so the user sees what behavior it implies (validation semantics, UI intent).
 
-Apply standard columns automatically (`id` ULID first, `created_at`/`updated_at` always, `deleted_at` only if spec requires recovery). **Single-tenant deployment:** Opscale modules use one database per implementation — domain tables NEVER carry a `tenant_id` column.
+Apply standard columns automatically (`id` ULID first, `created_at`/`updated_at` always, `deleted_at` only if spec requires recovery). **Single-tenant deployment:** Opscale modules use one database per implementation — domain tables never carry a `tenant_id` column.
 
 For the standard-columns table and the per-entity prompt template, see `references/attribute-taxonomy.md`.
 
@@ -403,10 +403,10 @@ agencies:  agency_id
 
 Rules:
 
-- Every slug listed here MUST have been declared in Phase 2 (no slug invented during Phase 5 sneaks in).
+- Every slug listed here must have been declared in Phase 2 (no slug invented during Phase 5 sneaks in).
 - Every contract slug declared in Phase 2 SHOULD appear here — if a slug has zero referencing columns, flag it to the user (likely a typo or a forgotten attribute).
-- Every column with `external_ref:{slug}` in its DBML note MUST appear here.
-- Every column listed here MUST have `external_ref:{slug}` in its DBML note.
+- Every column with `external_ref:{slug}` in its DBML note must appear here.
+- Every column listed here must have `external_ref:{slug}` in its DBML note.
 - One line per slug; columns comma-separated; column order follows DBML order.
 
 This file is the **single source of truth** that `opscale-domain` reads to generate the contract interfaces and the model's virtual `BelongsTo` methods. Downstream skills do NOT re-scan the DBML notes — they read this file only.
@@ -437,7 +437,7 @@ mkdir -p .specify/specs/{NNN}-{module-name}/logs .specify/specs/{NNN}-{module-na
    ```
 
    The **Model class** column is left as a placeholder — `opscale-domain` appends it when it generates the classes.
-4. **`logs/dbml.md`** — phase-by-phase Q/A record from this run (Phases 0–7) using the skeleton at `skills/opscale-process/assets/log-template.md`.
+4. **`logs/dbml.md`** — phase-by-phase Q/A record from this run (Phases 0–7) using the skeleton at `assets/log-template.md`.
 
 All four files are replaced if they exist. The validation script stays in the skill bundle — never copied to the project.
 
@@ -452,7 +452,7 @@ Excerpt of `final/domain.dbml` — see `references/sample-output.md`.
 ## Success condition
 
 ```bash
-node skills/opscale-dbml/scripts/validate-dbml.mjs final/domain.dbml
+node scripts/validate-dbml.mjs final/domain.dbml
 ```
 
 Exit code 0 = pass.

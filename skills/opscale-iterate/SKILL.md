@@ -378,7 +378,7 @@ Iteration log + Conventional commit message — see `references/sample-output.md
 ## Success condition
 
 ```bash
-node skills/opscale-iterate/scripts/validate-iterate.mjs --commit=HEAD
+node scripts/validate-iterate.mjs --commit=HEAD
 ```
 
 Exit code 0 = pass.

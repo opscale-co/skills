@@ -326,7 +326,7 @@ Every module folder under `.specify/specs/{NNN}-{module-name}/` follows the same
         └── {kebab-id}.sipoc.md   ← one per businessRuleTask
 ```
 
-Canonical paths reference: `skills/opscale-init/references/artifact-paths.md`.
+Canonical paths reference: `references/artifact-paths.md`.
 
 **Logs vs. final:**
 
@@ -443,7 +443,7 @@ Constitution + `.specify` scaffold tree — see `references/sample-output.md`.
 ## Success condition
 
 ```bash
-node skills/opscale-init/scripts/validate-init.mjs --project-root=.
+node scripts/validate-init.mjs --project-root=.
 ```
 
 Exit code 0 = pass.

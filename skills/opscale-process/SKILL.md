@@ -1,15 +1,13 @@
 ---
 name: opscale-process
 description: >
-  Turns a raw, unstructured account of how a module or area works into one
-  connected, standardized spec. Step 1 of Plan — runs after opscale-init, feeds
-  opscale-dbml and opscale-bpmn. Use it whenever someone explains how an area
-  operates and it needs to become a formal spec — normalized names, an ordered
-  narrative, every element interrelated. Trigger: "describe this module", "spec
-  the module", "document how this area works", "formalize this process", "map
-  out how X works", or any rambling narrative of how a module operates — even if
-  the user just starts explaining the area without asking for a spec. Not for
-  data modeling (opscale-dbml) or BPMN XML (opscale-bpmn) — it feeds them.
+  Turns a raw, unstructured account of how a module works into one connected,
+  standardized spec. Step 1 of Plan — after opscale-init, feeds opscale-dbml
+  and opscale-bpmn. Trigger: "describe this module", "spec the module",
+  "formalize this process", or any rambling narrative of how an area operates
+  — even if no spec is asked for. Use it whenever someone explains how an area
+  works and it needs normalized names and an ordered flow. Not for data
+  modeling (opscale-dbml) or BPMN XML (opscale-bpmn).
 ---
 
 # opscale-process
@@ -116,7 +114,7 @@ Integrate the answer into the flow before continuing. Repeat until nothing is lo
 
 ### Output
 
-Two siblings under the spec directory — phase log + final artifact. Canonical paths defined in `skills/opscale-init/references/artifact-paths.md`.
+Two siblings under the spec directory — phase log + final artifact. Canonical paths defined in `references/artifact-paths.md`.
 
 ```
 .specify/specs/{NNN}-{module-name}/
@@ -124,7 +122,7 @@ Two siblings under the spec directory — phase log + final artifact. Canonical 
 └── final/process.md    # the canonical, downstream-consumable spec
 ```
 
-**`logs/process.md`** — phase-by-phase record of what was asked and answered during this run (Phase 1 name normalization, Phase 2a subprocess boundary confirmation, Phase 2b per-subprocess step lists, Phase 3 island resolutions). Use the shared skeleton at `skills/opscale-process/assets/log-template.md`. Replaced on each re-run.
+**`logs/process.md`** — phase-by-phase record of what was asked and answered during this run (Phase 1 name normalization, Phase 2a subprocess boundary confirmation, Phase 2b per-subprocess step lists, Phase 3 island resolutions). Use the shared skeleton at `assets/log-template.md`. Replaced on each re-run.
 
 **`final/process.md`** — the canonical spec with **five sections**, plain titles, no rationale (section headings and structural keywords stay in English; prose, step lines, and entity names follow the user's language):
 
@@ -247,7 +245,7 @@ Excerpt of `final/process.md` — see `references/sample-output.md`.
 ## Success condition
 
 ```bash
-node skills/opscale-process/scripts/validate-process.mjs --process-file=.specify/specs/*/final/process.md
+node scripts/validate-process.mjs --process-file=.specify/specs/*/final/process.md
 ```
 
 Exit code 0 = pass.

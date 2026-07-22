@@ -35,7 +35,7 @@ Configure the complete testing and code quality stack AND generate the actual te
 | 4 | (To generate Feature tests) `src/Services/Actions/` populated | List files | Run `/opscale-logic` first OR proceed without Feature tests. |
 | 5 | (To generate Browser tests) `src/Nova/` populated AND final/process.md has *Ordered flow* subprocesses | List files | Run `/opscale-ui` and `/opscale-process` first OR proceed without Browser tests. |
 
-This skill belongs to the **Review phase**. The Review phase (`debug`, `test`, `release`) can be invoked at any point after `opscale-init`. The strict order **inside** Review is: `test` MUST run before `release`.
+This skill belongs to the **Review phase**. The Review phase (`debug`, `test`, `release`) can be invoked at any point after `opscale-init`. The strict order **inside** Review is: `test` must run before `release`.
 
 ### Three test suites — strict layer assignment
 
@@ -66,8 +66,8 @@ A test belongs to exactly one suite.
 
 The base test environment must force the same locale operators see in production (and that debug + showcase use). Stale locale in test runs masks i18n drift.
 
-- `phpunit.xml` and `phpunit.dusk.xml` MUST declare `<env name="APP_LOCALE" value="{locale}"/>`.
-- `testbench.yaml` MUST declare the same `APP_LOCALE` under its `env:` section.
+- `phpunit.xml` and `phpunit.dusk.xml` must declare `<env name="APP_LOCALE" value="{locale}"/>`.
+- `testbench.yaml` must declare the same `APP_LOCALE` under its `env:` section.
 - The locale is the one written by `opscale-init` to `.specify/memory/constitution.md` (`**Workbench Locale:**`).
 
 ### Browser tests with Nova DevTool + Testbench Dusk
@@ -96,7 +96,7 @@ The full `phpunit.xml`, `phpunit.dusk.xml`, `tests/TestCase.php`, `tests/DuskTes
 
 ### Composer scripts — REQUIRED per module
 
-Every Opscale module/package MUST define `build` and `serve` composer scripts so any contributor (or CI) can recreate the Browser test environment without remembering the multi-step incantation. The complete `scripts` block (post-autoload-dump, clear, prepare, build, serve, lint, fix, refactor, analyse, test, test:unit, test:feature, test:browser, test:browser:visual, showcase, check), the matching `require-dev` test-stack dependencies + `config`/`repositories`, and the `package.json` mirror are in `references/test-configs.md` — copy them verbatim, substituting only the per-module Browser test filenames on the `test:browser*` / `showcase` lines.
+Every Opscale module/package must define `build` and `serve` composer scripts so any contributor (or CI) can recreate the Browser test environment without remembering the multi-step incantation. The complete `scripts` block (post-autoload-dump, clear, prepare, build, serve, lint, fix, refactor, analyse, test, test:unit, test:feature, test:browser, test:browser:visual, showcase, check), the matching `require-dev` test-stack dependencies + `config`/`repositories`, and the `package.json` mirror are in `references/test-configs.md` — copy them verbatim, substituting only the per-module Browser test filenames on the `test:browser*` / `showcase` lines.
 
 Key design decisions:
 - `composer run build` — recreates the entire test/workbench environment from a clean clone.
@@ -129,16 +129,16 @@ This is because `opscale-co/actions` uses `asListener()` for event handling, but
 
 ### Domain Rules
 
-1. **The skill configures, generates, AND validates** — configuration without generated tests is incomplete; generated tests that never ran are also incomplete. After configuring the stack and spawning generator agents, the skill MUST run the validation loop until `composer run test`, `composer run test:browser`, and `composer run check` all exit green.
+1. **The skill configures, generates, AND validates** — configuration without generated tests is incomplete; generated tests that never ran are also incomplete. After configuring the stack and spawning generator agents, the skill must run the validation loop until `composer run test`, `composer run test:browser`, and `composer run check` all exit green.
 2. **Strict layer assignment — no overlap:**
    - Unit → **Domain only**: Models, Enums, Value Objects, Repositories, Migrations/Schema.
    - Feature → **Actions only**: one test per class in `src/Services/Actions/`. Hits real DB, asserts events, asserts state. **No DB mocks.**
    - Browser → **flow journeys**: one test class per flow in `final/process.md` *Ordered flow*, one `#[Test]` method per path. Drives the full user journey through Nova. **No DB-level business asserts** — those stay in Feature tests.
 3. **Browser tests use Nova DevTool + Testbench Dusk + Workbench** — `DuskTestCase` extends `Orchestra\Testbench\Dusk\TestCase` with `WithWorkbench`.
-4. **Workbench seeders are mandatory** — `workbench/database/seeders/DatabaseSeeder.php` MUST seed: (a) `admin@laravel.com / password` for `loginToNova()`, and (b) 1–3 records per aggregate root.
-5. **`composer run build` is the single environment-recreation command** — MUST work from a clean clone.
+4. **Workbench seeders are mandatory** — `workbench/database/seeders/DatabaseSeeder.php` must seed: (a) `admin@laravel.com / password` for `loginToNova()`, and (b) 1–3 records per aggregate root.
+5. **`composer run build` is the single environment-recreation command** — must work from a clean clone.
 6. **`composer run serve` is mandatory** — runs `testbench serve` so any developer can browse the workbench Nova UI outside of Dusk.
-7. **Browser tests have two modes** (headless CI / visual stakeholder). `DUSK_PAUSE_MS` is independently overridable. Pause is centralized in `submitForm()`. Every `submitForm()` MUST be immediately followed by `$browser->assertNoErrorToast()`.
+7. **Browser tests have two modes** (headless CI / visual stakeholder). `DUSK_PAUSE_MS` is independently overridable. Pause is centralized in `submitForm()`. Every `submitForm()` must be immediately followed by `$browser->assertNoErrorToast()`.
 8. **`test:browser` always rebuilds the workbench** — chains `composer run build` first.
 9. **Browser tests run separately from `test` / `check`** — they require ChromeDriver.
 10. **Login via browser form** — use the `loginToNova()` helper. Avoid `loginAs()`.
@@ -199,9 +199,9 @@ ChromeDriver version must match installed Chrome exactly. If Chrome auto-updates
 
 Copy the verbatim configs from `references/test-configs.md`:
 
-- `phpunit.xml` — Unit + Feature + Browser suites. **MUST declare `<env name="APP_LOCALE" value="{locale}"/>`** (read locale from `.specify/memory/constitution.md`).
-- `phpunit.dusk.xml` — Browser suite only (minimal env). **MUST declare `<env name="APP_LOCALE" value="{locale}"/>`** so Dusk runs match the showcase / production locale.
-- `testbench.yaml` — provider list for Nova + Dusk. **MUST declare `env: APP_LOCALE: {locale}`** under its `env:` section.
+- `phpunit.xml` — Unit + Feature + Browser suites. **must declare `<env name="APP_LOCALE" value="{locale}"/>`** (read locale from `.specify/memory/constitution.md`).
+- `phpunit.dusk.xml` — Browser suite only (minimal env). **must declare `<env name="APP_LOCALE" value="{locale}"/>`** so Dusk runs match the showcase / production locale.
+- `testbench.yaml` — provider list for Nova + Dusk. **must declare `env: APP_LOCALE: {locale}`** under its `env:` section.
 - `tests/TestCase.php` — base for Unit + Feature (Orchestra Testbench).
 - `tests/DuskTestCase.php` — base for Browser (Orchestra Testbench Dusk, headless-by-default driver() override, pauseMs() + isHeadless() helpers, `Browser::submitForm()` + `Browser::assertNoErrorToast()` macros registered in setUp()).
 - `tests/Pest.php` — bootstraps TestCase for Unit + Feature only.
@@ -257,7 +257,7 @@ The skill walks `src/` and spawns generator agents in parallel to produce the te
 
 ### Phase 6 — Validation loop (MANDATORY)
 
-Generating test files is not enough. Each suite MUST actually execute and pass before the skill exits. Run this loop until all three suites are green:
+Generating test files is not enough. Each suite must actually execute and pass before the skill exits. Run this loop until all three suites are green:
 
 ```
 1. composer run build          # recreate workbench, copy Nova assets, sync ChromeDriver
@@ -319,7 +319,7 @@ TEST CONFIGURATION + GENERATION GATE
 ## Success condition
 
 ```bash
-node skills/opscale-test/scripts/validate-test.mjs --project-root=.
+node scripts/validate-test.mjs --project-root=.
 ```
 
 Exit code 0 = pass.

@@ -15,7 +15,7 @@ description: >
 
 Transform a validated spec and DBML into a BPMN 2.0 XML file that maps the business process to executable Opscale operations. The BPMN is the authoritative source for what gets implemented — every task maps directly to a class.
 
-Outputs are written to `.specify/specs/{NNN}-{module-name}/final/process.bpmn` (raw BPMN 2.0 XML), `.specify/specs/{NNN}-{module-name}/final/operations.md` (canonical operation sequence + CRUD composition per Logic — the artifact `opscale-sipoc` imports), and `.specify/specs/{NNN}-{module-name}/logs/bpmn.md` (phase-by-phase Q/A record). Canonical paths: `skills/opscale-init/references/artifact-paths.md`.
+Outputs are written to `.specify/specs/{NNN}-{module-name}/final/process.bpmn` (raw BPMN 2.0 XML), `.specify/specs/{NNN}-{module-name}/final/operations.md` (canonical operation sequence + CRUD composition per Logic — the artifact `opscale-sipoc` imports), and `.specify/specs/{NNN}-{module-name}/logs/bpmn.md` (phase-by-phase Q/A record). Canonical paths: `references/artifact-paths.md`.
 
 ### Prerequisites — MUST be satisfied (ordered)
 
@@ -361,7 +361,7 @@ mkdir -p .specify/specs/{NNN}-{module-name}/logs .specify/specs/{NNN}-{module-na
 
    The business step labels preserve the business → technical trace: a stakeholder finds their business step and sees the operations it became; an engineer finds an operation and sees which business activity justifies it.
 
-3. **`logs/bpmn.md`** — phase-by-phase Q/A record from this run: Phase 1 modeling-standard reconciliation + subprocess-list approval, Phase 2.1–2.4 per-subprocess answers (rules, atomic sequence, grouped sequence, detailed recap), Phase 3 final-summary confirmation. Use the skeleton at `skills/opscale-process/assets/log-template.md`. Replaced on each re-run.
+3. **`logs/bpmn.md`** — phase-by-phase Q/A record from this run: Phase 1 modeling-standard reconciliation + subprocess-list approval, Phase 2.1–2.4 per-subprocess answers (rules, atomic sequence, grouped sequence, detailed recap), Phase 3 final-summary confirmation. Use the skeleton at `assets/log-template.md`. Replaced on each re-run.
 
 Deliver summary:
 
@@ -393,7 +393,7 @@ Excerpt of `final/process.bpmn` — see `references/sample-output.md`.
 ## Success condition
 
 ```bash
-node skills/opscale-bpmn/scripts/validate-bpmn.mjs final/process.bpmn
+node scripts/validate-bpmn.mjs final/process.bpmn
 ```
 
 Exit code 0 = pass.

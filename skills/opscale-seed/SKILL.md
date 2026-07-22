@@ -202,7 +202,7 @@ If any aggregate ends with 0 records, the seeder is missing it. Fix and re-run u
 ## Success condition
 
 ```bash
-node skills/opscale-seed/scripts/validate-seed.mjs --seeder=workbench/database/seeders/DatabaseSeeder.php
+node scripts/validate-seed.mjs --seeder=workbench/database/seeders/DatabaseSeeder.php
 ```
 
 Exit code 0 = pass.

@@ -2,11 +2,12 @@
 name: opscale-sipoc
 description: >
   Authors one SIPOC document per businessRuleTask in the BPMN — the bridge
-  between BPMN (what) and the future handle() body (how). Step 4 of Plan —
-  the last Plan step: runs after opscale-bpmn; the next pipeline step is
-  opscale-domain, and its eventual consumer is opscale-logic. Trigger: "generate the
-  SIPOC", "detail the actions", "describe each action".
-  Use it whenever each BPMN businessRuleTask needs its SIPOC detailed, even if just "detail the actions". Not for writing the actual handle() code — that's opscale-logic.
+  between BPMN (what) and the future handle() body (how). Step 4 of Plan,
+  after opscale-bpmn; eventual consumer is opscale-logic. Trigger: "generate
+  the SIPOC", "detail the actions", "describe each action". Use it whenever
+  each BPMN businessRuleTask needs its SIPOC detailed, even if just "detail
+  the actions". Not for writing the actual handle() code — that's
+  opscale-logic.
 ---
 
 # opscale-sipoc
@@ -105,9 +106,9 @@ When a source violates one of these, stop, name what's missing, and resolve it w
 **Two output groups:**
 
 - `final/actions/{kebab-id}.sipoc.md` — one file per `businessRuleTask`. Filename is the BPMN `logic.id` value (kebab-case). **Append-only** within an iteration — never overwrite an existing SIPOC silently. Conflicts go to user review.
-- `logs/sipoc.md` — a single combined log for the whole run. Each action gets one top-level section (`## Action — {kebab-id}`) containing the Q/A from sub-phases 2.1 (Inputs), 2.2 (Suppliers), 2.3 (Outputs), 2.4 (Customers), 2.5 (Process). Replaced on each re-run of the skill. Use the skeleton at `skills/opscale-process/assets/log-template.md`.
+- `logs/sipoc.md` — a single combined log for the whole run. Each action gets one top-level section (`## Action — {kebab-id}`) containing the Q/A from sub-phases 2.1 (Inputs), 2.2 (Suppliers), 2.3 (Outputs), 2.4 (Customers), 2.5 (Process). Replaced on each re-run of the skill. Use the skeleton at `assets/log-template.md`.
 
-Canonical paths: `skills/opscale-init/references/artifact-paths.md`.
+Canonical paths: `references/artifact-paths.md`.
 
 ### 7-section output structure (SIPOC file template)
 
@@ -208,7 +209,7 @@ For each `businessRuleTask` from Phase 1, walk these five sub-phases in order. E
 
 Ask what the Action receives **and by what mechanism each input arrives**. Inputs become `parameters()` in `opscale-logic`.
 
-**Type inputs with business types first.** Resolve each input's type in this order: a **business-type slug** from the central language-agnostic registry (`.specify/memory/business-types.md`, fallback: `skills/opscale-init/references/business-types.md`) → an **entity name** from `final/domain.dbml` (when the input is a whole record; `opscale-logic` resolves the entity to its model class via `final/naming.md`) → a plain scalar. A business type carries its validation semantics implicitly (typing an input `email` means valid-email-format without restating it), so the Validation column only adds constraints the registry doesn't already imply (`required`, cross-field conditions). If the entity column this input feeds carries `// type:{slug}` in the DBML, the input MUST use the same slug — same data, same type, both sides. The SIPOC stays implementation-agnostic: slugs and entity names, never framework classes or rule strings.
+**Type inputs with business types first.** Resolve each input's type in this order: a **business-type slug** from the central language-agnostic registry (`.specify/memory/business-types.md`, fallback: `references/business-types.md`) → an **entity name** from `final/domain.dbml` (when the input is a whole record; `opscale-logic` resolves the entity to its model class via `final/naming.md`) → a plain scalar. A business type carries its validation semantics implicitly (typing an input `email` means valid-email-format without restating it), so the Validation column only adds constraints the registry doesn't already imply (`required`, cross-field conditions). If the entity column this input feeds carries `// type:{slug}` in the DBML, the input MUST use the same slug — same data, same type, both sides. The SIPOC stays implementation-agnostic: slugs and entity names, never framework classes or rule strings.
 
 ```
 SIPOC for "[Action Name]" (id: `[kebab-id]`)
@@ -388,7 +389,7 @@ Full anonymized `.sipoc.md` example — see `references/sample-output.md`.
 ## Success condition
 
 ```bash
-node skills/opscale-sipoc/scripts/validate-sipoc.mjs --sipoc-dir=.specify/specs/*/final/actions/
+node scripts/validate-sipoc.mjs --sipoc-dir=.specify/specs/*/final/actions/
 ```
 
 Exit code 0 = pass.

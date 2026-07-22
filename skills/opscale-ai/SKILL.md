@@ -259,7 +259,7 @@ Generated installer skill excerpt — see `references/sample-output.md`.
 ## Success condition
 
 ```bash
-node skills/opscale-ai/scripts/validate-installer.mjs --installer-file=.claude/skills/{slug}-setup.md
+node scripts/validate-installer.mjs --installer-file=.claude/skills/{slug}-setup.md
 ```
 
 Exit code 0 = pass.
