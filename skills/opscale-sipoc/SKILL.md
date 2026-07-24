@@ -367,22 +367,22 @@ Run automatically after every SIPOC is written:
 
 If any check fails, repair the affected SIPOC and re-run the gate before marking the skill complete.
 
-**Smoke gate (MANDATORY before marking the skill complete).** The validation gate covers structural correctness. The smoke gate catches drift between the Logic units locked by `opscale-bpmn` and what was actually written — a three-way count: `operations.md` Logics = BPMN `businessRuleTask` nodes = SIPOC files:
+**Smoke gate (MANDATORY before marking the skill complete).** The validation gate covers structural correctness. The smoke gate catches drift between the Logic units locked by `opscale-bpmn` and what was actually written — a three-way count: `operations.md` Logics = **unique** BPMN logic ids = SIPOC files. The BPMN side counts unique `logic.id` values, never raw `businessRuleTask` occurrences: the same Logic may appear as several nodes (reused across branches — e.g. `discard-candidate` reachable from three gateways) and each tag also opens and closes, so a line count always overshoots:
 
 ```bash
 SPEC_DIR=$(ls -d .specify/specs/*/ 2>/dev/null | head -1)
 [ -n "$SPEC_DIR" ] || { echo "No spec dir found"; exit 1; }
 
 OPS_COUNT=$(grep -cE '^[[:space:]]*- [a-z0-9-]+ — business step' "$SPEC_DIR/final/operations.md" 2>/dev/null || echo 0)
-BPMN_COUNT=$(grep -c 'businessRuleTask' "$SPEC_DIR/final/process.bpmn" 2>/dev/null || echo 0)
+BPMN_COUNT=$(grep -o '{"type":"logic","id":"[a-z0-9-]*"' "$SPEC_DIR/final/process.bpmn" 2>/dev/null | sort -u | wc -l | tr -d ' ')
 SIPOC_COUNT=$(ls -1 "$SPEC_DIR/final/actions/"*.sipoc.md 2>/dev/null | wc -l | tr -d ' ')
 
 if [ "$OPS_COUNT" -ne "$BPMN_COUNT" ] || [ "$BPMN_COUNT" -ne "$SIPOC_COUNT" ]; then
-  echo "operations.md Logics ($OPS_COUNT) != BPMN businessRuleTasks ($BPMN_COUNT) != SIPOC files ($SIPOC_COUNT)"
+  echo "operations.md Logics ($OPS_COUNT) != unique BPMN logic ids ($BPMN_COUNT) != SIPOC files ($SIPOC_COUNT)"
   echo "Unit-list mismatches are fixed in /opscale-bpmn, not by adding/removing SIPOCs."
   exit 1
 fi
-echo "OK $SIPOC_COUNT SIPOCs match $OPS_COUNT operations.md Logics and $BPMN_COUNT businessRuleTasks"
+echo "OK $SIPOC_COUNT SIPOCs match $OPS_COUNT operations.md Logics and $BPMN_COUNT unique BPMN logic ids"
 ```
 
 Do NOT mark the skill `PASS` based on file count alone — also verify that **each** SIPOC's `Identifier:` matches the BPMN `logic.id` for the matching task name. Filename match is necessary but not sufficient.
