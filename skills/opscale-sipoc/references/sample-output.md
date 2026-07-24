@@ -30,12 +30,12 @@ sub-types, recording a `Decision(Approve)` in the current cycle.
 - 💻 Auth subdomain — provides `decided_by` **via `auth()->id()`**
 
 ## Inputs
-| Input            | Source                | Type   | Validation rules          | Description                                 |
-|------------------|-----------------------|--------|---------------------------|--------------------------------------------|
-| application      | 💻 Nova context        | model  | status='Qualified'        | auto-resolved via `ResolvesFromContext`    |
-| approvalType     | 👤 Committee (Select)  | string | required, in: Std,CT,CR   | dropdown in the Action form                |
-| reason           | 👤 Committee (Textarea)| string | required, min:10, max:2000| mandatory textarea in the form             |
-| extraReqTypes    | 👤 Committee (MultiSelect)| array | nullable               | only visible for the ChangedRequirements sub-type |
+| Input            | Source                | How obtained                              | Type   | Validation rules          | Description                                 |
+|------------------|-----------------------|-------------------------------------------|--------|---------------------------|--------------------------------------------|
+| application      | 💻 Nova context        | auto-resolved from the Nova resource page | model  | status='Qualified'        | auto-resolved via `ResolvesFromContext`    |
+| approvalType     | 👤 Committee (Select)  | user picks in the Action form dropdown    | string | required, in: Std,CT,CR   | dropdown in the Action form                |
+| reason           | 👤 Committee (Textarea)| user types in the Action form             | string | required, min:10, max:2000| mandatory textarea in the form             |
+| extraReqTypes    | 👤 Committee (MultiSelect)| user picks in the Action form          | array  | nullable                  | only visible for the ChangedRequirements sub-type |
 
 ## Process
 1. resolve `application` from Nova context; guard `status === Qualified` (BR-01)
