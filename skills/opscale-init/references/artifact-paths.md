@@ -15,14 +15,21 @@ Every module's spec directory has the same shape:
 │   └── sipoc.md
 └── final/             # canonical, machine-consumable artifacts
     ├── process.md
+    ├── process.mmd        # Mermaid diagram: subprocesses + steps
+    ├── process.txt          # plain list: subprocess → steps
     ├── domain.dbml
+    ├── dbml.txt       # plain list: one entity per line
     ├── external-refs.md
     ├── naming.md
     ├── process.bpmn
     ├── operations.md
+    ├── bpmn.txt     # plain list: business step → operations
+    ├── sipoc.txt   # plain list: Logic operation → composing operations
     └── actions/
         └── {kebab-id}.sipoc.md
 ```
+
+Every Plan skill produces **a diagram and a plain list** alongside its canonical artifact: process → `process.mmd` + `process.txt`; dbml → `domain.dbml` (renders as the ER diagram) + `dbml.txt`; bpmn → `process.bpmn` (the diagram) + `bpmn.txt`; sipoc → the `actions/*.sipoc.md` set + `sipoc.txt`. The `.txt` lists are deliberately markdown-free so gates can diff adjacent lists (steps ↔ operations ↔ compositions) to detect drift between artifacts cheaply.
 
 App-level (shared across modules):
 
@@ -37,10 +44,10 @@ App-level (shared across modules):
 | Skill            | Phase log              | Final artifact                                 |
 |------------------|------------------------|------------------------------------------------|
 | opscale-map      | —                      | `.specify/memory/domain-map.md` (app-level)    |
-| opscale-process  | `logs/process.md`      | `final/process.md`                             |
-| opscale-dbml     | `logs/dbml.md`         | `final/domain.dbml` + `final/external-refs.md` + `final/naming.md` |
-| opscale-bpmn     | `logs/bpmn.md`         | `final/process.bpmn` + `final/operations.md`   |
-| opscale-sipoc    | `logs/sipoc.md`        | `final/actions/{kebab-id}.sipoc.md` (one per businessRuleTask) |
+| opscale-process  | `logs/process.md`      | `final/process.md` + `final/process.mmd` + `final/process.txt` |
+| opscale-dbml     | `logs/dbml.md`         | `final/domain.dbml` + `final/dbml.txt` + `final/external-refs.md` + `final/naming.md` |
+| opscale-bpmn     | `logs/bpmn.md`         | `final/process.bpmn` + `final/operations.md` + `final/bpmn.txt` |
+| opscale-sipoc    | `logs/sipoc.md`        | `final/actions/{kebab-id}.sipoc.md` (one per businessRuleTask) + `final/sipoc.txt` |
 
 All paths are relative to `.specify/specs/{NNN}-{module-name}/`.
 
@@ -66,12 +73,17 @@ The log is replaced on each re-run (not append-across-runs). Within a single run
 ## Final-artifact format
 
 - `final/process.md` — structured spec (sections: `Name normalization`, `Lifecycle`, `Ordered flow`, `Relations`, `Narrative`). Markdown.
+- `final/process.mmd` — **raw Mermaid** `flowchart TD` of the *Ordered flow*: one subgraph per subprocess, one node per step. Always consistent with `process.md`.
+- `final/process.txt` — plain outline: subprocess name line, its steps prefixed `- `, blank line between subprocesses. No markdown, no emojis.
 - `final/domain.dbml` — **raw DBML**, no markdown fence, no surrounding prose. Parseable by `@dbml/core` directly.
+- `final/dbml.txt` — one DBML entity name per line, declaration order, nothing else.
 - `final/external-refs.md` — fenced `external-refs` block (`slug: col_a, col_b`) listing the virtual models this module references from other modules. Read by `opscale-domain` to generate contract interfaces.
 - `final/naming.md` — name-lineage table: canonical business name (from `process.md` Name normalization) → DBML table → enums. Extended by `opscale-domain` with the generated model class. This is the artifact that lets management, users, and developers trace one concept across all layers.
 - `final/process.bpmn` — **raw BPMN 2.0 XML**, no markdown wrapper. Loadable in Camunda Modeler.
 - `final/operations.md` — canonical operation record per subprocess: atomic sequence grouped by **business step** (every CRUD / Output / Event / Gateway labeled with the business step it decomposes), grouped sequence (Logics replacing absorbed CRUDs), and composition detail per Logic (`id`, business step, governing rules, `composed of` CRUD list). This is where the business→technical decomposition (business step → 1..N operations) lives. Read by `opscale-sipoc` — never read `logs/bpmn.md` for this.
+- `final/bpmn.txt` — plain outline: business step name line, its operations prefixed `- {category}: `, blank line between steps. Same steps and order as `process.txt`.
 - `final/actions/{kebab-id}.sipoc.md` — one SIPOC document per BPMN `businessRuleTask`, filename is the BPMN `logic.id` (kebab-case).
+- `final/sipoc.txt` — plain outline: `{Logic name} ({kebab-id})` line, its composing operations prefixed `- `, blank line between Logics. Matches each SIPOC's Process section.
 - `.specify/memory/domain-map.md` — app-level domain map: business lines (domains) → their modules (subdomains) → cross-module external refs. Written by `opscale-map`, consulted by `opscale-dbml` when resolving external refs.
 - `.specify/memory/business-types.md` — **canonical, language-agnostic registry** of business data types (slug → meaning, storage, validation semantics, UI intent). Copied from the skill bundle by `opscale-init`, extensible per project. Consumed by the Plan phase: `opscale-dbml` (attribute typing, `// type:{slug}` notes) and `opscale-sipoc` (input typing). Plan artifacts reference slugs only.
 - `.specify/memory/business-types.php` — Laravel/Nova **implementation binding** of the registry (slug → field class, rule strings, cast, config). Consumed by Generate only: `opscale-domain` (casts + `$validationRules`), `opscale-ui` (field selection), `opscale-logic` (`parameters()` rules). Every slug must exist in both files.

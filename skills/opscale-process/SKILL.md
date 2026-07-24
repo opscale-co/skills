@@ -118,21 +118,39 @@ Two siblings under the spec directory — phase log + final artifact. Canonical 
 
 ```
 .specify/specs/{NNN}-{module-name}/
-├── logs/process.md     # phase-by-phase Q/A record from this run
-└── final/process.md    # the canonical, downstream-consumable spec
+├── logs/process.md      # phase-by-phase Q/A record from this run
+└── final/
+    ├── process.md       # the canonical, downstream-consumable spec
+    ├── process.mmd      # Mermaid diagram: subprocesses + their steps
+    └── process.txt        # plain list: subprocess → its steps
 ```
 
-**`logs/process.md`** — phase-by-phase record of what was asked and answered during this run (Phase 1 name normalization, Phase 2a subprocess boundary confirmation, Phase 2b per-subprocess step lists, Phase 3 island resolutions). Use the shared skeleton at `assets/log-template.md`. Replaced on each re-run.
+**`logs/process.md`** — phase-by-phase record of what was asked and answered during this run (Phase 1 name normalization, Phase 2 entity normalization, Phase 3 lifecycle modeling, Phase 4 subprocess boundaries, Phase 5 per-subprocess steps, Phase 6 island resolutions). Use the shared skeleton at `assets/log-template.md`. Replaced on each re-run.
 
 **`final/process.md`** — the canonical spec with **five sections**, plain titles, no rationale (section headings and structural keywords stay in English; prose, step lines, and entity names follow the user's language):
 
 - **Name normalization** — the canonical list with aliases
-- **Lifecycle** — per lifecycle entity: its **Stages** and **Flows** (the transitions that drive it from stage to stage). Confirmed in Phase 2.5 and persisted here so downstream skills can trace every subprocess back to the stage transition it implements
+- **Lifecycle** — per lifecycle entity: its **Stages** and **Flows** (the transitions that drive it from stage to stage). Confirmed in Phase 3 and persisted here so downstream skills can trace every subprocess back to the stage transition it implements
 - **Ordered flow** — the macro-flow, grouped into **subprocesses bounded by events**. Each subprocess is its own heading with a *Trigger* line and its numbered business steps inside — broad activities that `opscale-bpmn` later decomposes into atomic operations. The subprocess headings ARE the identified processes, and the numbered steps under each ARE the detailed flow. `opscale-bpmn` turns each subprocess heading into one `subProcess`; `opscale-test` turns each into one browser test; `opscale-showcase` walks each one.
 - **Relations** — how the entities connect
 - **Narrative** — the same flow in plain prose for humans to read first; downstream skills parse the structured sections above.
 
 Use the template in `assets/spec-template.md`.
+
+**`final/process.mmd`** — the same *Ordered flow* as a raw Mermaid `flowchart TD` (no markdown fence): one `subgraph` per subprocess, one node per step in order (keep the step number and its leading emoji in the label), `🔀` steps as diamond nodes with labeled branch edges, and the `⏳` wait as the labeled edge connecting one subprocess to the next. **Why a diagram:** stakeholders confirm a flow much faster visually than reading numbered lines — the diagram and the spec must always describe the identical flow.
+
+**`final/process.txt`** — the same *Ordered flow* as a plain, parseable outline (no emojis, no numbering, no markdown): the subprocess name on its own line, each of its steps below prefixed with `- `, one blank line between subprocesses:
+
+```
+{Subprocess 1 name}
+- {step}
+- {step}
+
+{Subprocess 2 name}
+- {step}
+```
+
+**Why a plain list:** downstream tooling and gates diff this file cheaply to detect drift between spec, diagram, and BPMN without parsing markdown.
 
 ### Keep it readable
 
@@ -160,7 +178,7 @@ Lock the canonical names and the alias mapping. Record `Canonical ← alias, ali
 
 **Wait for user approval before continuing.**
 
-### Phase 2.5 — Lifecycle modeling
+### Phase 3 — Lifecycle modeling
 
 Before laying out subprocesses, model the **lifecycle** of the entities that actually have one. Lifecycles travel forward into the subprocess proposal: each lifecycle flow becomes a candidate subprocess, and each subprocess MUST end at a recognizable stage transition (the `⏳` boundary is what holds the entity at one stage until the next flow advances it).
 
@@ -182,13 +200,13 @@ Confirm the stages with the user before listing flows.
 
 > "Verify documents" doesn't end at any stage — should it end at `In review`, should it be part of `send to review`, or is it an internal business step with no transition?
 
-Repeat per lifecycle entity until every flow has a terminal stage. Record the result inline; it feeds directly into Phase 3.
+Repeat per lifecycle entity until every flow has a terminal stage. Record the result inline; it feeds directly into Phase 4.
 
 **Wait for user approval before continuing.**
 
-### Phase 3 — Propose subprocesses and their wait boundaries (authorization gate)
+### Phase 4 — Propose subprocesses and their wait boundaries (authorization gate)
 
-The subprocess proposal **starts from the flows confirmed in Phase 2.5**: each lifecycle flow is a candidate subprocess that drives the entity from one stage to the next, framed with a `⏳` wait boundary on the side that waits for the next external trigger. Then read the narrative again to identify any additional points where the flow has to **wait** for something external — a reply, a timer, a downstream answer, a manual handoff. Each wait is a `⏳` boundary between two subprocesses. Notifications (`📩`) and file deliveries (`📄`) by themselves are NOT boundaries — they are internal steps; they only become a boundary if a `⏳` immediately follows them.
+The subprocess proposal **starts from the flows confirmed in Phase 3**: each lifecycle flow is a candidate subprocess that drives the entity from one stage to the next, framed with a `⏳` wait boundary on the side that waits for the next external trigger. Then read the narrative again to identify any additional points where the flow has to **wait** for something external — a reply, a timer, a downstream answer, a manual handoff. Each wait is a `⏳` boundary between two subprocesses. Notifications (`📩`) and file deliveries (`📄`) by themselves are NOT boundaries — they are internal steps; they only become a boundary if a `⏳` immediately follows them.
 
 From that, propose the breakdown:
 
@@ -211,36 +229,38 @@ Did I miss any waits (timers, replies, external answers) that should add a bound
 Are there notifications or file deliveries currently shown as boundaries that are actually just internal steps?
 ```
 
-The breakdown the user confirms here is the contract: every step in Phase 4 lives inside exactly one of these subprocesses.
+The breakdown the user confirms here is the contract: every step in Phase 5 lives inside exactly one of these subprocesses.
 
 **Wait for user approval before continuing.**
 
-### Phase 4 — Detail each subprocess
+### Phase 5 — Detail each subprocess
 
 Once authorized, walk each subprocess in order and lay out its numbered typed steps. A subprocess is a continuous chain of internal steps (`📝 ⚙️ ✅ 🔀 📩 📄`) and ends with the `⏳` that closes it (or with its last internal step if it's the final subprocess of the module). When a notification triggers a wait, write **`📩` first, then `⏳`** — both belong to the same subprocess and `⏳` is the boundary. Numbering is sequential across the whole module; it does not restart per subprocess.
 
 **Wait for user approval before continuing.**
 
-### Phase 5 — Resolve islands (interactive)
+### Phase 6 — Resolve islands (interactive)
 
 Walk every step and every entity. For each that doesn't connect, **ask** the user what it relates to and integrate the answer. Loop until nothing is loose.
 
 **Wait for user approval before continuing.**
 
-### Phase 6 — Finalize and write
+### Phase 7 — Finalize and write
 
-Confirm the normalized names and the flow, then write both files in the user's language:
+Confirm the normalized names and the flow, then write the four files in the user's language:
 
 1. `logs/process.md` — render the phase-by-phase Q/A from Phases 1, 2, 2.5, 3, 4, 5 using the skeleton in `assets/log-template.md`. One section per phase; **Question / Answer / Decision** triplet per material exchange.
 2. `final/process.md` — render the five-section spec (**Name normalization**, **Lifecycle**, **Ordered flow**, **Relations**, **Narrative**) using `assets/spec-template.md`.
+3. `final/process.mmd` — render the *Ordered flow* as the Mermaid flowchart described in Output (raw Mermaid, no fence). Every subprocess and step in the spec appears in the diagram — same names, same order.
+4. `final/process.txt` — render the plain subprocess → steps outline described in Output. Line-for-line consistent with the spec's *Ordered flow*.
 
-Create `logs/` and `final/` if they don't exist. Replace either file if it already exists.
+Create `logs/` and `final/` if they don't exist. Replace any of the files if they already exist. The three flow views (`process.md`, `process.mmd`, `process.txt`) must never disagree — if one changes, regenerate the other two.
 
 **Wait for user approval before continuing.**
 
 ## Sample
 
-Excerpt of `final/process.md` — see `references/sample-output.md`.
+Excerpt of `final/process.md` and a full reference `final/process.txt` (recruitment module, shared across the four Plan skills so the lists chain) — see `references/sample-output.md`.
 
 ## Success condition
 

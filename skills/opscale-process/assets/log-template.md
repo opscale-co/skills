@@ -28,12 +28,12 @@ Generated: [YYYY-MM-DDTHH:MM:SSZ]
 
 ---
 
-## Example — Phase 2.5 Q/A block (opscale-process specific)
+## Example — Phase 3 Q/A block (opscale-process specific)
 
-Use this shape between the Phase 1 (entity normalization) block and the
-Phase 2a (subprocess proposal) block:
+Use this shape between the Phase 2 (entity normalization) block and the
+Phase 4 (subprocess proposal) block:
 
-## Phase 2.5 — Lifecycle modeling
+## Phase 3 — Lifecycle modeling
 
 **Question:** Which entities have a lifecycle (change stage over time) and which are just supporting data?
 **Answer:** [user's response — list of entities with lifecycles]

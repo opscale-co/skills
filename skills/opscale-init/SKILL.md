@@ -72,7 +72,7 @@ If any are missing, guide the user to install them before proceeding.
 - The difference from module is that a package is standalone — not a subdomain of a specific app
 
 **When `PROJECT_TYPE` is `library`:**
-- Skip Steps 1–6 (no spec, DBML, BPMN, domain, Nova, logic)
+- Skip Steps 1–8 (map, spec, DBML, BPMN, SIPOC, domain, Nova, logic)
 - The next step after init is writing code directly, then `opscale-test` and `opscale-release`
 - `MODULE_PREFIX` is the package slug instead of a DB table prefix
 
@@ -355,7 +355,7 @@ Explain to the user how the Opscale skill sequence maps to spec-kit's workflow:
 ```
 OPSCALE SKILL           → ARTIFACT
 ─────────────────────────────────────────────────────────────────────────
-opscale-map             → .specify/memory/domain-map.md (app-level, optional but recommended)
+opscale-map             → .specify/memory/domain-map.md (Step 1, app-level; re-run before each new module)
 opscale-process         → .specify/specs/{NNN-module}/final/process.md
                           .specify/specs/{NNN-module}/logs/process.md
 opscale-dbml            → .specify/specs/{NNN-module}/final/domain.dbml
@@ -411,12 +411,12 @@ Based on what exists, recommend where to join the sequence:
 
 | What exists | Recommended entry point |
 |-------------|------------------------|
-| Nothing — greenfield | Step 1: `opscale-process` |
-| Business docs but no code | Step 1: `opscale-process` (formalize into spec) |
-| Models + migrations but no spec | Step 1: `opscale-process` (reverse-document what exists) |
-| Models + migrations + spec | Step 2: `opscale-dbml` (formalize data model from existing schema) |
-| Full domain + Nova but no tests | Step 8: `opscale-test` |
-| Full domain + Nova + tests but no CI | Step 9: `opscale-release` |
+| Nothing — greenfield | Step 2: `opscale-process` |
+| Business docs but no code | Step 2: `opscale-process` (formalize into spec) |
+| Models + migrations but no spec | Step 2: `opscale-process` (reverse-document what exists) |
+| Models + migrations + spec | Step 3: `opscale-dbml` (formalize data model from existing schema) |
+| Full domain + Nova but no tests | Step 10: `opscale-test` |
+| Full domain + Nova + tests but no CI | Step 11: `opscale-release` |
 | Everything exists, adopting conventions | Run `constitution-enforcer` to assess compliance |
 
 **8c. Present the recommendation:**

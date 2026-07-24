@@ -86,3 +86,21 @@ Ref: verifications.application_id > applications.id
 // External reference — virtual model, no FK constraint
 Ref: applications.party_id > parties.id  // external_ref
 ```
+
+
+## Sample final/dbml.txt
+
+Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `bpmn.txt` with its operations, every logic id in `bpmn.txt` has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
+
+```
+requisition
+approval
+posting
+candidate
+assessment
+interview
+reference
+background_check
+offer
+decision
+```

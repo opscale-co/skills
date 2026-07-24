@@ -69,3 +69,87 @@ For the canonical specification of the format, see this skill's
   </bpmn:process>
 </bpmn:definitions>
 ```
+
+
+## Sample final/bpmn.txt
+
+Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `bpmn.txt` with its operations, every logic id in `bpmn.txt` has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
+
+```
+Describe the requested position
+- crud: create requisition
+
+Route the approval chain
+- logic: Route approval (route-approval)
+
+Record each approval decision
+- logic: Approve requisition (approve-requisition)
+- logic: Reject requisition (reject-requisition)
+- output: notify the requester
+
+Notify internal employees
+- output: post the opening on the employee portal
+
+Publish the opening with tracked links
+- logic: Publish requisition (publish-requisition)
+- output: publish to job boards and social networks
+
+Register each candidate with consent
+- crud: create candidate
+
+Screen resumes against the approved profile
+- logic: Screen candidate (screen-candidate)
+
+Send assessments to qualified candidates
+- crud: create assessment
+- output: email the assessment invitation
+
+Schedule each interview round
+- logic: Schedule interview (schedule-interview)
+- output: send the confirmation with location details
+
+Record the standardized evaluation form
+- crud: update interview
+
+Advance or discard with documented reason
+- logic: Discard candidate (discard-candidate)
+- output: send the closure message
+
+Request work references
+- crud: create reference
+- output: contact the referee
+
+Request background checks for sensitive positions
+- crud: create background_check
+
+Consolidate the comparative file
+- crud: read candidate
+
+Record the committee decision
+- logic: Decide finalist (decide-finalist)
+
+Send the offer
+- logic: Extend offer (extend-offer)
+- output: send the offer letter
+
+Escalate a counteroffer beyond the approved range
+- logic: Revalidate offer (revalidate-offer)
+
+Record the signed acceptance
+- logic: Accept offer (accept-offer)
+
+Handle a rejected offer
+- logic: Reject offer (reject-offer)
+
+Open the employee record
+- output: hand off the hiring file to the employee module
+
+Close the requisition as filled
+- logic: Hire candidate (hire-candidate)
+
+Archive all candidate files
+- logic: Archive candidates (archive-candidates)
+
+Send the welcome
+- output: email the welcome to the new employee and team
+```

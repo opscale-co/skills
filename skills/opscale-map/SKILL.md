@@ -2,12 +2,14 @@
 name: opscale-map
 description: >
   Builds and maintains the app-level domain map — business lines (domains),
-  their modules (subdomains), and cross-module references. Step 0.5 — after
-  opscale-init, before any module's Plan phase. Trigger: "map the domains",
-  "add a module to the map", "domain map", "which module owns X". Use it
-  whenever the talk is about how modules group into business lines or
-  reference each other, even if not asked explicitly. Not for one module's
-  process (opscale-process) or data (opscale-dbml).
+  their modules (subdomains), and cross-module references. Step 1 — the first
+  step after opscale-init, before any module's Plan phase; re-run before each
+  new module so its DBML can see what other modules exist as external-reference
+  targets. Trigger: "map the domains", "add a module to the map", "domain map",
+  "which module owns X", "what other modules exist". Use it whenever the talk
+  is about how modules group into business lines or reference each other, even
+  if not asked explicitly. Not for one module's process (opscale-process) or
+  data (opscale-dbml).
 ---
 
 # opscale-map
@@ -28,6 +30,8 @@ Every other Opscale skill works **inside** one module. Nothing else records whic
 
 **Why app-level and not per-module:** cross-module references (`external_ref:{slug}` in each module's DBML) are declared pairwise from the consumer's side. Without a central map, nobody can answer "who owns `users`?" or "what breaks if we rename `crm.agencies`?" without opening every module's `final/external-refs.md`. The map is the one place that view lives.
 
+**Why it runs first, and again per module:** the map is Step 1 (right after `opscale-init`) so the business-line inventory exists before any module is planned. But it also serves *inside* a module: when `opscale-dbml` reaches its external-references phase, it needs to know **what other modules already exist** to point a virtual reference at the right owner. Re-running `opscale-map` before starting a new module refreshes that catalog — so the module being modeled can reference siblings accurately instead of inventing owners. The map is both the app-level index and the reference sheet each module consults for its external refs.
+
 ### Prerequisites
 
 | # | Requirement | Check | If missing |
@@ -39,7 +43,7 @@ Modules are **not** required — the map can be drawn before any module is plann
 ### When to run
 
 - **First run** — right after `opscale-init`, to lay out the business lines and the candidate modules in each.
-- **Re-run** — whenever a new module enters Plan, a module's external refs change (after `opscale-dbml` Phase 8), or a business line is added. The map is updated in place, never forked.
+- **Re-run** — whenever a new module enters Plan (so its DBML can see the current module catalog for external references), a module's external refs change (after `opscale-dbml` Phase 9), or a business line is added. The map is updated in place, never forked.
 
 ### Output
 
@@ -147,7 +151,7 @@ Write `.specify/memory/domain-map.md` from the template. Replace in place; the `
 [ ] Status column consistent with what exists in each module's final/
 ```
 
-All checked → PASS. `opscale-dbml` consults this map in its Phase 2 (external references) to propose owners; `opscale-init` consults it when a new module is being named and numbered.
+All checked → PASS. `opscale-dbml` consults this map in its Phase 3 (external references) to propose owners; `opscale-init` consults it when a new module is being named and numbered.
 
 **Wait for user approval before finishing.**
 

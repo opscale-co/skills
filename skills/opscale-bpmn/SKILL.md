@@ -15,7 +15,7 @@ description: >
 
 Transform a validated spec and DBML into a BPMN 2.0 XML file that maps the business process to executable Opscale operations. The BPMN is the authoritative source for what gets implemented — every task maps directly to a class.
 
-Outputs are written to `.specify/specs/{NNN}-{module-name}/final/process.bpmn` (raw BPMN 2.0 XML), `.specify/specs/{NNN}-{module-name}/final/operations.md` (canonical operation sequence + CRUD composition per Logic — the artifact `opscale-sipoc` imports), and `.specify/specs/{NNN}-{module-name}/logs/bpmn.md` (phase-by-phase Q/A record). Canonical paths: `references/artifact-paths.md`.
+Outputs are written to `.specify/specs/{NNN}-{module-name}/final/process.bpmn` (raw BPMN 2.0 XML — the diagram), `final/operations.md` (canonical operation sequence + CRUD composition per Logic — the artifact `opscale-sipoc` imports), `final/bpmn.txt` (plain list: each business step and the operations it decomposes into), and `logs/bpmn.md` (phase-by-phase Q/A record). Canonical paths: `references/artifact-paths.md`.
 
 ### Prerequisites — MUST be satisfied (ordered)
 
@@ -90,6 +90,10 @@ Nothing else is a step. If you cannot place a candidate step into one of these f
 
 The CRUDs that compose a Logic are not separate `serviceTask` nodes in the BPMN — they live inside the Logic's `businessRuleTask`. Only CRUDs that do **not** belong to any Logic become standalone `serviceTask` nodes.
 
+**Approvals are two-outcome.** Every ✅ approval business step implies both resolutions: the approving Logic and its rejecting counterpart (`approve-x` / `reject-x`), each with its own guarded transition and its own SIPOC, separated by the gateway that carries the decision. The same applies to any acceptance the flow waits on (an offer can be declined). Modeling only the happy path is a gap the 2.1 rules elicitation must catch — a lifecycle with an approval stage always has a rejected/declined branch somewhere.
+
+**Lifecycle transitions are always Logic.** If an entity has a lifecycle (spec *Lifecycle* section), its status is a pipeline: a stage can only be entered from the allowed previous stage, so moving it always requires at least reading the current status and validating the transition — which is by definition more than a single CRUD. A standalone `crud: update {entity}.status` in the grouped sequence is a red flag: either it belongs inside a Logic, or the transition guard is missing from the rules elicited in 2.1. The same applies to operations gated by a status (e.g. an interview cannot be created for a candidate that has not been screened — creating it is a Logic that verifies the pipeline stage first). Creating a record with its *initial* status is not a transition — plain CRUD is fine there.
+
 ### Mapping the module spec to BPMN — business steps decompose into operations
 
 `opscale-process` produced **business steps** — broad activities in the stakeholder's language. This skill decomposes each business step into its **atomic operations**: one business step can yield one operation or ten. The business step's emoji anticipates the *dominant* element, not a 1:1 translation:
@@ -123,12 +127,12 @@ For the full `<bpmn:definitions>` skeleton (process + tasks + gateway + end even
 
 ### Phase 1 — Subprocess inventory (reconcile as-is flows against the systematized model)
 
-`opscale-process` captured the subprocesses as the area runs **today** — including manual handoffs, workarounds, and informal boundaries that may exist only because no system supports the step. The BPMN must reflect the **to-be systematized** version, aligned with the modeling standard chosen in `opscale-dbml` Phase 0. Translating each as-is subprocess one-to-one into a `subProcess` is the wrong default; first contrast them against the standard and decide what to add, drop, merge, split or rename.
+`opscale-process` captured the subprocesses as the area runs **today** — including manual handoffs, workarounds, and informal boundaries that may exist only because no system supports the step. The BPMN must reflect the **to-be systematized** version, aligned with the modeling standard chosen in `opscale-dbml` Phase 1. Translating each as-is subprocess one-to-one into a `subProcess` is the wrong default; first contrast them against the standard and decide what to add, drop, merge, split or rename.
 
 **1a. Read inputs:**
 
 - `final/process.md` → the **Ordered flow** section. Each subprocess heading there is a **candidate** flow (as-is) — not a locked one.
-- `final/domain.dbml` → (i) all table names (the only valid `entity` values for `serviceTask` crud) and (ii) the **modeling standard** recorded by `opscale-dbml` Phase 0 in the Project block's `Note:`. If the standard is not findable there, ask the user which one applies (or "none").
+- `final/domain.dbml` → (i) all table names (the only valid `entity` values for `serviceTask` crud) and (ii) the **modeling standard** recorded by `opscale-dbml` Phase 1 in the Project block's `Note:`. If the standard is not findable there, ask the user which one applies (or "none").
 
 **1b. Contrast the as-is candidates against the standard:**
 
@@ -147,7 +151,7 @@ For each as-is subprocess, classify it against the standard:
 **1c. Present the reconciled proposal and wait for approval:**
 
 ```
-Modeling standard (from opscale-dbml Phase 0): [name or "none"]
+Modeling standard (from opscale-dbml Phase 1): [name or "none"]
 
 As-is subprocesses in final/process.md *Ordered flow*:
 - [As-is A]
@@ -243,6 +247,7 @@ Confirm the grouping?
 
 Rules during 2.3:
 - Every Logic must absorb at least one CRUD from the 2.2 atomic sequence. A zero-CRUD Logic is suspicious — re-examine before continuing.
+- Every `update {entity}.status` on a lifecycle entity must end up inside a Logic (see *Lifecycle transitions are always Logic*). If one survives as a standalone CRUD after grouping, go back: a transition rule is missing.
 - A Logic normally lives inside one business step. If a business rule forces grouping CRUDs across two business steps, surface it — the business steps may be one activity artificially split, or the rule may be mis-scoped. Ask before grouping across the boundary.
 - Logics must respect the order from 2.2 — grouping collapses contiguous steps, it does not reorder them. Reordering needs to go back to 2.2.
 - A CRUD that no Logic absorbs survives as a standalone CRUD line in the grouped sequence.
@@ -361,7 +366,21 @@ mkdir -p .specify/specs/{NNN}-{module-name}/logs .specify/specs/{NNN}-{module-na
 
    The business step labels preserve the business → technical trace: a stakeholder finds their business step and sees the operations it became; an engineer finds an operation and sees which business activity justifies it.
 
-3. **`logs/bpmn.md`** — phase-by-phase Q/A record from this run: Phase 1 modeling-standard reconciliation + subprocess-list approval, Phase 2.1–2.4 per-subprocess answers (rules, atomic sequence, grouped sequence, detailed recap), Phase 3 final-summary confirmation. Use the skeleton at `assets/log-template.md`. Replaced on each re-run.
+3. **`final/bpmn.txt`** — the same decomposition as a plain, parseable outline (no markdown, no numbering): each business step from the spec's *Ordered flow* on its own line, each operation it decomposes into below prefixed with `- ` (category word + operation), one blank line between business steps:
+
+   ```
+   Send to review
+   - crud: update articles.status → reviewing
+   - crud: create review_checklist
+
+   Publish the article
+   - logic: Publish article (publish-article)
+   - output: email the author
+   ```
+
+   Every business step in `final/process.txt` (written by `opscale-process`) appears here with ≥ 1 operation, in the same order. **Why:** gates diff `process.txt` against this file to catch spec ↔ BPMN drift cheaply, without parsing markdown or XML.
+
+4. **`logs/bpmn.md`** — phase-by-phase Q/A record from this run: Phase 1 modeling-standard reconciliation + subprocess-list approval, Phase 2.1–2.4 per-subprocess answers (rules, atomic sequence, grouped sequence, detailed recap), Phase 3 final-summary confirmation. Use the skeleton at `assets/log-template.md`. Replaced on each re-run.
 
 Deliver summary:
 
@@ -388,7 +407,7 @@ Then verify the semantic gate. For the full 26-item checklist (modeling-standard
 
 ## Sample
 
-Excerpt of `final/process.bpmn` — see `references/sample-output.md`.
+Excerpt of `final/process.bpmn` and a full reference `final/bpmn.txt` (recruitment module, shared across the four Plan skills — its steps match `process.txt`, its logic ids match `sipoc.txt`) — see `references/sample-output.md`.
 
 ## Success condition
 

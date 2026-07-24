@@ -39,6 +39,7 @@ BPMN COMPLETENESS GATE
 [ ] Script exited with code 0
 [ ] final/process.bpmn written (raw XML, no markdown wrapper)
 [ ] final/operations.md written (atomic sequence + grouped sequence + composition per subprocess)
+[ ] final/bpmn.txt written — every business step from final/process.txt present, same order, ≥1 operation each
 [ ] logs/bpmn.md written
 [ ] One subProcess per flow in final/process.md *Ordered flow*
 [ ] Only serviceTask, businessRuleTask, sendTask used — no scriptTask

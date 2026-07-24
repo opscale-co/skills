@@ -78,3 +78,81 @@ sub-types, recording a `Decision(Approve)` in the current cycle.
   - missing `reason` — blocked in `validateAttributes()` before
     entering `handle()`.
 ```
+
+
+## Sample final/sipoc.txt
+
+Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `bpmn.txt` with its operations, every logic id in `bpmn.txt` has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
+
+```
+Route approval (route-approval)
+- read requisition (position type, salary range, level)
+- create approval (one per required approver)
+- update requisition.status -> in_approval
+
+Approve requisition (approve-requisition)
+- read approval (verify pending and in order)
+- update approval (decision, signature, timestamp)
+- update requisition.status -> approved (when the chain completes)
+
+Reject requisition (reject-requisition)
+- read approval (verify pending and in order)
+- update approval (decision, signature, timestamp)
+- update requisition.status -> rejected
+
+Publish requisition (publish-requisition)
+- read requisition (verify status = approved)
+- create posting (one per channel, tracked link)
+- update requisition.status -> published
+
+Screen candidate (screen-candidate)
+- read requisition (approved profile)
+- read candidate (verify status = applied; resume, assessment results)
+- update candidate.status -> screened | discarded
+
+Schedule interview (schedule-interview)
+- read candidate (verify status = screened and assessments complete)
+- create interview
+- update candidate.status -> interviewing
+
+Discard candidate (discard-candidate)
+- read candidate (verify not hired)
+- update candidate (documented reason)
+- update candidate.status -> discarded
+
+Decide finalist (decide-finalist)
+- read interview (scores per finalist)
+- read reference (responses)
+- read background_check (results)
+- create decision
+- update candidate.status -> selected
+
+Extend offer (extend-offer)
+- read candidate (verify status = selected)
+- create offer
+- update candidate.status -> offered
+
+Revalidate offer (revalidate-offer)
+- read offer (counteroffer vs approved range)
+- create approval (revalidation of the changed terms)
+- update offer (approved new terms)
+- update offer.status -> sent (re-enters the accept / reject cycle)
+
+Accept offer (accept-offer)
+- read offer (verify sent and within the response term)
+- update offer.status -> accepted
+
+Reject offer (reject-offer)
+- read offer (verify sent and within the response term)
+- update offer.status -> rejected
+- update candidate.status -> discarded (offer declined)
+
+Hire candidate (hire-candidate)
+- read offer (verify status = accepted)
+- update candidate.status -> hired
+- update requisition.status -> filled
+
+Archive candidates (archive-candidates)
+- read requisition (verify status = filled)
+- update candidate.status -> archived (all candidates in the process)
+```

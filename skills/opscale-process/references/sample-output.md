@@ -85,3 +85,45 @@ modules — and moves the Application to `KycReady`. `EvaluateApplication`
 materializes one `Verification` per `Rule` and moves to `Evaluating`.
 `ScoreApplication` computes the cycle's weighted score and routes by band.
 ```
+
+
+## Sample final/process.txt
+
+Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `bpmn.txt` with its operations, every logic id in `bpmn.txt` has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
+
+```
+Position requisition
+- Describe the requested position
+- Route the approval chain
+- Record each approval decision
+
+Job posting
+- Notify internal employees
+- Publish the opening with tracked links
+
+Application and screening
+- Register each candidate with consent
+- Screen resumes against the approved profile
+- Send assessments to qualified candidates
+
+Interviews and verification
+- Schedule each interview round
+- Record the standardized evaluation form
+- Advance or discard with documented reason
+- Request work references
+- Request background checks for sensitive positions
+
+Decision and offer
+- Consolidate the comparative file
+- Record the committee decision
+- Send the offer
+- Escalate a counteroffer beyond the approved range
+
+Hiring and closure
+- Record the signed acceptance
+- Handle a rejected offer
+- Open the employee record
+- Close the requisition as filled
+- Archive all candidate files
+- Send the welcome
+```

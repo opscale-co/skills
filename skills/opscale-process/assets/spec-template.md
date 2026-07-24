@@ -21,7 +21,7 @@ Name normalization, Lifecycle, Ordered flow, Relations, Narrative.
 > One sub-block per lifecycle entity (typically every aggregate root). Stages
 > are plain words in the user's language and flow left-to-right. Every flow is
 > a verb+noun phrase and MUST terminate at a stage transition — no orphan
-> flows. Drives Phase 2a: each flow becomes a candidate subprocess.
+> flows. Drives Phase 4: each flow becomes a candidate subprocess.
 
 ### [Entity]
 **Stages:** [Stage1] → [Stage2] → [Stage3] → [FinalStage]

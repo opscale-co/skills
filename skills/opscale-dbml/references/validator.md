@@ -1,6 +1,6 @@
-# DBML validator — Phase 7 + Phase 9 details
+# DBML validator — Phase 8 + Phase 10 details
 
-## Phase 7 — Run the bundled validator
+## Phase 8 — Run the bundled validator
 
 Assemble the complete raw DBML in memory first, **do not write the file yet**. Then run the bundled validation script directly from the skill directory. The script is an internal tool — it never gets copied to the project:
 
@@ -25,21 +25,22 @@ Exit codes:
 
 - `1` (syntax error) — fix the reported line/column, re-write the temp file, re-run. Do not proceed until exit code is `0`.
 - `2` (quality warnings) — fix all reported warnings, re-write the temp file, re-run until exit code is `0`.
-- `0` (pass) — proceed to Phase 8.
+- `0` (pass) — proceed to Phase 9.
 
 The temp file and the validation script stay outside the project — nothing is added to the repo.
 
-## Phase 9 — Completeness gate (semantic checks the script can't do)
+## Phase 10 — Completeness gate (semantic checks the script can't do)
 
 ```
 DBML COMPLETENESS GATE
 ──────────────────────────────────────────────────────
-[ ] Modeling standard chosen in Phase 0 (name or "none") recorded in final/domain.dbml Project Note and honored across phases 1–5
-[ ] External references declared in Phase 2 (or explicit "none") — every cross-subdomain column resolves to a declared slug
+[ ] Modeling standard chosen in Phase 1 (name or "none") recorded in final/domain.dbml Project Note and honored across phases 2–6
+[ ] External references declared in Phase 3 (or explicit "none") — every cross-subdomain column resolves to a declared slug
 [ ] Script exited with code 0 (syntax + quality pass)
 [ ] final/domain.dbml written (raw DBML, no markdown fence)
 [ ] final/external-refs.md written and consistent with DBML notes
 [ ] final/naming.md written — one row per entity + per external ref, canonical name matches process.md Name normalization
+[ ] final/dbml.txt written — one line per Table block in domain.dbml, same order, nothing else
 [ ] Every column checked against the business-types registry — matching columns carry `// type:{slug}` and use the registry's storage mapping; no bare varchar where a business type exists
 [ ] logs/dbml.md written
 [ ] Every entity name reconciled against the chosen standard (or industry naming if none), or explicitly kept after asking
