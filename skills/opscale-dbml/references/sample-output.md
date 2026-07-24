@@ -46,8 +46,8 @@ Table applications {
   current_cycle   int                [not null, default: 1]
 
   policy_id       varchar(26)        [ref: > policies.id, not null]
-  party_id        varchar(26)        [not null, note: '// external_ref:parties — Counterparty that applies']
-  assigned_to     varchar(26)        [null,     note: '// external_ref:users — assigned operator']
+  party_id        varchar(26)        [not null, note: '// external_ref:parties | organization.parties — Counterparty that applies']
+  assigned_to     varchar(26)        [null,     note: '// external_ref:users | auth.users — assigned operator']
 
   created_at      timestamp          [not null]
   updated_at      timestamp          [not null]
@@ -75,7 +75,7 @@ Table verifications {
 Table members {
   id              varchar(26)  [pk]
   application_id  varchar(26)  [ref: > applications.id, not null, unique]
-  party_id        varchar(26)  [not null, note: '// external_ref:parties']
+  party_id        varchar(26)  [not null, note: '// external_ref:parties | organization.parties']
   code            varchar(20)  [not null, unique]
   joined_at       timestamp    [not null]
 }
@@ -83,8 +83,9 @@ Table members {
 // Intra-subdomain relation
 Ref: verifications.application_id > applications.id
 
-// External reference — virtual model, no FK constraint
-Ref: applications.party_id > parties.id  // external_ref
+// External references NEVER get a Ref line — the target table is not declared
+// in this file, so @dbml/core would reject it. They live ONLY as column notes
+// ('// external_ref:parties' above).
 ```
 
 
