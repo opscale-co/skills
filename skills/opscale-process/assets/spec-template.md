@@ -13,8 +13,11 @@ Name normalization, Lifecycle, Ordered flow, Relations, Narrative.
 # Module: [Name]
 
 ## Name normalization
-[Canonical name]   ← [alias, alias]
-[Canonical name]   ← [alias, alias]
+
+| Canónico | ← alias |
+|---|---|
+| [Canonical name] | [alias, alias] |
+| [Canonical name] | [alias, alias] |
 
 ## Lifecycle
 

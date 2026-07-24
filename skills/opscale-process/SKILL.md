@@ -73,7 +73,7 @@ Collect every distinct thing the narrative names. Give each **one readable canon
 
 > You called it "client", "user" and "member" — are these the same thing? I'll use **Member**. OK?
 
-Record the result as `Canonical ← alias, alias`. This list is the handoff to `opscale-dbml`; the modeling (keys, types, relations cardinality) happens there, not here.
+Record the result as a markdown table — `| Canónico | ← alias |` header, one row per canonical name (the validator requires the table form, ≥2 data rows). This table is the handoff to `opscale-dbml`; the modeling (keys, types, relations cardinality) happens there, not here.
 
 ### Lifecycle modeling principle
 
@@ -131,7 +131,7 @@ Two siblings under the spec directory — phase log + final artifact. Canonical 
 
 - **Name normalization** — the canonical list with aliases
 - **Lifecycle** — per lifecycle entity: its **Stages** and **Flows** (the transitions that drive it from stage to stage). Confirmed in Phase 3 and persisted here so downstream skills can trace every subprocess back to the stage transition it implements
-- **Ordered flow** — the macro-flow, grouped into **subprocesses bounded by events**. Each subprocess is its own heading with a *Trigger* line and its numbered business steps inside — broad activities that `opscale-bpmn` later decomposes into atomic operations. The subprocess headings ARE the identified processes, and the numbered steps under each ARE the detailed flow. `opscale-bpmn` turns each subprocess heading into one `subProcess`; `opscale-test` turns each into one browser test; `opscale-showcase` walks each one.
+- **Ordered flow** — the macro-flow, grouped into **subprocesses bounded by events**. Each subprocess is its own heading with a *Trigger* line and its numbered business steps inside — broad activities that `opscale-bpmn` later decomposes into atomic operations. The subprocess headings ARE the identified processes, and the numbered steps under each ARE the detailed flow. `opscale-bpmn` turns each subprocess into a flat segment of the BPMN closed by its ⏳ wait (no `subProcess` container — the grouping lives in `final/operations.md`); `opscale-test` turns each into one browser test; `opscale-showcase` walks each one.
 - **Relations** — how the entities connect
 - **Narrative** — the same flow in plain prose for humans to read first; downstream skills parse the structured sections above.
 
@@ -174,7 +174,7 @@ List the things the narrative names; fold synonyms; **ask** to confirm each cano
 
 ### Phase 2 — Entity normalization
 
-Lock the canonical names and the alias mapping. Record `Canonical ← alias, alias` for every distinct thing the narrative names. Confirm each canonical name with the user.
+Lock the canonical names and the alias mapping. Record one `| [Canonical] | [alias, alias] |` table row for every distinct thing the narrative names. Confirm each canonical name with the user.
 
 **Wait for user approval before continuing.**
 

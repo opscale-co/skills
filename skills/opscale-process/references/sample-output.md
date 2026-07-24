@@ -19,16 +19,18 @@ gathers evidence and opens the package; **Review** deliberates and resolves.
 
 ## Name normalization
 
-Applicant         ← person, requester (external Counterparty in its applicant role)
-Application       ← request, submission
-Policy            ← versioned Policy (catalog of rules and conditions)
-Rule              ← Rule (evaluable criterion within a Policy)
-Option            ← RuleOption (closed answer, scorable 0..n)
-Verification      ← Verification (record of the option chosen per Rule in a cycle)
-Score             ← Score (weighted aggregate for the cycle)
-Decision          ← Decision (Approve | Reject)
-Member            ← counterparty already active in the system
-Cycle             ← `current_cycle` of the Application (1-based)
+| Canónico | ← alias |
+|---|---|
+| Applicant | person, requester (external Counterparty in its applicant role) |
+| Application | request, submission |
+| Policy | versioned Policy (catalog of rules and conditions) |
+| Rule | Rule (evaluable criterion within a Policy) |
+| Option | RuleOption (closed answer, scorable 0..n) |
+| Verification | Verification (record of the option chosen per Rule in a cycle) |
+| Score | Score (weighted aggregate for the cycle) |
+| Decision | Decision (Approve \| Reject) |
+| Member | counterparty already active in the system |
+| Cycle | `current_cycle` of the Application (1-based) |
 
 **External references** (another subdomain owns them):
 Counterparty      ← legal identity of the Applicant (FIBO Party Reference Data)
