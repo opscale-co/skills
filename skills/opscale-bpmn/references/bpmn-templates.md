@@ -76,13 +76,6 @@ Raw BPMN 2.0 XML — no markdown wrapper, no surrounding prose. Loadable directl
       <bpmn:outgoing>flow_003</bpmn:outgoing>
     </bpmn:businessRuleTask>
 
-    <!-- Output Task -->
-    <bpmn:sendTask id="send_[id]" name="[Send description]">
-      <bpmn:documentation>{"type":"output","channel":"email","trigger":"[kebab-case-id]"}</bpmn:documentation>
-      <bpmn:incoming>flow_003</bpmn:incoming>
-      <bpmn:outgoing>flow_004</bpmn:outgoing>
-    </bpmn:sendTask>
-
     <!-- Exclusive Gateway -->
     <bpmn:exclusiveGateway id="gateway_[id]" name="[Condition?]">
       <bpmn:incoming>flow_003</bpmn:incoming>
@@ -90,20 +83,28 @@ Raw BPMN 2.0 XML — no markdown wrapper, no surrounding prose. Loadable directl
       <bpmn:outgoing>flow_005</bpmn:outgoing>
     </bpmn:exclusiveGateway>
 
+    <!-- Output Task -->
+    <bpmn:sendTask id="send_[id]" name="[Send description]">
+      <bpmn:documentation>{"type":"output","channel":"email","trigger":"[kebab-case-id]"}</bpmn:documentation>
+      <bpmn:incoming>flow_004</bpmn:incoming>
+      <bpmn:outgoing>flow_006</bpmn:outgoing>
+    </bpmn:sendTask>
+
     <!-- End Events -->
     <bpmn:endEvent id="end_[id]" name="[Post-condition from spec]">
-      <bpmn:incoming>flow_004</bpmn:incoming>
+      <bpmn:incoming>flow_006</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:endEvent id="end_[id2]" name="[Alternative end]">
       <bpmn:incoming>flow_005</bpmn:incoming>
     </bpmn:endEvent>
 
     <!-- Sequence Flows -->
-    <bpmn:sequenceFlow id="flow_001" sourceRef="start_01" targetRef="script_[id]"/>
-    <bpmn:sequenceFlow id="flow_002" sourceRef="script_[id]" targetRef="service_[id]"/>
-    <bpmn:sequenceFlow id="flow_003" sourceRef="service_[id]" targetRef="gateway_[id]"/>
-    <bpmn:sequenceFlow id="flow_004" name="[condition true]"  sourceRef="gateway_[id]" targetRef="end_[id]"/>
+    <bpmn:sequenceFlow id="flow_001" sourceRef="start_01" targetRef="service_[id]"/>
+    <bpmn:sequenceFlow id="flow_002" sourceRef="service_[id]" targetRef="rule_[id]"/>
+    <bpmn:sequenceFlow id="flow_003" sourceRef="rule_[id]" targetRef="gateway_[id]"/>
+    <bpmn:sequenceFlow id="flow_004" name="[condition true]"  sourceRef="gateway_[id]" targetRef="send_[id]"/>
     <bpmn:sequenceFlow id="flow_005" name="[condition false]" sourceRef="gateway_[id]" targetRef="end_[id2]"/>
+    <bpmn:sequenceFlow id="flow_006" sourceRef="send_[id]" targetRef="end_[id]"/>
 
   </bpmn:process>
 
@@ -115,11 +116,11 @@ Raw BPMN 2.0 XML — no markdown wrapper, no surrounding prose. Loadable directl
         <dc:Bounds x="100" y="200" width="36" height="36"/>
       </bpmndi:BPMNShape>
 
-      <bpmndi:BPMNShape bpmnElement="script_[id]" id="shape_script_[id]">
+      <bpmndi:BPMNShape bpmnElement="service_[id]" id="shape_service_[id]">
         <dc:Bounds x="180" y="178" width="100" height="80"/>
       </bpmndi:BPMNShape>
 
-      <bpmndi:BPMNShape bpmnElement="service_[id]" id="shape_service_[id]">
+      <bpmndi:BPMNShape bpmnElement="rule_[id]" id="shape_rule_[id]">
         <dc:Bounds x="330" y="178" width="100" height="80"/>
       </bpmndi:BPMNShape>
 
@@ -127,8 +128,12 @@ Raw BPMN 2.0 XML — no markdown wrapper, no surrounding prose. Loadable directl
         <dc:Bounds x="480" y="193" width="50" height="50"/>
       </bpmndi:BPMNShape>
 
+      <bpmndi:BPMNShape bpmnElement="send_[id]" id="shape_send_[id]">
+        <dc:Bounds x="580" y="178" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+
       <bpmndi:BPMNShape bpmnElement="end_[id]" id="shape_end_[id]">
-        <dc:Bounds x="580" y="200" width="36" height="36"/>
+        <dc:Bounds x="730" y="200" width="36" height="36"/>
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNEdge bpmnElement="flow_001" id="edge_001">

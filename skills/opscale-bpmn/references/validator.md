@@ -41,7 +41,7 @@ BPMN COMPLETENESS GATE
 [ ] final/operations.md written (atomic sequence + grouped sequence + composition per subprocess)
 [ ] final/bpmn.txt written — every business step from final/process.txt present, same order, ≥1 operation each
 [ ] logs/bpmn.md written
-[ ] One subProcess per flow in final/process.md *Ordered flow*
+[ ] BPMN is flat — no subProcess containers; each subprocess from final/process.md *Ordered flow* is a segment closed by its ⏳ intermediateCatchEvent (grouping recorded in final/operations.md)
 [ ] Only serviceTask, businessRuleTask, sendTask used — no scriptTask
 [ ] Every crud serviceTask entity exists in final/domain.dbml
 [ ] Every crud serviceTask has valid action (create|read|update|delete)

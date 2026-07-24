@@ -32,7 +32,6 @@ This skill is **Step 3 of the Plan phase**. The Plan phase is `process → dbml 
 | Category | Elements |
 |----------|----------|
 | Tasks | `serviceTask` (crud), `businessRuleTask` (logic), `sendTask` (output) |
-| Structure | `subProcess` — one per subprocess in the spec's **Ordered flow** |
 | Gateways | `exclusiveGateway`, `parallelGateway`, `inclusiveGateway`, `eventBasedGateway` |
 | Events | `startEvent`, `endEvent`, `intermediateCatchEvent`, `intermediateThrowEvent` |
 | Flows | `sequenceFlow`, `messageFlow` |
@@ -109,7 +108,7 @@ The CRUDs that compose a Logic are not separate `serviceTask` nodes in the BPMN 
 
 The business step → operations trace is recorded in `final/operations.md` (every operation lists the business step it came from), so business readers can find their business step and see exactly what it became. The BPMN itself stays at operation level — business steps do not appear as BPMN elements.
 
-**One `subProcess` per identified subprocess.** The spec's **Ordered flow** lists the subprocesses inside the module's macro-flow. Wrap each one in an embedded `subProcess` so the top-level diagram stays legible — the main flow reads as a sequence of named sub-processes, and the detailed steps live inside each. Model the **whole module**, not a single process.
+**The BPMN is flat — no `subProcess` elements.** The spec's **Ordered flow** lists the subprocesses inside the module's macro-flow, but they do NOT become containers in the XML: the whole module is one flat sequence of tasks, gateways and events. Each subprocess boundary is the `intermediateCatchEvent` (⏳ wait) that closes it — the waits are the joints between phases. The subprocess grouping lives in `final/operations.md`, where every operation is labeled with its subprocess and business step. Model the **whole module**, not a single process.
 
 ### Domain rules (general rule — every task references a DBML entity)
 
@@ -127,7 +126,7 @@ For the full `<bpmn:definitions>` skeleton (process + tasks + gateway + end even
 
 ### Phase 1 — Subprocess inventory (reconcile as-is flows against the systematized model)
 
-`opscale-process` captured the subprocesses as the area runs **today** — including manual handoffs, workarounds, and informal boundaries that may exist only because no system supports the step. The BPMN must reflect the **to-be systematized** version, aligned with the modeling standard chosen in `opscale-dbml` Phase 1. Translating each as-is subprocess one-to-one into a `subProcess` is the wrong default; first contrast them against the standard and decide what to add, drop, merge, split or rename.
+`opscale-process` captured the subprocesses as the area runs **today** — including manual handoffs, workarounds, and informal boundaries that may exist only because no system supports the step. The BPMN must reflect the **to-be systematized** version, aligned with the modeling standard chosen in `opscale-dbml` Phase 1. Translating each as-is subprocess one-to-one into a segment of the flow is the wrong default; first contrast them against the standard and decide what to add, drop, merge, split or rename.
 
 **1a. Read inputs:**
 
@@ -301,7 +300,7 @@ After every flow has been locked, present the consolidated summary:
 ```
 Summary before generating BPMN:
 
-Flows (one subProcess each):
+Flows (flat segments, each closed by its ⏳ wait):
 - [Flow 1] → [n steps]
 - [Flow 2] → [n steps]
 

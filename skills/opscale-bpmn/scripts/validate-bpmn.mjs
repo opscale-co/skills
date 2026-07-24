@@ -7,12 +7,13 @@
  * Temp files are auto-deleted after validation.
  *
  * Validates BPMN 2.0 XML and Opscale-specific conventions:
- *   - Only scriptTask and serviceTask allowed
+ *   - Only serviceTask (crud), businessRuleTask (logic) and sendTask (output) allowed
  *   - Every task has bpmn:documentation with valid JSON
- *   - scriptTask JSON: {"type":"crud","entity":"...","action":"..."}
- *   - serviceTask JSON: {"type":"operation","id":"..."}
+ *   - serviceTask JSON: {"type":"crud","entity":"...","action":"..."}
+ *   - businessRuleTask JSON: {"type":"logic","id":"..."}
+ *   - sendTask JSON: {"type":"output","id":"...","channel":"..."}
  *   - action must be create|read|update|delete
- *   - operation id must be kebab-case
+ *   - logic/output id must be kebab-case
  *   - Gateway branches must be labelled
  *   - BPMNDiagram section must be present
  *   - Start and end events must be present
@@ -98,7 +99,7 @@ const forbidden = [
 forbidden.forEach(tag => {
   const re = new RegExp(`<${tag}[\\s>]`, 'gi');
   if (re.test(xml))
-    errors.push(`Forbidden element <${tag}> found — only scriptTask and serviceTask allowed`);
+    errors.push(`Forbidden element <${tag}> found — only serviceTask (crud), businessRuleTask (logic) and sendTask (output) allowed`);
 });
 
 if (errors.length > 0) {
