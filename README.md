@@ -467,6 +467,12 @@ done
 
 Skills are discovered automatically — no `settings.json` changes needed. Symlinks keep everything in sync with the repo.
 
+When a new skill lands in `skills/`, it is NOT picked up until its symlink exists — create it with the same `ln -s` line (or re-run the loop, which skips existing links). To check what is installed versus what the repo has:
+
+```bash
+ls -la ~/.claude/skills
+```
+
 ## Usage
 
 Each skill is invoked as a Claude Code slash command inside the target project directory:
