@@ -1,131 +1,80 @@
 # Sample output — opscale-process
 
-Anonymized excerpt derived from a working Opscale module
-(`Unicoop/membresia`). Shows the SHAPE of what the skill produces,
-not the full output.
+Reference example — a **recruitment** module (candidate lifecycle inside an
+approved position requisition). The same example is used across the Plan
+skills so the lists chain: every step here appears in
+`docs/plan/subprocesses/` with its operations, every logic id there has a
+block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
 
-For the canonical specification of the format, see this skill's
-`SKILL.md` body. The full original file lives in the source module.
+Shows the SHAPE of what the skill produces, not a full real module.
 
 ---
 
+## Sample docs/plan/context/names.md
+
 ```markdown
-# Module: Credit Cycle (Admission + Offboarding — Policy-driven)
-
-The module covers the full cycle of the Application: admission (from
-Applicant to active Member) and offboarding (from active Member to Inactive).
-Each one is organized into two mirrored subprocesses — **Preparation**
-gathers evidence and opens the package; **Review** deliberates and resolves.
-
-## Name normalization
+# Names — Recruitment
 
 | Canónico | ← alias |
 |---|---|
-| Applicant | person, requester (external Counterparty in its applicant role) |
-| Application | request, submission |
-| Policy | versioned Policy (catalog of rules and conditions) |
-| Rule | Rule (evaluable criterion within a Policy) |
-| Option | RuleOption (closed answer, scorable 0..n) |
-| Verification | Verification (record of the option chosen per Rule in a cycle) |
-| Score | Score (weighted aggregate for the cycle) |
-| Decision | Decision (Approve \| Reject) |
-| Member | counterparty already active in the system |
-| Cycle | `current_cycle` of the Application (1-based) |
-
-**External references** (another subdomain owns them):
-Counterparty      ← legal identity of the Applicant (FIBO Party Reference Data)
-Internal user     ← analyst (`verified_by`), decision maker (`decided_by`)
-
-## Lifecycle
-
-### Application
-**Stages:** Pending → KycReady → Evaluating → Qualified → Approved → Active
-(alternate stages: `SemiQualified` — loop back to `Qualified`; terminal: `Active`, `Rejected`)
-**Flows:**
-- Register application — ends at `Pending`
-- Check KYC — ends at `KycReady`
-- Evaluate application — ends at `Evaluating`
-- Score application — ends at `Qualified`
-- Complete requirements — ends at `Qualified`
-- Resolve application — ends at `Approved`
-- Activate membership — ends at `Active`
-
-## SP1 — Admission: Preparation
-
-*Trigger:* a person decides to apply.
-*Actor:* Admission officer.
-
-1) Register Application (status `Pending`, `current_cycle=1`, active Policy).
-2) `CheckKyc` — upstream KYC ok → `KycReady`.
-3) `EvaluateApplication` — for each `Rule` in the Policy, a
-   `Verification` is recorded with the chosen `RuleOption` → `Evaluating`.
-4) `ScoreApplication` — computes the weighted `Score` and routes by band:
-   - high band → `Qualified`
-   - middle band → `SemiQualified` (materializes `Requirement` / `Document`)
-   - low band → `Rejected` (terminal)
-5) (wait) The Applicant completes the `Requirement`s and uploads the `Document`s.
-6) `CheckRequirements` — gate: every `Document.file_url` non-null and every
-   `Requirement.data` non-empty for the current cycle → `SemiQualified → Qualified`.
-
-## Relations
-
-- Applicant (external Counterparty) submits an Application (1—1 current;
-  N historical through re-applications).
-- Application → Policy (N—1).
-- Application → Verifications (1—N) → Rule / RuleOption.
-- Application → Score (1—N: one per cycle).
-- Application → Decision (1—N: typically one final Approve + 0..N
-  intermediate ChangedRequirements).
-- Application → Member (1—0..1) — UNIQUE.
-
-## Narrative
-
-**SP1 — Admission, Preparation.** When the Application is created it is
-assigned the active Policy and enters `Pending` with `current_cycle=1`.
-`CheckKyc` is a pure acknowledgment — the real data lives in upstream
-modules — and moves the Application to `KycReady`. `EvaluateApplication`
-materializes one `Verification` per `Rule` and moves to `Evaluating`.
-`ScoreApplication` computes the cycle's weighted score and routes by band.
+| Requisition | position request, vacancy request, req |
+| Candidate | applicant, prospect |
+| Opening | job posting, publication, ad |
+| Assessment | test, evaluation exam |
+| Interview | round, meeting |
+| Reference | work reference |
+| Background check | verification, screening check |
+| Offer | proposal, offer letter |
+| Employee record | file, expediente |
 ```
 
-
-## Sample final/process.txt
-
-Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `bpmn.txt` with its operations, every logic id in `bpmn.txt` has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
+## Sample docs/plan/process.txt
 
 ```
 Position requisition
-- Describe the requested position
-- Route the approval chain
-- Record each approval decision
+Trigger: a manager requests a new position
+Ends with: wait for every approver's decision
+1) Describe the requested position
+2) Route the approval chain
+3) Record each approval decision
 
 Job posting
-- Notify internal employees
-- Publish the opening with tracked links
+Trigger: the wait from Position requisition resolved (requisition approved)
+Ends with: wait for candidate applications
+4) Notify internal employees
+5) Publish the opening with tracked links
 
 Application and screening
-- Register each candidate with consent
-- Screen resumes against the approved profile
-- Send assessments to qualified candidates
+Trigger: candidate applications arrived
+Ends with: wait for assessment results
+6) Register each candidate with consent
+7) Screen resumes against the approved profile
+8) Send assessments to qualified candidates
 
 Interviews and verification
-- Schedule each interview round
-- Record the standardized evaluation form
-- Advance or discard with documented reason
-- Request work references
-- Request background checks for sensitive positions
+Trigger: assessment results arrived
+Ends with: wait for references and background checks
+9) Schedule each interview round
+10) Record the standardized evaluation form
+11) Advance or discard with documented reason
+12) Request work references
+13) Request background checks for sensitive positions
 
 Decision and offer
-- Consolidate the comparative file
-- Record the committee decision
-- Send the offer
-- Escalate a counteroffer beyond the approved range
+Trigger: references and background checks arrived
+Ends with: wait for the candidate's response to the offer
+14) Consolidate the comparative file
+15) Record the committee decision
+16) Send the offer
+17) Escalate a counteroffer beyond the approved range
 
 Hiring and closure
-- Record the signed acceptance
-- Handle a rejected offer
-- Open the employee record
-- Close the requisition as filled
-- Archive all candidate files
-- Send the welcome
+Trigger: the candidate responded to the offer
+Ends with: —
+18) Record the signed acceptance
+19) Handle a rejected offer
+20) Open the employee record
+21) Close the requisition as filled
+22) Archive all candidate files
+23) Send the welcome
 ```

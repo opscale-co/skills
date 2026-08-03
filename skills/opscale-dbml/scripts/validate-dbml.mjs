@@ -7,19 +7,19 @@
  * Temp files are auto-deleted after validation.
  *
  * Validates a DBML source using @dbml/core. Accepts either a raw .dbml file
- * (canonical form for final/domain.dbml) or a .md file containing a fenced
+ * (canonical form for docs/plan/domain.dbml) or a .md file containing a fenced
  * ```dbml ... ``` block (used by older drafts). Reports syntax errors with line
  * numbers and quality warnings.
  *
  * Usage:
- *   node validate-dbml.mjs <path-to-file>
+ *   node {SKILL_DIR}/scripts/validate-dbml.mjs <path-to-file> [subdomain-stem]
  *
  * Examples:
- *   # Validate a temp draft before writing the final file
- *   node validate-dbml.mjs /tmp/.dbml-validate.tmp.dbml
+ *   # Validate a workspace temp draft before writing the final file
+ *   node {SKILL_DIR}/scripts/validate-dbml.mjs docs/plan/.dbml-validate.tmp.dbml loans
  *
  *   # Validate the final output
- *   node validate-dbml.mjs .specify/specs/001-loans/final/domain.dbml
+ *   node {SKILL_DIR}/scripts/validate-dbml.mjs docs/plan/domain.dbml loans
  *
  * Exit codes:
  *   0 — PASS: no syntax errors, no quality warnings
@@ -27,11 +27,12 @@
  *   2 — REVIEW: syntax valid but quality warnings found (fix before writing)
  *
  * Requirements:
- *   npm install @dbml/core
+ *   @dbml/core — bundled in the skill's own node_modules; no install step.
  */
 
 import { readFileSync, unlinkSync, existsSync } from 'fs';
-import { resolve, sep } from 'path';
+import { resolve, sep, dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
 // ── 1. Read the file ────────────────────────────────────────────────────────
 
@@ -87,8 +88,8 @@ let Parser;
 try {
   ({ Parser } = await import('@dbml/core'));
 } catch {
-  console.error('❌  @dbml/core is not installed.');
-  console.error('    Run: npm install @dbml/core');
+  console.error('❌  @dbml/core is not available.');
+  console.error('    It ships in the skill bundle\'s node_modules — run the script from the skill directory, or reinstall the skill bundle.');
   if (isTmp) cleanupTmp(absolutePath);
   process.exit(1);
 }
@@ -199,22 +200,83 @@ enums.forEach(e => {
   });
 });
 
-// ── 6b. Subdomain-stem redundancy check ─────────────────────────────────────
+// ── 6b. Business-type coverage (Domain Rule 9) ──────────────────────────────
 //
-// Downstream (opscale-domain) automatically prepends the subdomain name to
-// every generated table/file (subdomain `credits` + entity `application`
+// Every column must resolve to exactly one of: external ref, Enum, or a
+// business type from the registry (`type:{slug}` inside the column note).
+// Only the structural timestamps are exempt. `id` and FK columns must be
+// typed `identifier`. Slugs are read from the project registry
+// (docs/plan/context/business-types.md) with fallback to the bundle copy.
+
+function loadRegistrySlugs() {
+  const scriptDir = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    resolve('docs/plan/context/business-types.md'),
+    join(scriptDir, '..', 'references', 'business-types.md'),
+  ];
+  for (const p of candidates) {
+    if (!existsSync(p)) continue;
+    let text = readFileSync(p, 'utf-8');
+    // Relationship slugs (belongs_to, …) are UI intents, not column types.
+    text = text.split(/^###\s+Relationships/m)[0];
+    const slugs = new Set();
+    for (const m of text.matchAll(/^\|\s*`([A-Za-z][A-Za-z0-9]*)`\s*\|/gm)) slugs.add(m[1]);
+    if (slugs.size > 0) return { slugs, path: p };
+  }
+  return null;
+}
+
+const STRUCTURAL_TIMESTAMPS = new Set(['created_at', 'updated_at', 'deleted_at']);
+const registry = loadRegistrySlugs();
+
+if (!registry) {
+  warnings.push(`Business-types registry not found (docs/plan/context/business-types.md or bundle copy) — type coverage NOT checked`);
+} else {
+  const enumNames = new Set(enums.map(e => e.name));
+  // FK columns = columns participating in a Ref (either endpoint), plus the pk.
+  const refColumns = new Set();
+  refs.forEach(r => r.endpoints.forEach(ep =>
+    (ep.fieldNames || []).forEach(fn => refColumns.add(`${ep.tableName}.${fn}`))
+  ));
+  tables.forEach(t => {
+    t.fields.forEach(f => {
+      if (STRUCTURAL_TIMESTAMPS.has(f.name)) return;
+      const note = typeof f.note === 'string' ? f.note : '';
+      if (note.includes('external_ref:')) return;
+      if (enumNames.has(f.type?.type_name)) return;
+      const m = note.match(/type:([A-Za-z][A-Za-z0-9]*)/);
+      const isIdColumn = f.name === 'id' || refColumns.has(`${t.name}.${f.name}`);
+      if (!m) {
+        warnings.push(`[${t.name}.${f.name}] No business type — every column needs \`// type:{slug}\` in its note (or an Enum type, or an external_ref note). Registry: ${registry.path}`);
+        return;
+      }
+      if (!registry.slugs.has(m[1])) {
+        warnings.push(`[${t.name}.${f.name}] Unknown business type slug 'type:${m[1]}' — not in the registry (${registry.path}). Extend the project registry first.`);
+        return;
+      }
+      if (isIdColumn && m[1] !== 'identifier') {
+        warnings.push(`[${t.name}.${f.name}] id/FK columns must be typed \`// type:identifier\` (found 'type:${m[1]}')`);
+      }
+    });
+  });
+}
+
+// ── 6c. Subdomain-stem redundancy check ─────────────────────────────────────
+//
+// The Generate phase automatically prepends the subdomain name to every
+// generated table/artifact (subdomain `credits` + entity `application`
 // → table `credits_application`). If the entity name in DBML already
 // contains the subdomain stem, the result is redundant
 // (`credits_credit_application`). Flag it here so the name is corrected
 // before generation.
 //
 // Stem derivation:
-//   - If the 2nd CLI arg is supplied, use it as the stem.
+//   - If the 2nd CLI arg is supplied, use it as the stem (canonical way —
+//     the flat docs/plan/ layout carries no module slug in the path).
 //   - Else, walk the path segments and find one matching
 //     `{NNN}-{slug}` (e.g. `003-credits`) → stem = the part after the
-//     numeric prefix.
-//   - Else, skip the check silently (e.g. ad-hoc validation of a temp
-//     file outside the spec folder layout).
+//     numeric prefix (legacy spec-folder layouts only).
+//   - Else, skip the check silently.
 
 function deriveStem(absPath, override) {
   if (override) return override.toLowerCase().trim();
@@ -268,7 +330,7 @@ if (warnings.length > 0) {
   warnings.forEach(w => console.log(`   ⚠️   ${w}`));
   console.log(`\n   ${warnings.length} warning(s) found`);
   console.log('\n────────────────────────────────────────────────────────────');
-  console.log('⚠️   REVIEW (exit 2) — fix warnings before writing final/domain.dbml\n');
+  console.log('⚠️   REVIEW (exit 2) — fix warnings before writing docs/plan/domain.dbml\n');
   if (isTmp) cleanupTmp(absolutePath);
   process.exit(2);
 } else {
@@ -278,7 +340,7 @@ if (warnings.length > 0) {
   console.log('   ✅  All enum values have notes');
   console.log('   ✅  No suspicious technical column names');
   console.log('\n────────────────────────────────────────────────────────────');
-  console.log('✅  PASS (exit 0) — DBML is valid, write final/domain.dbml\n');
+  console.log('✅  PASS (exit 0) — DBML is valid, write docs/plan/domain.dbml\n');
   if (isTmp) cleanupTmp(absolutePath);
   process.exit(0);
 }

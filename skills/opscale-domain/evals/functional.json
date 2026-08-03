@@ -4,7 +4,7 @@
     {
       "id": "billing-domain-generation",
       "fixture": "billing-module",
-      "prompt": "The Plan phase for this module is complete: the validated data model is at .specify/specs/001-billing/final/domain.dbml and the constitution at .specify/memory/constitution.md. Generate the PHP domain layer for this module now: one migration per table, one Eloquent model per table with casts/fillable/relationships, the status enum, and a repository trait per model. Work non-interactively; make reasonable decisions yourself instead of asking questions.",
+      "prompt": "The Plan phase for this module is complete: the validated data model is at docs/plan/domain.dbml and the constitution at .specify/memory/constitution.md. Generate the PHP domain layer for this module now: one migration per table, one Eloquent model per table with casts/fillable/relationships, the status enum, and a repository trait per model. Work non-interactively; make reasonable decisions yourself instead of asking questions.",
       "assertions": [
         {
           "id": "structure",
@@ -51,7 +51,7 @@
     {
       "id": "billing-status-enum-only",
       "fixture": "billing-module",
-      "prompt": "From the DBML at .specify/specs/001-billing/final/domain.dbml, generate only the PHP enum for the invoice status, following this project's conventions (backed string enum, PHP 8.3, strict types). Do not generate migrations or models. Work non-interactively.",
+      "prompt": "From the DBML at docs/plan/domain.dbml, generate only the PHP enum for the invoice status, following this project's conventions (backed string enum, PHP 8.3, strict types). Do not generate migrations or models. Work non-interactively.",
       "assertions": [
         {
           "id": "enum-generated-and-compiles",

@@ -149,6 +149,20 @@ return [
             ]
         ],
 
+        'multiOptions' => [
+            'field' => \Laravel\Nova\Fields\MultiSelect::class,
+            'hint' => 'Configurable multi-select for choosing several values from a configurable source',
+            'rules' => ['array'],
+            'cast' => 'array',
+            'config' => [
+                'options' => 'options',
+                'displayUsingLabels' => true,
+            ],
+            'hooks' => [
+                'options' => \Opscale\NovaDynamicResources\Services\Actions\SelectOptions::class,
+            ]
+        ],
+
         'hash' => [
             'field' => \Laravel\Nova\Fields\Text::class,
             'hint' => 'Cryptographic hash values for verification, security, or reference IDs',
@@ -391,9 +405,9 @@ return [
             ],
         ],
 
-        'ulid' => [
+        'identifier' => [
             'field' => \Laravel\Nova\Fields\Text::class,
-            'hint' => 'Universally Unique Lexicographically Sortable Identifiers for database records',
+            'hint' => 'Unique record identity (primary and foreign keys), ULID format',
             'rules' => ['string', 'size:26', 'regex:/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/'],
             'config' => [
                 'readonly' => true,

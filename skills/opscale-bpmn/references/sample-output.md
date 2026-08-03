@@ -28,7 +28,7 @@ For the canonical specification of the format, see this skill's
       </bpmn:lane>
     </bpmn:laneSet>
 
-    <!-- CRUD step — emitted by the Nova Resource, not by an Action -->
+    <!-- CRUD step — emitted by the UI layer, not by an Action -->
     <bpmn:serviceTask id="service_create_application" name="Create application">
       <bpmn:documentation>{"type":"crud","entity":"applications","action":"create"}</bpmn:documentation>
       <bpmn:incoming>flow_001</bpmn:incoming>
@@ -71,9 +71,11 @@ For the canonical specification of the format, see this skill's
 ```
 
 
-## Sample final/bpmn.txt
+## Sample docs/plan/subprocesses/
 
-Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `bpmn.txt` with its operations, every logic id in `bpmn.txt` has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
+Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` samples of all the Plan skills, so the lists chain: every step here appears in `docs/plan/process.txt` (same subprocesses, same order), every logic id here has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`. One file per subprocess block of `process.txt` — filename = subprocess name in kebab-case.
+
+`docs/plan/subprocesses/position-requisition.txt`:
 
 ```
 Describe the requested position
@@ -86,14 +88,22 @@ Record each approval decision
 - logic: Approve requisition (approve-requisition)
 - logic: Reject requisition (reject-requisition)
 - output: notify the requester
+```
 
+`docs/plan/subprocesses/job-posting.txt`:
+
+```
 Notify internal employees
 - output: post the opening on the employee portal
 
 Publish the opening with tracked links
 - logic: Publish requisition (publish-requisition)
 - output: publish to job boards and social networks
+```
 
+`docs/plan/subprocesses/application-and-screening.txt`:
+
+```
 Register each candidate with consent
 - crud: create candidate
 
@@ -103,7 +113,11 @@ Screen resumes against the approved profile
 Send assessments to qualified candidates
 - crud: create assessment
 - output: email the assessment invitation
+```
 
+`docs/plan/subprocesses/interviews-and-verification.txt`:
+
+```
 Schedule each interview round
 - logic: Schedule interview (schedule-interview)
 - output: send the confirmation with location details
@@ -121,7 +135,11 @@ Request work references
 
 Request background checks for sensitive positions
 - crud: create background_check
+```
 
+`docs/plan/subprocesses/decision-and-offer.txt`:
+
+```
 Consolidate the comparative file
 - crud: read candidate
 
@@ -134,7 +152,11 @@ Send the offer
 
 Escalate a counteroffer beyond the approved range
 - logic: Revalidate offer (revalidate-offer)
+```
 
+`docs/plan/subprocesses/hiring-and-closure.txt`:
+
+```
 Record the signed acceptance
 - logic: Accept offer (accept-offer)
 

@@ -2,14 +2,13 @@
 name: opscale-map
 description: >
   Builds and maintains the app-level domain map — business lines (domains),
-  their modules (subdomains), and cross-module references. Step 1 — the first
-  step after opscale-init, before any module's Plan phase; re-run before each
-  new module so its DBML can see what other modules exist as external-reference
-  targets. Trigger: "map the domains", "add a module to the map", "domain map",
-  "which module owns X", "what other modules exist". Use it whenever the talk
-  is about how modules group into business lines or reference each other, even
-  if not asked explicitly. Not for one module's process (opscale-process) or
-  data (opscale-dbml).
+  their modules (subdomains), and cross-module references. Step 1 — re-run
+  before each module's Plan phase so its DBML sees which modules exist as
+  external-reference targets. Trigger:
+  "map the domains", "add a module to the map", "domain map", "which module
+  owns X". Use it whenever modules group into business lines or reference
+  each other. Not for one module's process (opscale-process) or data
+  (opscale-dbml).
 ---
 
 # opscale-map
@@ -23,26 +22,34 @@ Maintain the single app-level artifact that ties the whole ontology together abo
 ```
 Software (app)
 └── Domain        = a business line (Human Resources, Finance, Sales…)
-    └── Subdomain = a module — one business process, one .specify/specs/{NNN}-{slug}/ directory
+    └── Subdomain = a module — one business process, one docs/plan/ folder
 ```
 
-Every other Opscale skill works **inside** one module. Nothing else records which business line a module belongs to, which modules exist or are planned, or which module owns the entities that other modules reference virtually. This skill writes that record: `.specify/memory/domain-map.md`.
+Every other Opscale skill works **inside** one module. Nothing else records which business line a module belongs to, which modules exist or are planned, or which module owns the entities that other modules reference virtually. This skill writes that record: `docs/plan/context/system.map.md`. One module per `docs/plan/` — multi-module apps keep one `docs/plan/` per module repo, and this map is the shared app-level view each module's plan folder carries a copy of, maintained by this skill.
 
-**Why app-level and not per-module:** cross-module references (`external_ref:{slug}` in each module's DBML) are declared pairwise from the consumer's side. Without a central map, nobody can answer "who owns `users`?" or "what breaks if we rename `crm.agencies`?" without opening every module's `final/external-refs.md`. The map is the one place that view lives.
+**Why app-level and not per-module:** cross-module references (`external_ref:{slug}` in each module's DBML) are declared pairwise from the consumer's side. Without a central map, nobody can answer "who owns `users`?" or "what breaks if we rename `crm.agencies`?" without opening every module's `docs/plan/context/external-refs.md`. The map is the one place that view lives.
 
-**Why it runs first, and again per module:** the map is Step 1 (right after `opscale-init`) so the business-line inventory exists before any module is planned. But it also serves *inside* a module: when `opscale-dbml` reaches its external-references phase, it needs to know **what other modules already exist** to point a virtual reference at the right owner. Re-running `opscale-map` before starting a new module refreshes that catalog — so the module being modeled can reference siblings accurately instead of inventing owners. The map is both the app-level index and the reference sheet each module consults for its external refs.
+**Why it runs first, and again per module:** the map is Step 1 — the first Plan step, with no `opscale-init` required — so the business-line inventory exists before any module is planned. But it also serves *inside* a module: when `opscale-dbml` reaches its external-references phase, it needs to know **what other modules already exist** to point a virtual reference at the right owner. Re-running `opscale-map` before starting a new module refreshes that catalog — so the module being modeled can reference siblings accurately instead of inventing owners. The map is both the app-level index and the reference sheet each module consults for its external refs.
 
 ### Prerequisites
 
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
-| 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init` first. |
+| 1 | `.specify/memory/constitution.md` (OPTIONAL) | exists in the repo | Continue — used only to prefill the software header in repo mode; without it, ask the user for name + purpose. |
+| 2 | `docs/plan/context/` directory | exists | Create it. |
 
 Modules are **not** required — the map can be drawn before any module is planned, and that is the ideal moment: the domain map is the business-line inventory from which modules get chosen.
 
+### Modes
+
+The mode depends on whether a writable project folder is available — not on which app is running. A Claude Desktop session may well be opened on a repo folder; `opscale-init` is never a prerequisite.
+
+- **Writable project folder (Claude Code, or Claude Desktop on a repo/folder):** write directly to `docs/plan/context/system.map.md`, creating the folders if missing.
+- **No folder access (chat-only session):** produce exactly the same file as a downloadable output, labeled with its destination path `docs/plan/context/system.map.md`; the user drops it into the repo afterwards.
+
 ### When to run
 
-- **First run** — right after `opscale-init`, to lay out the business lines and the candidate modules in each.
+- **First run** — at the very start of the Plan phase (no `opscale-init` required), to lay out the business lines and the candidate modules in each.
 - **Re-run** — whenever a new module enters Plan (so its DBML can see the current module catalog for external references), a module's external refs change (after `opscale-dbml` Phase 9), or a business line is added. The map is updated in place, never forked.
 
 ### Output
@@ -50,13 +57,15 @@ Modules are **not** required — the map can be drawn before any module is plann
 One artifact, app-level (canonical paths: `references/artifact-paths.md`):
 
 ```
-.specify/memory/domain-map.md
+docs/plan/context/system.map.md
 ```
 
 Template — use exactly these section headings (downstream skills parse them):
 
 ```markdown
-# Domain map — {App Name}
+# System map — {App Name}
+> {one line: what the software does}
+
 Updated: {ISO-8601 date}
 
 ## Domains
@@ -64,9 +73,9 @@ Updated: {ISO-8601 date}
 ### {Domain name, e.g. Sales}
 > {One line: what this business line does for the company}
 
-| Subdomain (module) | Spec dir | Status | Purpose |
+| Subdomain (module) | Location | Status | Purpose |
 |---|---|---|---|
-| {slug} | `.specify/specs/{NNN}-{slug}/` | planned \| plan \| generated \| released | {one line} |
+| {slug} | `{repo}/docs/plan/` | planned \| plan \| generated \| released | {one line} |
 
 ## Cross-module references
 
@@ -75,26 +84,31 @@ Updated: {ISO-8601 date}
 | {slug} | {contract-slug} | {module}.{table} — or "external system" | {optional} |
 ```
 
+**Software header (mandatory):** the `> {one line: what the software does}` purpose line right under the title is the SOFTWARE HEADER the Plan phase depends on — `opscale-ontology` parses it for the top hierarchy level. In repo mode, derive the app name and purpose from `.specify/memory/constitution.md` if it exists; otherwise (Claude Desktop, or init not run) ask the user once for the software name and purpose.
+
+`Location` is the module's repo or plan folder (e.g. `{repo}/docs/plan/`, or just `docs/plan/` for a single-repo app).
+
 `Status` meanings: **planned** (named only), **plan** (Plan phase in progress or PASS), **generated** (Generate phase done), **released** (opscale-release done).
 
 ### Domain Rules
 
 1. **Every module belongs to exactly one domain.** A module that seems to belong to two business lines is usually two modules — surface it and ask, don't double-list. The 1:1 assignment is what keeps the hierarchy a tree, and the tree is what management navigates.
 2. **One canonical name per domain, in the business's own language.** Domains are the layer management reads; use the words the organization uses (their "People Operations", not the vendor acronym "HCM"). Aliases go in the domain's one-line description.
-3. **Every contract slug in any module's `final/external-refs.md` must appear in the Cross-module references table** — with either an owning module or an explicit "external system" owner. An unmapped slug means an ownership question nobody has answered; flag it, don't guess.
-4. **The map never contains module internals.** No entities, no subprocesses, no steps — those live in each module's `final/` artifacts. The map stops at the module boundary so it stays one screen long. If detail is creeping in, it belongs in a module spec.
+3. **Every contract slug in any module's `docs/plan/context/external-refs.md` must appear in the Cross-module references table** — with either an owning module or an explicit "external system" owner. An unmapped slug means an ownership question nobody has answered; flag it, don't guess.
+4. **The map never contains module internals.** No entities, no subprocesses, no steps — those live in each module's `docs/plan/` artifacts. The map stops at the module boundary so it stays one screen long. If detail is creeping in, it belongs in a module spec.
+5. **The map is exhaustive.** `system.map.md` lists **every** domain and **every** subdomain (module) of the software — including those not yet planned or built (they enter as `planned`). A module mentioned anywhere (narrative, external ref, roadmap) but absent from the map is a gap: ask which domain owns it and add it. A partial map does not pass the gate.
 
 ## Steps
 
 ### Phase 1 — Inventory what exists
 
-Read, if present: the current `.specify/memory/domain-map.md`, every `.specify/specs/{NNN}-{slug}/` directory, and each module's `final/external-refs.md`. Present the found state:
+Inventory what exists before asking. Read, if present: the current `docs/plan/context/system.map.md`, the current module's `docs/plan/` artifacts, and each known module's `docs/plan/context/external-refs.md` when reachable (other modules live in other repos and may not be). Present the found state:
 
 ```
 Current map: [exists — last updated {date} | none yet]
-Modules found on disk:
-- {NNN}-{slug} — [has process.md / domain.dbml / process.bpmn / actions/] → status {…}
-Contract slugs declared across modules: {slug list, with consumer module each}
+Current module plan artifacts: [process.txt / domain.dbml / logic.bpmn / actions/] → status {…}
+Known modules (from the map): {slug — location — reachable? — external-refs read?}
+Contract slugs declared across reachable modules: {slug list, with consumer module each}
 ```
 
 **Wait for user approval before continuing.**
@@ -140,27 +154,31 @@ A slug owned by a module that is not yet on the map adds that module as **planne
 
 ### Phase 4 — Write and gate
 
-Write `.specify/memory/domain-map.md` from the template. Replace in place; the `Updated:` line carries the run date. Then walk the gate:
+Write `docs/plan/context/system.map.md` from the template (creating `docs/plan/context/` if missing; in Claude Desktop, produce the file as a downloadable labeled with that path). Replace in place; the `Updated:` line carries the run date. Then walk the gate:
 
 ```
-[ ] Every module directory on disk appears in exactly one domain table
+[ ] Software header present: `> {purpose}` line right under `# System map — {App Name}`
+[ ] The map is exhaustive: EVERY domain and EVERY subdomain (module) of the software appears — not just the ones being planned now; missing ones enter as `planned`
+[ ] Every known module appears in exactly one domain table, with its Location
 [ ] Every domain has a one-line purpose
-[ ] Every contract slug from every final/external-refs.md appears in Cross-module references
+[ ] Every contract slug from every reachable docs/plan/context/external-refs.md appears in Cross-module references
 [ ] Every Cross-module row has an owner (module or "external system") — no "???" left
 [ ] No module internals (entities, subprocesses, steps) leaked into the map
-[ ] Status column consistent with what exists in each module's final/
+[ ] Status column consistent with what exists in each reachable module's docs/plan/
 ```
 
-All checked → PASS. `opscale-dbml` consults this map in its Phase 3 (external references) to propose owners; `opscale-init` consults it when a new module is being named and numbered.
+All checked → PASS. `opscale-dbml` consults this map in its Phase 3 (external references) to propose owners; `opscale-init` consults it when a new module is being named.
 
 **Wait for user approval before finishing.**
 
 ## Sample
 
-Excerpt of `.specify/memory/domain-map.md`:
+Excerpt of `docs/plan/context/system.map.md`:
 
 ```markdown
-# Domain map — Acme ERP
+# System map — Acme ERP
+> Runs Acme's commerce back office: orders, catalog, and cash control.
+
 Updated: 2026-07-22
 
 ## Domains
@@ -168,17 +186,17 @@ Updated: 2026-07-22
 ### Sales
 > Wins and fulfills customer orders.
 
-| Subdomain (module) | Spec dir | Status | Purpose |
+| Subdomain (module) | Location | Status | Purpose |
 |---|---|---|---|
-| orders | `.specify/specs/001-orders/` | generated | Order intake to fulfillment |
-| catalog | `.specify/specs/003-catalog/` | plan | Products and pricing |
+| orders | `acme-orders/docs/plan/` | generated | Order intake to fulfillment |
+| catalog | `acme-catalog/docs/plan/` | plan | Products and pricing |
 
 ### Finance
 > Controls the money: cash, accounting, and payments.
 
-| Subdomain (module) | Spec dir | Status | Purpose |
+| Subdomain (module) | Location | Status | Purpose |
 |---|---|---|---|
-| cash | `.specify/specs/002-cash/` | released | Cash sessions and cash counts |
+| cash | `acme-cash/docs/plan/` | released | Cash sessions and cash counts |
 
 ## Cross-module references
 
@@ -190,4 +208,4 @@ Updated: 2026-07-22
 
 ## Success condition
 
-`.specify/memory/domain-map.md` exists, gate all checked, and every contract slug across modules resolves to an owner.
+`docs/plan/context/system.map.md` exists (or, in Claude Desktop, was delivered labeled with that path) with the software header purpose line under the title, gate all checked, every domain and subdomain of the software listed (exhaustive), and every contract slug across modules resolves to an owner.

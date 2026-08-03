@@ -55,7 +55,7 @@ The generated menu block sits between markers so re-runs are idempotent:
 
 ### Process-driven grouping (preferred)
 
-A user-friendly menu mirrors **what the operator does**, not which tables exist. Read `final/process.md` — the **Ordered flow** subprocesses — and build the sidebar around them:
+A user-friendly menu mirrors **what the operator does**, not which tables exist. Read `docs/plan/process.txt` — and build the sidebar around them:
 
 - One section per natural phase / process group, in the **order the operator works** (e.g. open the day → run operations → control → close), not alphabetical.
 - Lead with the operator's primary entry points (the screens a process starts from); push catalogs, configuration, and reports to the bottom.
@@ -130,7 +130,7 @@ The filter is mandatory: only Resources representing aggregate roots reach the s
 
 ### Phase 2 — Propose menu structure
 
-Cross-reference the inventory with `final/process.md` *Ordered flow* and group the aggregate roots by process (preferred) or the heuristic (fallback). Present the structure:
+Cross-reference the inventory with `docs/plan/process.txt` and group the aggregate roots by process (preferred) or the heuristic (fallback). Present the structure:
 
 ```
 Proposed sidebar:

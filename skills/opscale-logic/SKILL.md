@@ -18,11 +18,11 @@ Generate Opscale Action classes — atomic, typed, independently testable busine
 
 Mode is determined by project type:
 
-- **BPMN-driven** (app/module) — one Action per `businessRuleTask` node in `final/process.bpmn`. Parameters derived from BPMN + DBML. Business rules from `final/process.md`.
+- **BPMN-driven** (app/module) — one Action per `businessRuleTask` node in `docs/plan/logic.bpmn`. Parameters derived from BPMN + DBML. Business rules from the SIPOCs (`docs/plan/actions/*.md`, section `Business Rules enforced`).
 - **Standalone** (package) — Actions defined directly by name, purpose, and parameters. No BPMN or DBML files required.
 
 The same Action class serves multiple execution contexts automatically:
-- **Nova Action** — admin panel via `asNovaAction()` + `getActionFields()`
+- **Nova Action** — admin panel (fields inferred from `parameters()` rules + `options()`)
 - **Artisan command** — terminal via `php artisan {identifier}`
 - **API endpoint** — HTTP via `Route::post('/path', ActionClass::class)`
 - **MCP tool** — AI agent via MCP Server registration
@@ -36,10 +36,10 @@ Output files are written to `src/Services/Actions/` and listed in `.specify/spec
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
-| 2 | `opscale-process` has been run | `final/process.md` exists and PASS | Stop. Run `/opscale-process`. |
-| 3 | `opscale-dbml` has been run | `final/domain.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
-| 4 | `opscale-bpmn` has been run | `final/process.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
-| 5 | `opscale-sipoc` has been run | One `final/actions/{kebab-id}.sipoc.md` per `businessRuleTask` | Stop. Run `/opscale-sipoc`. |
+| 2 | `opscale-process` has been run | `docs/plan/process.txt` exists and PASS | Stop. Run `/opscale-process`. |
+| 3 | `opscale-dbml` has been run | `docs/plan/domain.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `docs/plan/logic.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
+| 5 | `opscale-sipoc` has been run | One `docs/plan/actions/{kebab-id}.md` per `businessRuleTask` | Stop. Run `/opscale-sipoc`. |
 | 6 | `opscale-domain` has been run | `src/Models/` populated, domain bundle tasks in `tasks.md` complete | Stop. Run `/opscale-domain`. |
 | 7 | `opscale-ui` has been run | `src/Nova/` populated, Nova bundle tasks in `tasks.md` complete | Stop. Run `/opscale-ui`. |
 
@@ -68,21 +68,30 @@ src/
         └── {ActionClassName}.php    (one per businessRuleTask or standalone action)
 ```
 
-In **BPMN-driven mode**, this skill consumes the per-Action SIPOC documents that `opscale-sipoc` already produced under `.specify/specs/{NNN}-{module}/final/actions/{kebab-id}.sipoc.md`. The SIPOC Inputs table feeds `parameters()`; the SIPOC Process section feeds the `handle()` body. This skill does NOT author SIPOCs — that's [opscale-sipoc](../opscale-sipoc/SKILL.md)'s job.
+In **BPMN-driven mode**, this skill consumes the per-Action SIPOC documents that `opscale-sipoc` already produced under `docs/plan/actions/{kebab-id}.md`. The SIPOC Inputs table feeds `parameters()`; the SIPOC Process section feeds the `handle()` body. This skill does NOT author SIPOCs — that's [opscale-sipoc](../opscale-sipoc/SKILL.md)'s job.
 
 In **Standalone mode** (packages) there is no SIPOC: the user supplies the same information directly.
 
-### Opscale Action Contract
+### Opscale Action Contract (opscale-co/actions ^2.2 — SIPOC-aligned)
 
-Every Action extends `Opscale\Actions\Action`. All input flows through `$this->fill($attributes)` then `$this->validate()`. Never bypass this.
+Every Action extends `Opscale\Actions\Action`. The base class runs a SIPOC
+pipeline on every adapter (Nova/API/CLI/MCP): resolve `prefill()` → validate
+against `parameters()` rules → `canRun()` gate → `handle()` → validate the
+return against `outputs()` → dispatch the system event when the class uses
+`EmitsEvent`. The Action never calls `fill()`/`validate()` itself.
 
-| Method | Required | Purpose |
-|--------|----------|---------|
-| `identifier(): string` | YES | kebab-case ID — matches BPMN logic id or derived from class name |
-| `name(): string` | YES | Human-readable name — plain string, no `__()` |
-| `description(): string` | YES | One sentence explaining the action — plain string, no `__()`. Written for AI/MCP context |
-| `parameters(): array` | YES | Typed input declarations with validation rules |
-| `handle(array $attributes = []): array` | YES | Business logic — always returns array with success key |
+| Method | Required | SIPOC | Purpose |
+|--------|----------|-------|---------|
+| `identifier(): string` | YES | — | kebab-case ID — matches BPMN logic id or derived from class name. Also the name of the system event |
+| `name(): string` | YES | — | Human-readable name |
+| `description(): string` | YES | — | One sentence explaining the action. Written for AI/MCP context |
+| `parameters(): array` | YES | Inputs | Typed input declarations with validation rules |
+| `handle(array $inputs = []): array` | YES | Process | Business logic — receives VALIDATED inputs; returns `$this->succeed([...])` or `$this->fail('reason')` |
+| `outputs(): array` | YES | Outputs | Output schema, same shape as `parameters()`. The success payload of `handle()` is validated against it |
+| `prefill(): array` | optional | Suppliers | System-supplied parameters. Values may be Closures invoked with the adapter context (Nova: object with `->models` Collection of selected records; API: Request; CLI: Command; MCP: MCP Request). A Closure returning null is dropped so the caller value survives. Prefilled params are hidden from every adapter's input surface |
+| `options(): array` | optional | Inputs | Choice lists per parameter: Nova Select, MCP `enum`, CLI `choice()` |
+| `canRun(array $inputs): bool\|string` | optional | pre-P gate | State preconditions ("only from status X"). Return `true` to run or a reason string to soft-fail. Never throws |
+| `use EmitsEvent;` | optional | Clients | When the SIPOC declares an output/notification: the pipeline dispatches `event("{identifier}", [$outputs])` after every success |
 
 ### parameters() format
 
@@ -116,41 +125,77 @@ Type conventions:
 ### handle() contract
 
 ```php
-public function handle(array $attributes = []): array
+public function handle(array $inputs = []): array
 {
-    $this->fill($attributes);
-    $this->validate();
+    $entity = $this->entity($inputs);   // private resolver — see below
 
-    $entity = $this->get('entity_param');
-    $scalar = $this->get('scalar_param');
+    if (! $entity instanceof Entity) {
+        return $this->fail('Entity not found.');
+    }
 
-    // business logic
+    // business logic (DB::transaction around multi-write mutations)
 
-    return [
-        'success' => true,
-        // result data
-    ];
+    return $this->succeed([
+        // keys matching outputs()
+    ]);
 }
 ```
 
 Rules:
-- Always start: `$this->fill($attributes)` then `$this->validate()`
-- Access all values via `$this->get('property')` — never from `$attributes` directly
-- Always return array — minimum `['success' => bool]`
-- Return meaningful keys alongside success
-- Soft failure (missing optional data): return `['success' => false, 'message' => '...']`
-- Hard failure (invalid state): throw an exception — let it bubble
+- `handle()` receives VALIDATED inputs — never call `fill()`/`validate()`/`get()`
+- Success: `return $this->succeed([...])` with exactly the keys declared in `outputs()` (no `success` key — the adapter adds it)
+- Soft failure in-process: `return $this->fail('reason')`
+- Hard failure (invalid state / bug): throw an exception — let it bubble
+- State preconditions do NOT live in `handle()` — they live in `canRun()`, returning the reason string (include the BR-NN code)
+- Model parameters need a private resolver because the same input arrives in three shapes: the model instance (prefill from the Nova selection), an `Illuminate\Support\Collection` (the Nova adapter also injects the selected models under the model's snake_case name as an extra), or a plain id (API/CLI/MCP):
+
+```php
+private function entity(array $inputs): ?Entity
+{
+    $entity = $inputs['entity'] ?? null;
+
+    if ($entity instanceof Collection) {
+        $entity = $entity->first();
+    }
+
+    if ($entity instanceof Entity) {
+        return $entity;
+    }
+
+    return is_string($entity) ? Entity::query()->find($entity) : null;
+}
+```
+
+- Events: never dispatch manually — add `use EmitsEvent;` when the SIPOC declares an output/notification; the pipeline dispatches `event("{identifier}", [$outputs])` after success (post-transaction)
 - Compose with other Actions via `OtherAction::run(['param' => $value])`
 - No HTTP context, no `request()` helper — handle() is context-free
 - `Auth::id()` is allowed only when the business rule explicitly requires knowing who triggered it
 
-### Output context methods — override only when needed
+### Nova field inference (v2.2) — options are mandatory for id parameters
 
-An Action's output adapts to each surface (Nova, HTTP, CLI, MCP). Override these only when the default isn't enough. The methods (`asNovaAction`, `getActionFields`, `asController`, `asCommand`, `asMCPTool`) and when to use each are documented in `references/output-context-overrides.md`.
+The Nova adapter infers each field from the parameter's rules and type:
+`in:`/`exists:` → Select, `mimes:`/`mimetypes:` → File/Image with
+`acceptedTypes`, `date` (+`_at` name or time tokens) → DateTime vs Date,
+`numeric`+monetary name or `decimal:2` → Currency, `array` → KeyValue (or
+MultiSelect when options are provided), long `max:` → Textarea.
+
+**Trap:** a `uuid`/`identifier` parameter with NO options source renders as an
+empty Select with a warning — the operator must never type a raw id. Give
+every id parameter an options source: `options()` (host contracts like
+`UsersContract` when the id references host data), a per-parameter
+`options` key, or an `exists:` rule.
+
+### Adapter surfaces — never override
+
+The pipeline already translates the `Result` envelope to every surface
+(Nova message/danger, HTTP 200/422, CLI output, MCP response). Do NOT
+override `asNovaAction`/`getActionFields`/`asController`/`asCommand`/
+`asMCPTool` — customize through `prefill()`, `options()` and rules instead.
+Details and the per-adapter translation table: `references/output-context-overrides.md`.
 
 ### Nova registration — explicit, per Resource
 
-Every generated Action that exposes a Nova surface (i.e. overrides `asNovaAction()`) is automatically registered in the corresponding Resource's `actions()` method by `generate-action.mjs`. The skill never asks the LLM to manually edit a Resource to add an Action — the generator does it from the SIPOC's "Target resource(s)" line.
+Every generated Action with a Nova surface is automatically registered in the corresponding Resource's `actions()` method by `generate-action.mjs`. The skill never asks the LLM to manually edit a Resource to add an Action — the generator does it from the SIPOC's "Target resource(s)" line.
 
 This keeps two facts in sync:
 - the Action exists in `src/Services/Actions/{Class}.php`
@@ -192,29 +237,31 @@ The skill is responsible for assembling `handle_body` as ready-to-run PHP (inclu
 ### Domain Rules
 
 1. **One BPMN task = one Action class = one spec-kit task** — never merge two BPMN tasks or two standalone requests into one class, and never let a single Action span more than one entry in `tasks.md`.
-2. **SIPOC is an input, not an output** (BPMN-driven mode) — every Action depends on a SIPOC under `final/actions/{kebab-id}.sipoc.md`. This skill consumes them; `opscale-sipoc` produces them.
+2. **SIPOC is an input, not an output** (BPMN-driven mode) — every Action depends on a SIPOC under `docs/plan/actions/{kebab-id}.md`. This skill consumes them; `opscale-sipoc` produces them.
 3. **Spec-kit plan + tasks before code** — `/speckit.plan` and `/speckit.tasks` run BEFORE any `action-generator` agent is spawned.
 4. **Every implementation task has a preceding test task** — `tasks.md` lists `Test {ClassName}` immediately before `Implement {ClassName}`.
-5. **Always `fill()` then `validate()`** — access all values via `$this->get('property')`, never from `$attributes` directly.
-6. **Always return array with `success: bool`** — callers depend on this contract.
-7. **Soft failures return, hard failures throw** — missing optional data returns `['success' => false]`; truly invalid state throws.
-8. **Override context methods only when needed** — `asNovaAction()`, `asController()`, `asCommand()`, `asMCPTool()` are optional.
-9. **Compose via `::run()`** — generate leaf actions before composite actions.
-10. **handle() is context-free** — no `request()`, no `redirect()`, no HTTP assumptions.
-11. **`identifier()` derivation** — from BPMN `logic.id` when available, otherwise kebab-case from class name.
-12. **`description()` is for AI** — write it as if explaining to an AI agent what the tool does and when to invoke it.
-13. **`declare(strict_types=1)`** — every PHP file.
-14. **Single-quote hygiene** — every string emitted into `identifier()`, `name()`, `description()`, and parameter `name`/`description` is wrapped in single quotes by the template. Generators MUST escape apostrophes (`'` → `\'`) on every value.
-15. **Actions are registered on Resources by the generator** — every generated Action with a Nova surface (`asNovaAction`) is auto-added to the corresponding Resource's `actions()` method by `generate-action.mjs`. The skill never asks the LLM to hand-edit a Resource for this.
-16. **State-bounded visibility via `canSee`** — when the SIPOC declares a precondition like _"only available when entity is in state X"_, the generator wraps the action registration with a `canSee` guard. Full pattern catalogue in `references/canSee-patterns.md`.
+5. **handle() receives validated inputs** — never `fill()`/`validate()`/`get()`; read `$inputs` directly and resolve model params through the private resolver (instance | Collection | id).
+6. **succeed()/fail() envelope** — success returns `$this->succeed([...outputs()...])`; controlled failure returns `$this->fail('reason')`. Never a raw `['success' => bool]` array.
+7. **State preconditions → canRun(), process failures → fail(), invalid state → throw** — every SIPOC "only from status X" precondition becomes a `canRun()` reason string with its BR-NN code.
+8. **outputs() mirrors the SIPOC Outputs table** — mandatory; the pipeline validates the success payload against it. SIPOC notifications/outputs → `use EmitsEvent;` (no manual `event()` calls).
+9. **No KeyValue inputs** — no action parameter may render as a Nova KeyValue. A multiple choice is a MultiSelect against a closed catalog (enum labels via `options()`, per-element `in:` rule, JSON normalization of Nova's MultiSelect in `fill()`); per-element data is either auto-generated (title from the type's label, generated tracking codes) or promoted to its own scalar parameter. Open key-value maps invite incoherent data.
+10. **Never override the adapter methods** — `asNovaAction()`, `asController()`, `asCommand()`, `asMCPTool()` are the pipeline; the old manual "map selected model + translate success to message/danger" override is replaced by a `prefill()` closure (`fn ($ctx) => $ctx?->models?->first()`).
+11. **Compose via `::run()`** — generate leaf actions before composite actions.
+12. **handle() is context-free** — no `request()`, no `redirect()`, no HTTP assumptions.
+13. **`identifier()` derivation** — from BPMN `logic.id` when available, otherwise kebab-case from class name.
+14. **`description()` is for AI** — write it as if explaining to an AI agent what the tool does and when to invoke it.
+15. **`declare(strict_types=1)`** — every PHP file.
+16. **Single-quote hygiene** — every string emitted into `identifier()`, `name()`, `description()`, and parameter `name`/`description` is wrapped in single quotes by the template. Generators MUST escape apostrophes (`'` → `\'`) on every value.
+17. **Actions are registered on Resources by the generator** — every generated Action with a Nova surface (`asNovaAction`) is auto-added to the corresponding Resource's `actions()` method by `generate-action.mjs`. The skill never asks the LLM to hand-edit a Resource for this.
+18. **State-bounded visibility via `canSee`** — when the SIPOC declares a precondition like _"only available when entity is in state X"_, the generator wraps the action registration with a `canSee` guard. Full pattern catalogue in `references/canSee-patterns.md`.
 
 ## Steps
 
 ### Phase 1 — Inventory SIPOCs / BPMN logic tasks
 
 **Mode Detection:** determine the mode based on project type:
-- **app/module** projects → `.specify/specs/{NNN}-{module-name}/final/process.bpmn` exists → **BPMN-driven mode**
-- **package** projects → no `final/process.bpmn` or spec files → **Standalone mode**
+- **app/module** projects → `docs/plan/logic.bpmn` exists → **BPMN-driven mode**
+- **package** projects → no `docs/plan/logic.bpmn` or spec files → **Standalone mode**
 
 For BPMN-driven, extract every `businessRuleTask` and build the generation plan:
 
@@ -246,13 +293,14 @@ For Standalone mode, follow the standalone variant in `references/standalone-mod
 
 Before generating any code, formalize the plan through spec-kit so that every Action becomes a tracked task. This is what makes the implementation phase auditable and what feeds `opscale-test`.
 
-**2a. Build the spec-kit plan input.** Compose a brief that lists every Action to be generated, in dependency order, with its source BPMN task, lane, parameters (from BPMN + DBML), and Business Rules from `final/process.md`. Pass this as the seed for `/speckit.plan`:
+**2a. Build the spec-kit plan input.** Compose a brief that lists every Action to be generated, in dependency order, with its source BPMN task, lane, parameters (from BPMN + DBML), and Business Rules from its SIPOC (`docs/plan/actions/{id}.md`). Pass this as the seed for `/speckit.plan`:
 
 ```
 /speckit.plan "Logic layer for {module-name}: [N] Opscale Actions derived from
-final/process.bpmn. Generate one Action class per businessRuleTask. Each Action:
-- extends Opscale\\Actions\\Action
-- declares identifier(), name(), description(), parameters(), handle()
+docs/plan/logic.bpmn. Generate one Action class per businessRuleTask. Each Action:
+- extends Opscale\\Actions\\Action (opscale-co/actions ^2.2)
+- declares identifier(), name(), description(), parameters(), handle(), outputs()
+  (+ prefill()/options()/canRun()/EmitsEvent per its SIPOC)
 - lives in src/Services/Actions/{ClassName}.php
 
 Dependency order:
@@ -304,9 +352,14 @@ For each task in `tasks.md` (dependency order), normalize the matching SIPOC (pr
 | `Identifier:` | `identifier` | kebab-case; matches BPMN `logic.id` |
 | `# SIPOC — {Name}` heading | `name`, `action_class_name` | name is human text; class is PascalCase |
 | First paragraph after heading | `description` | one sentence, for AI/MCP context |
+| Suppliers (system-supplied entity) | `entity_param` | name of the model parameter that arrives as the Nova selection — generates the `prefill()` closure + private resolver |
 | Inputs table | `parameters[]` | each row → `{name, description, type, rules}` |
+| Inputs with closed domains / host-id refs | `options_entries[]` | `{param, php_expr}` — enum `array_column(...cases(), 'name', 'value')` or host contract `resolve(XContract::class)->options()`. MANDATORY for `uuid`/`identifier` params |
+| Business Rules — state preconditions | `can_run_body` | raw PHP for `canRun($inputs)`: resolve entity, check states, return reason string with BR-NN or `true` |
 | Composes line | `dependencies[]` | other Actions imported and called via `::run()` |
-| Process section (numbered list) | `handle_body` | ordered PHP corresponding to each step, plus guard clauses for Business Rules and the final return array assembled from Outputs |
+| Process section (numbered list) | `handle_body` | ordered PHP per step; in-process guards via `$this->fail()`; final `return $this->succeed([...])` assembled from Outputs |
+| Outputs table | `outputs[]` | each row → `{name, description, type, rules}` — REQUIRED (abstract in ^2.2) |
+| Outputs — notifications ("notificar...", "output:") | `emits_event: true` | adds `use EmitsEvent;` — the ONLY event mechanism; never manual `event()` calls |
 
 The script handles all string escaping, parameter formatting, import ordering, and conflict detection. The skill never writes PHP — it just hands the generator the normalized JSON.
 
@@ -318,7 +371,7 @@ If the SIPOC file is missing for any Action in `tasks.md`, stop. Run `/opscale-s
 
 The generator already registers every Action with a Nova surface on the corresponding Resource's `actions()` method, applying `canSee` guards based on the SIPOC's state preconditions (see Context → Nova registration). Verify the wiring:
 
-- Every Action with `asNovaAction()` overridden appears in exactly one Resource's `actions()` array.
+- Every Action with a Nova surface appears in exactly one Resource's `actions()` array.
 - State-bounded Actions carry the expected `canSee` closure shape (single state via `->status?->is(...)`; multiple via `in_array(..., strict: true)`).
 - Actions with no SIPOC state precondition register without a `canSee` guard.
 
@@ -342,11 +395,10 @@ Action templates fail at parse time when apostrophes leak into PHP string litera
 
 ```bash
 # 0. (BPMN-driven mode) Every generated Action has a matching SIPOC
-SPEC_DIR=$(ls -d .specify/specs/*/ 2>/dev/null | head -1)
-if [ -n "$SPEC_DIR" ] && [ -f "$SPEC_DIR/final/process.bpmn" ]; then
+if [ -f docs/plan/logic.bpmn ]; then
   for f in src/Services/Actions/*.php; do
     id=$(grep -oP "return '\\K[a-z][a-z0-9-]*" "$f" | head -1)
-    [ -f "$SPEC_DIR/final/actions/$id.sipoc.md" ] \
+    [ -f "docs/plan/actions/$id.md" ] \
       || { echo "Missing SIPOC for $id"; exit 1; }
   done
 fi

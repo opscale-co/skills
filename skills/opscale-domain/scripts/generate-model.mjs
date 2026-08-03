@@ -44,7 +44,7 @@
 //       { "column": "agency_id",     "contract_slug": "agencies", "subdomain": "crm",  "table": "agencies" }
 //     ],
 //
-//   `contract_slug` is the slug from the final/external-refs.md `external-refs` index.
+//   `contract_slug` is the slug from the docs/plan/context/external-refs.md `external-refs` index.
 //   The script derives `contract_class` (StudlyCase + `Contract`) and
 //   `relation_method` (see RELATION_METHOD_RULES below) from the column +
 //   contract_slug. When `has_cross_refs` is true, the model `use`s the

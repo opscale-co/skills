@@ -27,7 +27,7 @@
  *   2 — REVIEW: valid structure but quality warnings (fix before writing)
  *
  * Requirements:
- *   npm install bpmnlint  (in skill directory only)
+ *   Dependencies are bundled in this skill's node_modules — never install at runtime.
  */
 
 import { readFileSync, unlinkSync, existsSync } from 'fs';
@@ -51,7 +51,7 @@ try {
 }
 
 // Accept either raw .bpmn or a markdown file with a ```xml ... ``` fenced block
-// (process.md from opscale-bpmn wraps the XML in such a block).
+// (older opscale-bpmn drafts wrapped the XML in such a block).
 let xml;
 if (filePath.endsWith('.bpmn')) {
   xml = raw;
@@ -255,7 +255,7 @@ if (warnings.length > 0) {
   warnings.forEach(w => console.log(`   ⚠️   ${w}`));
   console.log(`\n   ${warnings.length} warning(s) found`);
   console.log('\n────────────────────────────────────────────────────────────');
-  console.log('⚠️   REVIEW (exit 2) — fix warnings before writing process.md\n');
+  console.log('⚠️   REVIEW (exit 2) — fix warnings before writing docs/plan/logic.bpmn\n');
   if (isTmp) cleanup(absolutePath);
   process.exit(2);
 }
@@ -269,7 +269,7 @@ console.log('   ✅  Gateway branches are labelled');
 console.log('   ✅  Start and end events present');
 console.log('   ✅  BPMNDiagram covers all semantic elements');
 console.log('\n────────────────────────────────────────────────────────────');
-console.log('✅  PASS (exit 0) — BPMN is valid, write process.md\n');
+console.log('✅  PASS (exit 0) — BPMN is valid, write docs/plan/logic.bpmn\n');
 if (isTmp) cleanup(absolutePath);
 process.exit(0);
 

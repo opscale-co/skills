@@ -28,7 +28,7 @@ The output is a **commit on the current branch** (or on a new feature branch the
 | 2 | Current directory is a git repo | `git rev-parse --is-inside-work-tree` | Stop. `git init` (or move to the right directory). |
 | 3 | Git tree is clean | `git status --porcelain` returns empty | Stop. Commit or stash before iterating. |
 | 4 | `specify --version` resolves | Run the command | Re-run `/opscale-init` to install spec-kit. |
-| 5 | **Plan phase complete** for at least one module | `.specify/specs/{NNN}-{slug}/final/process.md`, `final/domain.dbml`, `final/process.bpmn` all exist and PASS | Stop. Run `/opscale-process` → `/opscale-dbml` → `/opscale-bpmn` first. |
+| 5 | **Plan phase complete** for at least one module | `docs/plan/process.txt`, `docs/plan/domain.dbml`, `docs/plan/logic.bpmn` all exist and PASS | Stop. Run `/opscale-process` → `/opscale-dbml` → `/opscale-bpmn` first. |
 | 6 | **Generate phase complete** for that module | `src/Models/` populated AND `src/Nova/` populated AND `src/Services/Actions/` populated (BPMN-driven modules) | Stop. Run `/opscale-domain` → `/opscale-ui` → `/opscale-logic`. |
 | 7 | **Zero pending tasks** in the module's `tasks.md` | `grep -E '^\s*-\s*\[ \]' .specify/specs/{NNN}-{slug}/tasks.md` returns nothing | Stop. Finish the open tasks before iterating. |
 
@@ -38,9 +38,9 @@ test -f .specify/memory/constitution.md                            && echo "1. i
 git rev-parse --is-inside-work-tree >/dev/null 2>&1                && echo "2. git repo  OK"
 [ -z "$(git status --porcelain)" ]                                 && echo "3. clean     OK"
 specify --version >/dev/null 2>&1                                  && echo "4. spec-kit  OK"
-ls .specify/specs/*/final/process.md    >/dev/null 2>&1            && echo "5a. process  OK"
-ls .specify/specs/*/final/domain.dbml   >/dev/null 2>&1            && echo "5b. dbml     OK"
-ls .specify/specs/*/final/process.bpmn  >/dev/null 2>&1            && echo "5c. bpmn     OK"
+test -f docs/plan/process.txt                                       && echo "5a. process  OK"
+test -f docs/plan/domain.dbml                                      && echo "5b. dbml     OK"
+test -f docs/plan/logic.bpmn                                     && echo "5c. bpmn     OK"
 ls src/Models/*.php                  >/dev/null 2>&1               && echo "6a. domain   OK"
 ls src/Nova/*.php                    >/dev/null 2>&1               && echo "6b. ui       OK"
 ls src/Services/Actions/*.php        >/dev/null 2>&1               && echo "6c. logic    OK"
@@ -58,7 +58,7 @@ Iterations are captured in **user-story format**. This is the contract — do no
 **User story template:**
 
 ```
-As a   [actor / persona — must match an actor from final/process.md when possible]
+As a   [actor / persona — must match an actor from docs/plan/process.txt when possible]
 I want [capability — what they can do that they cannot do today]
 So that [outcome — the business value, in their words]
 
@@ -101,7 +101,7 @@ Iteration ≠ full sequence. Only invoke the skills the diff actually requires:
 
 | Task touches | Skill to invoke |
 |--------------|-----------------|
-| New/changed business rules, actors, artifacts | `opscale-process` (updates `final/process.md`) |
+| New/changed business rules, actors, artifacts | `opscale-process` (updates `docs/plan/process.txt`) |
 | New/changed entities, columns, enums, relationships | `opscale-dbml` then `opscale-domain` |
 | New/changed process flow, task types | `opscale-bpmn` |
 | New/changed Eloquent models, migrations, VOs, repos | `opscale-domain` |
@@ -144,7 +144,7 @@ After completing this skill, the project contains:
 
 | Question | Purpose | Required |
 |----------|---------|----------|
-| Who is the actor? | First line of the story; should match an actor in final/process.md | Yes |
+| Who is the actor? | First line of the story; should match an actor in docs/plan/process.txt | Yes |
 | What capability do they need? | The "I want" — be specific | Yes |
 | Why — what business outcome? | The "so that" — drives the commit body | Yes |
 | Acceptance criteria (Given/When/Then) | Defines done for `/speckit.specify` | Yes — at least one |
@@ -373,7 +373,7 @@ Do NOT push or open the PR automatically — leave that to the user.
 
 ## Sample
 
-Iteration log + Conventional commit message — see `references/sample-output.md`.
+Conventional commit message — see `references/sample-output.md`.
 
 ## Success condition
 

@@ -6,7 +6,7 @@ These are the canonical XML snippets the skill assembles. Names follow Opscale c
 
 ### serviceTask — `crud`
 
-Persistence and query operations on domain entities via their Repository. No business logic, no conditions, no transformations.
+Persistence and query operations on domain entities. No business logic, no conditions, no transformations.
 
 ```xml
 <bpmn:serviceTask id="service_[id]" name="[Verb Entity]">
@@ -40,7 +40,7 @@ Dispatches something that leaves the system — email, push, PDF, SMS, WhatsApp,
 </bpmn:sendTask>
 ```
 
-## Full `final/process.bpmn` skeleton
+## Full `docs/plan/logic.bpmn` skeleton
 
 Raw BPMN 2.0 XML — no markdown wrapper, no surrounding prose. Loadable directly in Camunda Modeler or bpmn.io.
 

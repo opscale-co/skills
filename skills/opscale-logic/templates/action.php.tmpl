@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 namespace {{package_namespace}}\Services\Actions;
 
+{{#if entity_param}}
+use Illuminate\Support\Collection;
+{{/if}}
 use Opscale\Actions\Action;
+{{#if emits_event}}
+use Opscale\Actions\Concerns\EmitsEvent;
+{{/if}}
 {{#each entity_imports}}
 use {{.}};
 {{/each}}
@@ -17,6 +23,10 @@ use {{.}};
  */
 class {{action_class_name}} extends Action
 {
+{{#if emits_event}}
+    use EmitsEvent;
+
+{{/if}}
     public function identifier(): string
     {
         return '{{identifier}}';
@@ -46,11 +56,77 @@ class {{action_class_name}} extends Action
         ];
     }
 
-    public function handle(array $attributes = []): array
+{{#if entity_param}}
+    /**
+     * SIPOC Supplier = system: en Nova `{{entity_param}}` llega como el registro
+     * seleccionado; en API/CLI/MCP la closure resuelve null y el caller lo
+     * envia como input normal.
+     */
+    #[\Override]
+    public function prefill(): array
     {
-        $this->fill($attributes);
-        $this->validate();
+        return ['{{entity_param}}' => fn ($ctx) => $ctx?->models?->first()];
+    }
 
+{{/if}}
+{{#if options_entries}}
+    #[\Override]
+    public function options(): array
+    {
+        return [
+{{#each options_entries}}
+            '{{param}}' => {{php_expr}},
+{{/each}}
+        ];
+    }
+
+{{/if}}
+{{#if can_run_body}}
+    #[\Override]
+    public function canRun(array $inputs = []): bool|string
+    {
+        {{can_run_body}}
+    }
+
+{{/if}}
+    public function handle(array $inputs = []): array
+    {
         {{handle_body}}
     }
+
+    public function outputs(): array
+    {
+        return [
+{{#each outputs}}
+            [
+                'name'        => '{{name}}',
+                'description' => '{{description}}',
+                'type'        => {{type_expr}},
+                'rules'       => [{{rules}}],
+            ],
+{{/each}}
+        ];
+    }
+{{#if entity_param}}
+
+    private function {{entity_resolver_name}}(array $inputs): ?{{entity_class}}
+    {
+        ${{entity_var}} = $inputs['{{entity_param}}'] ?? null;
+
+        // El adapter Nova inyecta la Collection de modelos seleccionados bajo
+        // la clave snake_case del modelo; el prefill entrega la instancia y
+        // API/CLI/MCP envian el id plano.
+        if (${{entity_var}} instanceof Collection) {
+            ${{entity_var}} = ${{entity_var}}->first();
+        }
+
+        if (${{entity_var}} instanceof {{entity_class}}) {
+            return ${{entity_var}};
+        }
+
+        return is_string(${{entity_var}}) || is_int(${{entity_var}})
+            ? {{entity_class}}::query()->find(${{entity_var}})
+            : null;
+    }
+{{/if}}
 }

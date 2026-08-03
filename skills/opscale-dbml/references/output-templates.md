@@ -1,8 +1,8 @@
-# Output templates — `final/domain.dbml` + `final/external-refs.md`
+# Output templates — `docs/plan/domain.dbml` + `docs/plan/context/external-refs.md`
 
-## `final/domain.dbml`
+## `docs/plan/domain.dbml`
 
-Raw DBML — no markdown fence, no narrative wrapper, no Data Dictionary table. The Project block's `Note:` carries all the relationship summary, business rules, bounded-context info, and entity-source traceability.
+Raw DBML — no markdown fence, no narrative wrapper, no Data Dictionary table. The Project block's `Note:` carries only the subdomain description, the modeling standard, and the bounded-context info. No business rules (defined per Action by `opscale-sipoc`), no relationship summary (relationships are the formal `Ref:` lines), no entity-source list.
 
 ```dbml
 //=====================================
@@ -14,7 +14,7 @@ Project [SubdomainName] {
 
   Note: '''
   # Subdomain: [Subdomain Name]
-  Source spec: .specify/specs/{NNN}-{module-name}/final/process.md
+  Source spec: docs/plan/process.txt
   Modeling standard: [name, e.g. "BIAN" / "HL7 FHIR" / "schema.org Order"] — or "none"
 
   [3–5 sentences describing what this subdomain owns, what processes it covers,
@@ -25,19 +25,6 @@ Project [SubdomainName] {
   - Main aggregates: [AggregateRoot → owned entities]
   - Depends on: [other subdomains, or "none"]
   - Notifies: [other subdomains via events, or "none"]
-
-  ## Key Business Rules
-  - [BR-01]: [condition → consequence]
-  - [BR-02]: ...
-
-  ## Relationship Summary
-  - [table_a] → [table_b]: 1:N, FK constraint (within subdomain)
-  - [table_c] → [other_subdomain.table]: logical reference, no FK
-
-  ## Entity Sources
-  - [SPEC: Artifacts]: [entity1], [entity2]
-  - [SPEC: Actions]: [entity3]
-  - [SPEC: Rules]: [entity4]
   '''
 }
 
@@ -59,14 +46,14 @@ Enum [TablePrefix]Status {
 //=====================================
 
 Table [plural_entity_name] {
-  id              varchar(26)   [pk, note: 'ULID generated at application layer before insert']
+  id              varchar(26)   [pk, note: 'ULID generated at application layer before insert // type:identifier']
 
-  // --- Business attributes ---
-  [column]        [type]        [not null, note: 'Business meaning of this value']
+  // --- Business attributes (every column carries `// type:{slug}` unless it is an Enum or an external ref) ---
+  [column]        [storage]     [not null, note: 'Business meaning of this value // type:{slug}']
   [status]        [EnumName]    [not null, default: 'pending', note: 'Current lifecycle state']
 
   // --- Intra-subdomain relationships ---
-  [parent_id]     varchar(26)   [ref: > parent_table.id, not null, note: 'Owning [entity]']
+  [parent_id]     varchar(26)   [ref: > parent_table.id, not null, note: 'Owning [entity] // type:identifier']
 
   // --- Cross-subdomain logical references ---
   [external_id]   varchar(26)   [not null, note: '// external_ref:{slug} | {subdomain}.{table} — no FK constraint']
@@ -91,8 +78,8 @@ Table [plural_entity_name] {
 //=====================================
 
 Table [entity_a]_[entity_b] {
-  [entity_a_id]   varchar(26)   [ref: > entity_a.id, not null, note: 'Reference to [EntityA]']
-  [entity_b_id]   varchar(26)   [ref: > entity_b.id, not null, note: 'Reference to [EntityB]']
+  [entity_a_id]   varchar(26)   [ref: > entity_a.id, not null, note: 'Reference to [EntityA] // type:identifier']
+  [entity_b_id]   varchar(26)   [ref: > entity_b.id, not null, note: 'Reference to [EntityB] // type:identifier']
 
   indexes {
     ([entity_a_id], [entity_b_id])  [pk]
@@ -103,14 +90,14 @@ Table [entity_a]_[entity_b] {
   '''
 }
 
-// Aggregates, business rules, relationships and entity sources go into the
-// Project block's Note: above — NOT into a separate `Note model { }` block.
+// The bounded-context info goes into the Project block's Note: above — NOT
+// into a separate `Note model { }` block.
 // Current versions of @dbml/core REJECT `Note model { }` at the top level
 // with: «Expected Table Group, comment, end of input, enum, project, references,
 // table, or whitespace but "N" found.» Do not add it.
 ```
 
-## `final/external-refs.md`
+## `docs/plan/context/external-refs.md`
 
 ````markdown
 # External references — [Module Name]

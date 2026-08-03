@@ -25,7 +25,39 @@
 //     ],
 //     "entities":     ["Loan"],            // models referenced as parameter types or in handle()
 //     "dependencies": ["GetExchangeRate"], // other Actions composed via ::run()
-//     "handle_body":  "$loan = $this->get('loan');\n$rate = GetExchangeRate::run(['date' => $this->get('from')]);\n\nreturn ['success' => true, 'interest' => $loan->principal * $rate];",
+//
+//     // SIPOC Outputs — REQUIRED (outputs() is abstract in opscale-co/actions ^2.2).
+//     // Same shape as parameters; handle()'s success payload is validated against it.
+//     "outputs": [
+//       { "name": "interest", "description": "Computed interest.", "type": "string", "rules": ["required", "string"] }
+//     ],
+//
+//     // SIPOC Supplier = system (optional): name of the model parameter that
+//     // arrives as the Nova-selected record. Generates a prefill() closure
+//     // (fn ($ctx) => $ctx?->models?->first()) plus a private resolver that
+//     // accepts instance | Collection (Nova extras) | id (API/CLI/MCP).
+//     "entity_param": "loan",
+//
+//     // SIPOC pre-P gate (optional): raw PHP body for canRun(array $inputs).
+//     // Return true to run, or a reason string to soft-fail. State
+//     // preconditions from the SIPOC ("only from status X") belong here.
+//     "can_run_body": "$loan = $this->loan($inputs);\nif (! $loan instanceof Loan) {\n    return 'Loan not found.';\n}\n\nreturn true;",
+//
+//     // Choice lists (optional): rendered as Select (Nova), enum (MCP),
+//     // choice() (CLI). php_expr is a raw PHP expression.
+//     "options_entries": [
+//       { "param": "status", "php_expr": "array_column(LoanStatus::cases(), 'name', 'value')" }
+//     ],
+//
+//     // SIPOC Client = system (optional, default false): adds `use EmitsEvent;`
+//     // so the pipeline dispatches event("{identifier}", [$outputs]) after
+//     // every success. Set true when the SIPOC declares an output/notification.
+//     "emits_event": true,
+//
+//     // handle(array $inputs) receives VALIDATED inputs — no fill()/validate()/get().
+//     // Success: return $this->succeed([...outputs...]); soft-fail: return
+//     // $this->fail('reason'); hard-fail: throw.
+//     "handle_body":  "$loan = $this->loan($inputs);\nif (! $loan instanceof Loan) {\n    return $this->fail('Loan not found.');\n}\n$rate = GetExchangeRate::run(['date' => $inputs['from']]);\n\nreturn $this->succeed(['interest' => (string) ($loan->principal * $rate)]);",
 //
 //     // Nova registration (optional — when present, generator registers the
 //     // Action in the target Resource's actions() method per SKILL.md +
@@ -213,21 +245,40 @@ function seedTranslation(langDir, locale, key, value) {
   return { path: filePath, action: 'SEEDED', key };
 }
 
+function camelCase(snake) {
+  return snake.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+}
+
 function main() {
   const input = readJsonInput();
-  for (const k of ['action_class_name', 'identifier', 'name', 'description', 'package_namespace', 'output_dir', 'handle_body']) {
+  for (const k of ['action_class_name', 'identifier', 'name', 'description', 'package_namespace', 'output_dir', 'handle_body', 'outputs']) {
     if (input[k] === undefined) throw new Error(`Missing required field: ${k}`);
   }
 
   const entity_imports     = (input.entities     || []).map(e => `${input.package_namespace}\\Models\\${e}`).sort();
   const dependency_imports = (input.dependencies || []).map(d => `${input.package_namespace}\\Services\\Actions\\${d}`).sort();
 
-  const parameters = (input.parameters || []).map(p => ({
+  const mapSchemaRows = rows => (rows || []).map(p => ({
     name:        p.name,
     description: escapeSingle(p.description || ''),
     type_expr:   paramTypeExpr(p.type),
     rules:       rulesPhp(p.rules),
   }));
+
+  const parameters = mapSchemaRows(input.parameters);
+  const outputs = mapSchemaRows(input.outputs);
+
+  // entity_param → prefill closure + private resolver (instance | Collection | id)
+  let entity_class = null, entity_var = null, entity_resolver_name = null;
+  if (input.entity_param) {
+    const entityRow = (input.parameters || []).find(p => p.name === input.entity_param);
+    if (!entityRow || SCALAR_TYPES.has(entityRow.type)) {
+      throw new Error(`entity_param '${input.entity_param}' must match a model-typed parameter`);
+    }
+    entity_class = entityRow.type;
+    entity_var = camelCase(input.entity_param);
+    entity_resolver_name = entity_var;
+  }
 
   const context = {
     package_namespace: input.package_namespace,
@@ -236,8 +287,16 @@ function main() {
     name:              escapeSingle(input.name),
     description:       escapeSingle(input.description),
     parameters,
+    outputs,
     entity_imports,
     dependency_imports,
+    emits_event:       Boolean(input.emits_event),
+    entity_param:      input.entity_param || null,
+    entity_class,
+    entity_var,
+    entity_resolver_name,
+    options_entries:   (input.options_entries || []).map(o => ({ param: o.param, php_expr: o.php_expr })),
+    can_run_body:      input.can_run_body ? indentBody(input.can_run_body, 8) : null,
     handle_body:       indentBody(input.handle_body, 8),
   };
 

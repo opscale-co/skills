@@ -438,7 +438,7 @@ abstract class DuskTestCase extends BaseTestCase
 
 Browser tests drive the **real user flow end to end** — log in, navigate, fill
 forms, submit, open Actions, fill Action modals, submit, assert no error toast
-appears at any step. One file per flow in `final/process.md` *Ordered flow*;
+appears at any step. One file per flow in `docs/plan/process.txt`;
 one test method per flow path (happy path + each gateway branch + each failure
 path that is observable in the UI).
 
@@ -469,7 +469,7 @@ use [PackageNamespace]\Tests\DuskTestCase;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * One file per flow in final/process.md *Ordered flow*.
+ * One file per flow in docs/plan/process.txt.
  * Inside: one test method per path (happy + branches + visible failures).
  */
 final class [FlowName]FlowTest extends DuskTestCase

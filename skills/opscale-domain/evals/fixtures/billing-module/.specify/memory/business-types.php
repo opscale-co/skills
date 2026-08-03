@@ -12,7 +12,7 @@ declare(strict_types=1);
  * type slugs only and must never name a class or framework rule from this file.
  *
  * Every slug here must exist in the registry, and every registry slug must be
- * bound here. Extend the project copies (.specify/memory/business-types.{md,php})
+ * bound here. Extend the project copies (docs/plan/context/business-types.md and .specify/memory/business-types.php)
  * in that order: registry first, binding second.
  */
 
@@ -143,6 +143,20 @@ return [
                 'options' => 'options',
                 'displayUsingLabels' => true,
                 'searchable' => true,
+            ],
+            'hooks' => [
+                'options' => \Opscale\NovaDynamicResources\Services\Actions\SelectOptions::class,
+            ]
+        ],
+
+        'multiOptions' => [
+            'field' => \Laravel\Nova\Fields\MultiSelect::class,
+            'hint' => 'Configurable multi-select for choosing several values from a configurable source',
+            'rules' => ['array'],
+            'cast' => 'array',
+            'config' => [
+                'options' => 'options',
+                'displayUsingLabels' => true,
             ],
             'hooks' => [
                 'options' => \Opscale\NovaDynamicResources\Services\Actions\SelectOptions::class,
@@ -391,9 +405,9 @@ return [
             ],
         ],
 
-        'ulid' => [
+        'identifier' => [
             'field' => \Laravel\Nova\Fields\Text::class,
-            'hint' => 'Universally Unique Lexicographically Sortable Identifiers for database records',
+            'hint' => 'Unique record identity (primary and foreign keys), ULID format',
             'rules' => ['string', 'size:26', 'regex:/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/'],
             'config' => [
                 'readonly' => true,

@@ -15,7 +15,7 @@ description: >
 ### Purpose
 
 Transform the validated DBML into a complete PHP domain layer. Every class generated
-maps 1:1 to an element in `final/domain.dbml`. Nothing is created that cannot be traced
+maps 1:1 to an element in `docs/plan/domain.dbml`. Nothing is created that cannot be traced
 back to the DBML. Output files are written to the package source directory and listed
 in `.specify/specs/{NNN}-{module-name}/plan.md` (domain section).
 
@@ -24,9 +24,9 @@ in `.specify/specs/{NNN}-{module-name}/plan.md` (domain section).
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init` first. |
-| 2 | `opscale-process` has been run | `final/process.md` exists and PASS | Stop. Run `/opscale-process`. |
-| 3 | `opscale-dbml` has been run | `final/domain.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
-| 4 | `opscale-bpmn` has been run | `final/process.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
+| 2 | `opscale-process` has been run | `docs/plan/process.txt` exists and PASS | Stop. Run `/opscale-process`. |
+| 3 | `opscale-dbml` has been run | `docs/plan/domain.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `docs/plan/logic.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
 
 This skill is **Step 1 of the Generate phase**. The full prerequisite chain `init → process → dbml → bpmn` must be PASS before this skill runs. After this skill, `opscale-ui` is next.
 
@@ -63,7 +63,7 @@ src/
 
 ### Cross-subdomain virtual relations
 
-When `final/external-refs.md` carries an `external-refs` index, the domain layer emits two extra artifacts (one shared `HasContractRelations` trait + one `{ContractName}Contract` interface per slug) and wires every cross-subdomain column into a real `BelongsTo` resolved through a host-supplied contract. The host binds an implementation; domain registers no default binding. For verbatim PHP templates and the column → relation-method naming convention, see `references/cross-subdomain-contracts.md`.
+When `docs/plan/context/external-refs.md` carries an `external-refs` index, the domain layer emits two extra artifacts (one shared `HasContractRelations` trait + one `{ContractName}Contract` interface per slug) and wires every cross-subdomain column into a real `BelongsTo` resolved through a host-supplied contract. The host binds an implementation; domain registers no default binding. For verbatim PHP templates and the column → relation-method naming convention, see `references/cross-subdomain-contracts.md`.
 
 ### Generation rules
 
@@ -97,7 +97,7 @@ The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (eith
 - Use `HasUlids` trait — handles PK type and ULID generation automatically
 - `protected $fillable` — all business columns except `id`, timestamps, `deleted_at`
 - `protected $attributes` — default values for columns with DBML `default:`. Emitted as literal PHP value.
-- `protected $casts` — enum columns → Enum class; VO columns → Cast class; dates → `'datetime'`; columns noted `// type:{slug}` in the DBML → the binding's `cast` (and their `rules` go into `$validationRules`) — Laravel binding at `.specify/memory/business-types.php`; canonical slugs defined in `.specify/memory/business-types.md`
+- `protected $casts` — enum columns → Enum class; VO columns → Cast class; dates → `'datetime'`; columns noted `// type:{slug}` in the DBML → the binding's `cast` (and their `rules` go into `$validationRules`) — Laravel binding at `.specify/memory/business-types.php`; canonical slugs defined in `docs/plan/context/business-types.md`
 - Relationships only for intra-subdomain FKs
 - Cross-subdomain columns → comment: no Eloquent relationship, query via target repo
 - `SoftDeletes` trait only if `deleted_at` in DBML
@@ -154,7 +154,7 @@ The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (eith
 
 ### Phase 1 — Inventory the DBML
 
-Read `final/domain.dbml` (and `final/external-refs.md` if present) and present the full generation plan. **There is no cap on the number of entities, enums, or Value Objects** — generate every element the DBML declares, regardless of count.
+Read `docs/plan/domain.dbml` (and `docs/plan/context/external-refs.md` if present) and present the full generation plan. **There is no cap on the number of entities, enums, or Value Objects** — generate every element the DBML declares, regardless of count.
 
 ```
 Domain inventory for [Module Name]:
@@ -226,7 +226,7 @@ Before generating any code, formalize the domain plan through spec-kit so every 
 **2a. Run `/speckit.plan`** with the domain inventory from Phase 1:
 
 ```
-/speckit.plan "Domain layer for {module-name}: [N] entities from final/domain.dbml.
+/speckit.plan "Domain layer for {module-name}: [N] entities from docs/plan/domain.dbml.
 Generate one task per entity covering its full bundle:
   - 1 migration in database/migrations/
   - 1 Eloquent model in src/Models/
@@ -288,13 +288,13 @@ Generation proceeds in strict dependency order. All file generation runs through
 
 **3c. Migrations.** Generate migration files in dependency order (parents before children).
 
-**3d. Contracts + HasContractRelations trait.** If `final/external-refs.md` carries an `external-refs` index, run `scripts/generate-contract.mjs` once per unique slug **before** generating models. Each call emits one `src/Contracts/{ContractName}Contract.php` and (idempotently) the shared `src/Models/Concerns/HasContractRelations.php`. If there is no `final/external-refs.md`, skip this step.
+**3d. Contracts + HasContractRelations trait.** If `docs/plan/context/external-refs.md` carries an `external-refs` index, run `scripts/generate-contract.mjs` once per unique slug **before** generating models. Each call emits one `src/Contracts/{ContractName}Contract.php` and (idempotently) the shared `src/Models/Concerns/HasContractRelations.php`. If there is no `docs/plan/context/external-refs.md`, skip this step.
 
 **3e. Models.** Generate all Eloquent model files. Models import contracts and the trait when normalizing each model's `cross_subdomain_refs`.
 
 **3f. Repositories.** Generate the repository trait per model.
 
-**3g. Complete the name lineage.** Open `final/naming.md` (written by `opscale-dbml`) and fill the **Model class** column: one FQCN per entity row (e.g. `Opscale\Credits\Models\Application`), and the contract class for each external-reference row (e.g. `UsersContract`). If `final/naming.md` does not exist (legacy module), create it from the DBML tables and the generated classes. This closes the trace canonical business name → table → class that keeps stakeholders and developers aligned.
+**3g. Complete the name lineage.** Open `docs/plan/naming.md` (written by `opscale-dbml`) and fill the **Model class** column: one FQCN per entity row (e.g. `Opscale\Credits\Models\Application`), and the contract class for each external-reference row (e.g. `UsersContract`). If `docs/plan/naming.md` does not exist (legacy module), create it from the DBML tables and the generated classes. This closes the trace canonical business name → table → class that keeps stakeholders and developers aligned.
 
 **3h. Update plan.md.** Append the generated file list to `.specify/specs/{NNN}-{module-name}/plan.md`, including the `Task ID` from `tasks.md` for each entity bundle so the file → task mapping is traceable.
 

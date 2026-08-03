@@ -2,12 +2,12 @@
 name: opscale-sipoc
 description: >
   Authors one SIPOC document per businessRuleTask in the BPMN — the bridge
-  between BPMN (what) and the future handle() body (how). Step 4 of Plan,
-  after opscale-bpmn; eventual consumer is opscale-logic. Trigger: "generate
-  the SIPOC", "detail the actions", "describe each action". Use it whenever
-  each BPMN businessRuleTask needs its SIPOC detailed, even if just "detail
-  the actions". Not for writing the actual handle() code — that's
-  opscale-logic.
+  between BPMN (what) and the executable body of the generated Action (how).
+  Step 4 of Plan, after opscale-bpmn; eventual consumer is opscale-logic.
+  Trigger: "generate the SIPOC", "detail the actions", "describe each
+  action". Use it whenever each BPMN businessRuleTask needs its SIPOC
+  detailed, even if just "detail the actions". Not for writing the Action
+  implementation — that's opscale-logic.
 ---
 
 # opscale-sipoc
@@ -19,14 +19,16 @@ description: >
 For each `businessRuleTask` in the module's BPMN, write a SIPOC document that formalizes:
 
 - **S**uppliers — who/what provides the inputs
-- **I**nputs — what enters the Action (becomes `parameters()` in `opscale-logic`)
-- **P**rocess — the ordered steps the Action performs (becomes the `handle()` body)
-- **O**utputs — what the Action returns (becomes the return-array keys)
+- **I**nputs — what enters the Action (becomes the Action's declared parameters in `opscale-logic`)
+- **P**rocess — the ordered steps the Action performs (becomes the executable body of the generated Action)
+- **O**utputs — what the Action returns (become the Action's returned output keys)
 - **C**ustomers — who/what consumes the outputs
 
-The SIPOC is **planning**, not code. It captures the business reasoning behind each Action so future readers — humans and AI agents alike — can audit a single Action without loading the whole module. It is the contract that `opscale-logic` materializes into PHP later.
+The SIPOC is **planning**, not code. It captures the business reasoning behind each Action so future readers — humans and AI agents alike — can audit a single Action without loading the whole module. It is the contract that `opscale-logic` materializes into code later.
 
-**The set of logic units to document is fixed upstream.** The units are exactly the Logics that emerged from `opscale-bpmn` (grouped in its Phase 2.3, persisted in `final/operations.md`). This skill details those units — it never defines new ones, and never merges, splits, or renames them. If a unit is missing or wrong, the fix happens by re-running `opscale-bpmn`, not here.
+**The set of logic units to document is fixed upstream.** The units are exactly the Logics that emerged from `opscale-bpmn` (grouped in its Phase 2.3, persisted in `docs/plan/operations.md`). This skill details those units — it never defines new ones, and never merges, splits, or renames them. If a unit is missing or wrong, the fix happens by re-running `opscale-bpmn`, not here.
+
+**Business rules are DEFINED here — the SIPOCs are the module's canonical BR-NN registry.** No earlier artifact numbers or defines business rules: the DBML models data, and `opscale-bpmn` only elicits rules as prose (`governed by:` lines in `operations.md`). This skill takes that prose, challenges and completes it with the user, assigns each rule a **module-unique `BR-NN` number** (numbering is continuous across all the module's SIPOCs — never restarted per file, never duplicated), and writes the **full statement** (condition → consequence) in the owning SIPOC's `## Business Rules enforced` section. A rule enforced by several Actions is defined once (first SIPOC that needs it) and cited by number in the others. Downstream, `opscale-logic` implements the rules from these sections and `opscale-ontology` renders the BR badges from them.
 
 This skill is **Plan #4** (the last Plan step). It runs AFTER `opscale-bpmn` and BEFORE `opscale-logic`. It is irrelevant for **package** and **library** projects — those skip Plan entirely.
 
@@ -34,20 +36,28 @@ This skill is **Plan #4** (the last Plan step). It runs AFTER `opscale-bpmn` and
 
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
-| 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
-| 2 | `opscale-process` has been run | `final/process.md` exists | Stop. Run `/opscale-process`. |
-| 3 | `opscale-dbml` has been run | `final/domain.dbml` exists | Stop. Run `/opscale-dbml`. |
-| 4 | `opscale-bpmn` has been run | `final/process.bpmn` and `final/operations.md` exist and PASS | Stop. Run `/opscale-bpmn`. |
+| 1 | `opscale-process` has been run | `docs/plan/process.txt` exists | Stop. Run `/opscale-process`. |
+| 2 | `opscale-dbml` has been run | `docs/plan/domain.dbml` exists | Stop. Run `/opscale-dbml`. |
+| 3 | `opscale-bpmn` has been run | `docs/plan/logic.bpmn` and `docs/plan/operations.md` exist and PASS | Stop. Run `/opscale-bpmn`. |
 
 Project type: this skill only applies to **app** and **module** projects. Refuse to run on **package** or **library** projects — they have no BPMN.
 
+### Modes
+
+The mode depends on whether a writable project folder is available — not on which app is running. A Claude Desktop session may well be opened on a repo folder; `opscale-init` is never a prerequisite.
+
+- **Writable project folder (Claude Code, or Claude Desktop on a repo/folder):** write every output directly to `docs/plan/` as described below.
+- **No folder access (chat-only session):** produce exactly the same files as downloadable outputs, each labeled with its destination path (e.g. `docs/plan/actions/{kebab-id}.md`), so the user can drop them into the repo afterwards.
+
+The validation gates (Phase 3, the smoke gate, and `scripts/validate-sipoc.mjs`) are **mandatory in both environments** — a console is available in both, and the validator is dependency-free.
+
 ### Role & tone
 
-You are a **senior process analyst** who writes tight, unambiguous SIPOC documents — one per Action. Where `opscale-process` only borrows SIPOC-style rigor, this skill applies the SIPOC framework **in full** (Suppliers, Inputs, Process, Outputs, Customers). Your job is to **challenge and validate** until each SIPOC is complete, coherent, and faithful to `final/process.md` + `final/domain.dbml` + `final/process.bpmn`. You do not accept ambiguity — when a source is silent on a step, you **stop and ask** rather than invent. Be firm but didactic when surfacing a gap: name what is missing and propose how to resolve it.
+You are a **senior process analyst** who writes tight, unambiguous SIPOC documents — one per Action. Where `opscale-process` only borrows SIPOC-style rigor, this skill applies the SIPOC framework **in full** (Suppliers, Inputs, Process, Outputs, Customers). Your job is to **challenge and validate** until each SIPOC is complete, coherent, and faithful to `docs/plan/process.txt` + `docs/plan/domain.dbml` + `docs/plan/logic.bpmn`. You do not accept ambiguity — when a source is silent on a step, you **stop and ask** rather than invent. Be firm but didactic when surfacing a gap: name what is missing and propose how to resolve it.
 
 ### Language rule — match the input
 
-Detect the language of the process description that feeds this skill (the prose in `final/process.md`, especially the *Narrative* section) and **lock every SIPOC's prose to that language** — section prose, table cells, and the one-sentence Action description.
+Detect the language of the flow that feeds this skill (the step lines in `docs/plan/process.txt` and the canonical names in `docs/plan/context/names.md`) and **lock every SIPOC's prose to that language** — section prose, table cells, and the one-sentence Action description.
 
 | If the source is in… | Then write each SIPOC in… |
 |---|---|
@@ -60,7 +70,7 @@ Detect the language of the process description that feeds this skill (the prose 
 
 - Internal IDs: `BR-NN`, and the kebab-case `logic.id` (= filename)
 - The SIPOC section headings `Suppliers`, `Inputs`, `Process`, `Outputs`, `Customers`, `Business Rules enforced`, `Failure modes` — `opscale-logic` parses these literal strings
-- The Output key `success`, Model class names, and `::run()` composition calls
+- The Output key `success`, entity names, and Action composition calls
 - Classification symbols: 👤 💻
 - Filenames and paths
 
@@ -68,7 +78,7 @@ Detect the language of the process description that feeds this skill (the prose 
 
 `opscale-process` describes the *whole process*: one end-to-end flow with **exactly one** primary input and **exactly one** primary output. This skill zooms in on a single **Action**, and at this level the SIPOC framework applies without that restriction:
 
-- An Action **can have several Suppliers, several Inputs, several Outputs, and several Customers.** There is no "one primary input / one primary output" rule here — list every input `handle()` consumes and every output it returns.
+- An Action **can have several Suppliers, several Inputs, several Outputs, and several Customers.** There is no "one primary input / one primary output" rule here — list every input the Action consumes and every output it returns.
 - `success: bool` is always the first Output row, but it is one of potentially many.
 
 Use the same classification vocabulary as the process description, so the two artifacts read as one methodology.
@@ -80,14 +90,16 @@ Use the same classification vocabulary as the process description, so the two ar
 | User | 👤 | A person — staff member, customer, partner, third-party operator. Anyone who interacts with the module through a UI, an API request, an email reply, or any other human channel. |
 | System | 💻 | Software — internal service, external SaaS, scheduled job, message queue, database, API. Anything that produces or consumes data without a human in the loop at that step. |
 
-**Supplier vs Mechanism.** The Supplier answers *WHO/WHAT provides the input* — e.g. `👤 Loan officer`, `💻 Credit bureau`. The **How obtained** column answers *BY WHAT MECHANISM the input reaches the Action* — e.g. `user types in form`, `system queries from credit bureau API`, `file upload`, `event payload from upstream task`, `read from Loan model passed in`. Both are required, and they are answering different questions.
+**Suppliers and Customers carry NO identity — only the actor type.** Do not name the person, role, or system: a Supplier row is `👤 User` or `💻 System`, nothing more (not `👤 Loan officer`, not `💻 Credit bureau`). Identifying *who* is an implementation/organization concern that does not belong in the plan; what matters to generation is only whether a human or software sits at that end. The same applies to the Inputs table's **Source** column and the Outputs table's **Consumers** column: `👤` or `💻` only.
+
+**Actor type vs Mechanism.** The Supplier type answers *is a human or software providing this input*. The **How obtained** column answers *BY WHAT MECHANISM the input reaches the Action* — e.g. `user types in form`, `queried from an external API`, `file upload`, `event payload from upstream task`, `read from the record passed in`. Both are required, and they are answering different questions.
 
 **Why:** knowing how each input is obtained surfaces missing UI fields, missing integrations, and missing validation rules **before generation starts** — not after `opscale-ui` runs and discovers no form field for `monthlyIncome`, or after `opscale-logic` runs and finds no HTTP client for the credit-bureau call. Mechanism is what turns abstract Inputs into concrete plumbing decisions.
 
 **Coherence — validated per SIPOC (beyond the structural Phase 3 gate):**
 
-1. **Every Input has a named Supplier** — no "TBD", no "various".
-2. **Every Output has a named Customer** — no "TBD".
+1. **Every Input has a typed Supplier** — `👤 User` or `💻 System`; no "TBD", no "various".
+2. **Every Output has a typed Customer** — `👤 User` or `💻 System`; no "TBD".
 3. **Every Process step is an observable action that maps to a Business Rule or a concrete effect** — never a vague "process the request".
 
 When a source violates one of these, stop, name what's missing, and resolve it with the user before writing the file.
@@ -95,21 +107,18 @@ When a source violates one of these, stop, name what's missing, and resolve it w
 ### Output: File Structure
 
 ```
-.specify/specs/{NNN}-{module-name}/
-├── logs/
-│   └── sipoc.md                       ← combined phase-by-phase Q/A across every action
-└── final/
-    ├── sipoc.txt               ← plain list: each Logic operation → the operations that compose it
-    └── actions/
-        ├── {kebab-id-1}.sipoc.md
-        ├── {kebab-id-2}.sipoc.md
-        └── ...
+docs/plan/
+├── sipoc.txt               ← plain list: each Logic operation → the operations that compose it
+└── actions/
+    ├── {kebab-id-1}.md
+    ├── {kebab-id-2}.md
+    └── ...
 ```
 
-**Three output groups:**
+**Two output groups:**
 
-- `final/actions/{kebab-id}.sipoc.md` — one file per `businessRuleTask`. Filename is the BPMN `logic.id` value (kebab-case). **Append-only** within an iteration — never overwrite an existing SIPOC silently. Conflicts go to user review.
-- `final/sipoc.txt` — the plain, parseable composition list (no markdown): each Logic operation on its own line (`{name} ({kebab-id})`), each operation that composes it below prefixed with `- `, one blank line between Logics:
+- `docs/plan/actions/{kebab-id}.md` — one file per `businessRuleTask`. Filename is the BPMN `logic.id` value (kebab-case). **Append-only** within an iteration — never overwrite an existing SIPOC silently. Conflicts go to user review.
+- `docs/plan/sipoc.txt` — the plain, parseable composition list (no markdown): each Logic operation on its own line (`{name} ({kebab-id})`), each operation that composes it below prefixed with `- `, one blank line between Logics:
 
   ```
   Publish article (publish-article)
@@ -121,8 +130,7 @@ When a source violates one of these, stop, name what's missing, and resolve it w
   - create review_checklist
   ```
 
-  One block per `businessRuleTask`, matching each SIPOC's Process section line for line (minus `return result`). **Why:** gates diff this file against `final/operations.md` *Composition* to catch BPMN ↔ SIPOC drift cheaply. Rewritten from all SIPOCs on every run.
-- `logs/sipoc.md` — a single combined log for the whole run. Each action gets one top-level section (`## Action — {kebab-id}`) containing the Q/A from sub-phases 2.1 (Inputs), 2.2 (Suppliers), 2.3 (Outputs), 2.4 (Customers), 2.5 (Process). Replaced on each re-run of the skill. Use the skeleton at `assets/log-template.md`.
+  One block per `businessRuleTask`, matching each SIPOC's Process section line for line (minus `return result`). **Why:** gates diff this file against `docs/plan/operations.md` *Composition* to catch BPMN ↔ SIPOC drift cheaply. Rewritten from all SIPOCs on every run.
 
 Canonical paths: `references/artifact-paths.md`.
 
@@ -134,22 +142,22 @@ Use **exactly** these section headings (Phase 4 of `opscale-logic` parses them a
 # SIPOC — {Action Name}
 
 **Identifier:** `{kebab-id}`
-**BPMN task:** {task name as it appears in final/process.bpmn}
-**Subprocess:** {subprocess name from final/operations.md}
-**Step:** {business step this Logic decomposes, from final/operations.md}
+**BPMN task:** {task name as it appears in docs/plan/logic.bpmn}
+**Subprocess:** {subprocess name from docs/plan/operations.md}
+**Step:** {business step this Logic decomposes, from docs/plan/operations.md}
 **Business Rules:** BR-NN, BR-NN
-**Composes:** {leaf Actions called via ::run(), or "none"}
+**Composes:** {leaf Actions this Logic invokes, or "none"}
 
 {One-sentence description of what the Action does, written for an AI agent
-deciding when to invoke it. Becomes `description()` in the PHP class.}
+deciding when to invoke it. Becomes the generated Action's description.}
 
 ## Suppliers
-- {👤 / 💻} {Supplier} — provides {input(s)}
+- {👤 User | 💻 System} — provides {input(s)}
 
 ## Inputs
 | Input | Source | How obtained | Type | Validation rules | Description |
 |-------|--------|--------------|------|------------------|-------------|
-| {name} | {👤/💻} {supplier} | {form field / API query / event payload / file upload / passed record / …} | {business-type slug, entity name, or scalar} | {constraints beyond the type} | {one line} |
+| {name} | {👤 \| 💻} | {form field / API query / event payload / file upload / passed record / …} | {business-type slug, entity name, or scalar} | {constraints beyond the type} | {one line} |
 
 ## Process
 1. {verb} {entity}[.{column} → {value}] (BR-NN, if cited)
@@ -161,17 +169,17 @@ N. return result
 | Output key | Type | Description | Consumers |
 |------------|------|-------------|-----------|
 | success | bool | Whether the operation succeeded | All callers |
-| {key} | {type} | {one line} | {👤/💻} {consumer} |
+| {key} | {type} | {one line} | {👤 \| 💻} |
 
 ## Customers
-- {👤 / 💻} {Consumer} — consumes {output(s)}
+- {👤 User | 💻 System} — consumes {output(s)}
 
 ## Business Rules enforced
-- **BR-NN** — {one-line restatement, as it appears in final/process.md}
+- **BR-NN** — {full statement: condition → consequence. Defined HERE (module-unique numbering across all SIPOCs); rules defined in another SIPOC are cited by number with a short recap}
 
 ## Failure modes
-- **Soft failure** (return `['success' => false, 'message' => '...']`): {trigger}
-- **Hard failure** (throw): {invalid state, integrity violation, …}
+- **Soft failure** (returns `success=false` + `message`): {trigger}
+- **Hard failure** (throws): {invalid state, integrity violation, …}
 ```
 
 ### Conflict handling (existing SIPOCs)
@@ -182,40 +190,40 @@ If a target SIPOC file already exists when this skill runs:
 |-----------|----------|
 | File is byte-identical to the proposed content | Skip — no action |
 | File has extra sections or richer text than the proposed content | **Keep existing** — do not overwrite. Note in the run summary that the SIPOC was preserved. |
-| File and proposed content disagree on Inputs/Process/Outputs | **Flag for review** — write the proposed version to `final/actions/{kebab-id}.sipoc.md.opscale-preview` and let the user reconcile manually. Never overwrite silently. |
+| File and proposed content disagree on Inputs/Process/Outputs | **Flag for review** — write the proposed version to `docs/plan/actions/{kebab-id}.md.opscale-preview` and let the user reconcile manually. Never overwrite silently. |
 
-SIPOCs in `final/actions/` are append-only across iterations. Iteration changes get recorded by `opscale-iterate` (under its own iteration log), not by overwriting the initial SIPOC.
+SIPOCs in `docs/plan/actions/` are append-only across iterations. Iteration changes get recorded by `opscale-iterate` (under its own iteration log), not by overwriting the initial SIPOC.
 
 ### Domain Rules
 
-1. **One BPMN businessRuleTask = one SIPOC file = one future Action class.** The chain is 1:1:1 across BPMN → SIPOC → code. No merging, no splitting. The unit list comes from the previous step — the Logics locked by `opscale-bpmn` in `final/operations.md` — and this skill never adds, drops, or renames a unit; a wrong list is fixed by re-running `opscale-bpmn`.
+1. **One BPMN businessRuleTask = one SIPOC file = one future Action class.** The chain is 1:1:1 across BPMN → SIPOC → code. No merging, no splitting. The unit list comes from the previous step — the Logics locked by `opscale-bpmn` in `docs/plan/operations.md` — and this skill never adds, drops, or renames a unit; a wrong list is fixed by re-running `opscale-bpmn`.
 2. **The SIPOC is a re-statement of spec + DBML + BPMN — never invention.** If the spec is silent on a step, stop and ask the user. Do not fabricate business logic to fill a SIPOC.
 3. **Filename = identifier = `logic.id`** — all three are the same kebab-case string. `opscale-logic` relies on this to locate the SIPOC by Action.
 4. **`success: bool` is always the first Output row.** Every Action must return it; this skill enforces it at the document level so `opscale-logic` never has to add it after the fact.
-5. **Every Business Rule cited (BR-NN) must exist in `final/process.md`.** A SIPOC that references BR-99 when `final/process.md` only has BR-01..BR-05 fails the validation gate.
+5. **Every Business Rule cited (BR-NN) must be defined in exactly one SIPOC's `Business Rules enforced` section.** The SIPOCs are the module's canonical BR registry: numbering is module-unique and continuous; a cited-but-nowhere-defined BR-NN, or the same number defined twice with different statements, fails the gate.
 6. **Composes references are forward declarations.** A SIPOC may list a leaf Action that has not yet been authored — but the validation gate will fail until that leaf SIPOC also exists. This forces leaf SIPOCs to be authored first.
-7. **Append-only across iterations.** When `opscale-iterate` adds a new Action, this skill writes a new SIPOC into `final/actions/`; it never edits an existing one. Refinements to existing Actions are recorded by `opscale-iterate` in its own iteration log.
-8. **Never write PHP.** This skill produces only markdown. PHP generation is `opscale-logic`'s job.
+7. **Append-only across iterations.** When `opscale-iterate` adds a new Action, this skill writes a new SIPOC into `docs/plan/actions/`; it never edits an existing one. Refinements to existing Actions are recorded by `opscale-iterate` in its own iteration log.
+8. **Never write implementation code.** This skill produces only markdown. Code generation is `opscale-logic`'s job.
 
 ## Steps
 
-### Phase 1 — Inventory the Logic units locked by opscale-bpmn (from final/operations.md)
+### Phase 1 — Inventory the Logic units locked by opscale-bpmn (from docs/plan/operations.md)
 
-The units to detail are **not elicited in this skill** — they are the Logics that surged from the previous step. Build the inventory from `final/operations.md`: one row per Logic in the *Grouped sequence* / *Composition* sections of each subprocess (name, `id`, subprocess, governing rules).
+The units to detail are **not elicited in this skill** — they are the Logics that surged from the previous step. Build the inventory from `docs/plan/operations.md`: one row per Logic in the *Grouped sequence* / *Composition* sections of each subprocess (name, `id`, subprocess, governing rules).
 
-Then cross-check against `final/process.bpmn`: every Logic `id` from `operations.md` must appear as a `businessRuleTask` `logic.id`, and every `businessRuleTask` in the XML must appear in `operations.md` — 1:1, no leftovers on either side. On any mismatch, **stop and send the user back to `/opscale-bpmn`**; the unit list is repaired there, never patched here.
+Then cross-check against `docs/plan/logic.bpmn`: every Logic `id` from `operations.md` must appear as a `businessRuleTask` `logic.id`, and every `businessRuleTask` in the XML must appear in `operations.md` — 1:1, no leftovers on either side. On any mismatch, **stop and send the user back to `/opscale-bpmn`**; the unit list is repaired there, never patched here.
 
 Present:
 
 ```
-SIPOCs to author (source: final/operations.md, cross-checked 1:1 against final/process.bpmn):
+SIPOCs to author (source: docs/plan/operations.md, cross-checked 1:1 against docs/plan/logic.bpmn):
 
 | # | Logic (BPMN task name) | logic.id (filename) | Subprocess | Business Rules |
 |---|------------------------|---------------------|------------|----------------|
 | 1 | [name]                 | [kebab-id]          | [subprocess] | BR-01, BR-02 |
 | 2 | [name]                 | [kebab-id]          | [subprocess] | BR-03 |
 
-Existing SIPOCs in final/actions/: [list any pre-existing files]
+Existing SIPOCs in docs/plan/actions/: [list any pre-existing files]
 Confirm before authoring?
 ```
 
@@ -227,9 +235,9 @@ For each `businessRuleTask` from Phase 1, walk these five sub-phases in order. E
 
 **2.1 — Inputs + How obtained**
 
-Ask what the Action receives **and by what mechanism each input arrives**. Inputs become `parameters()` in `opscale-logic`.
+Ask what the Action receives **and by what mechanism each input arrives**. Inputs become the Action's declared parameters in `opscale-logic`.
 
-**Type inputs with business types first.** Resolve each input's type in this order: a **business-type slug** from the central language-agnostic registry (`.specify/memory/business-types.md`, fallback: `references/business-types.md`) → an **entity name** from `final/domain.dbml` (when the input is a whole record; `opscale-logic` resolves the entity to its model class via `final/naming.md`) → a plain scalar. A business type carries its validation semantics implicitly (typing an input `email` means valid-email-format without restating it), so the Validation column only adds constraints the registry doesn't already imply (`required`, cross-field conditions). If the entity column this input feeds carries `// type:{slug}` in the DBML, the input MUST use the same slug — same data, same type, both sides. The SIPOC stays implementation-agnostic: slugs and entity names, never framework classes or rule strings.
+**Type inputs with business types first.** Resolve each input's type in this order: a **business-type slug** from the central language-agnostic registry (`docs/plan/context/business-types.md`, fallback: `references/business-types.md`) → an **entity name** from `docs/plan/domain.dbml` (when the input is a whole record; `opscale-logic` resolves the entity to its generated class via `docs/plan/naming.md`) → a plain scalar. A business type carries its validation semantics implicitly (typing an input `email` means valid-email-format without restating it), so the Validation column only adds constraints the registry doesn't already imply (`required`, cross-field conditions). If the entity column this input feeds carries `// type:{slug}` in the DBML, the input MUST use the same slug — same data, same type, both sides. The SIPOC stays implementation-agnostic: slugs and entity names, never framework classes or rule strings.
 
 ```
 SIPOC for "[Action Name]" (id: `[kebab-id]`)
@@ -271,7 +279,7 @@ Wait for confirmation.
 
 **2.3 — Outputs**
 
-Ask what the Action returns. `success: bool` is mandatory and always the first row. Outputs become the return-array keys in `handle()`.
+Ask what the Action returns. `success: bool` is mandatory and always the first row. Outputs become the Action's returned output keys.
 
 ```
 SIPOC for "[Action Name]" — Outputs
@@ -313,7 +321,7 @@ Wait for confirmation.
 
 **2.5 — Process (CRUD sequence grouped by Logic) + Rules batch**
 
-The Process section is **the CRUD sequence that the corresponding Logic orchestrates** — nothing more. Open `final/operations.md` and pull the *Composition* CRUD list for this Action's Logic (locked by `opscale-bpmn` Phase 2.4 and persisted there). Never read `logs/bpmn.md` for this — logs are ephemeral and replaced on re-runs; `final/operations.md` is the canonical source. The Process is that list in order: each step is a plain CRUD operation on one entity, written as `{verb} {entity}` with the column or condition that motivates it.
+The Process section is **the CRUD sequence that the corresponding Logic orchestrates** — nothing more. Open `docs/plan/operations.md` and pull the *Composition* CRUD list for this Action's Logic (locked by `opscale-bpmn` Phase 2.4 and persisted there). `docs/plan/operations.md` is the canonical source — there is no other record of the composition. The Process is that list in order: each step is a plain CRUD operation on one entity, written as `{verb} {entity}` with the column or condition that motivates it.
 
 Standard verbs: `create`, `read`, `update`, `delete`. Conditions or column targets are written inline (`update Loan.status → approved`, `read CreditScore verify ≥ 650`). No emoji typing on the CRUDs themselves — the Logic name above the list is what gives them meaning. The last step is always `return result`.
 
@@ -330,15 +338,15 @@ Process for "[Action Name]" — CRUD sequence under this Logic:
 Composes: {leaf-action-id, ...}   or "none"
 
 Failure modes:
-- Soft failure (return ['success' => false, 'message' => '...']): {trigger}
-- Hard failure (throw): {invalid state, integrity violation, …}
+- Soft failure (returns success=false + message): {trigger}
+- Hard failure (throws): {invalid state, integrity violation, …}
 
 Confirm the Process and Failure modes?
 ```
 
-If the BPMN composition references an entity not in `final/domain.dbml`, or cites a BR not in `final/process.md`, **stop and surface the gap before continuing**. Do not invent business logic — the SIPOC is a re-statement of what's already in spec + DBML + BPMN.
+If the BPMN composition references an entity not in `docs/plan/domain.dbml`, or cites a BR not in `docs/plan/process.txt`, **stop and surface the gap before continuing**. Do not invent business logic — the SIPOC is a re-statement of what's already in spec + DBML + BPMN.
 
-Wait for confirmation. Append the action's Q/A (sub-phases 2.1–2.5) as a new `## Action — {kebab-id}` section in `logs/sipoc.md`, then assemble the file (see template in Context), write it to `final/actions/{kebab-id}.sipoc.md`, and move to the next Action. After the last Action, regenerate `final/sipoc.txt` from all SIPOCs' Process sections (format in Context).
+Wait for confirmation. Assemble the file (see template in Context), write it to `docs/plan/actions/{kebab-id}.md`, and move to the next Action. After the last Action, regenerate `docs/plan/sipoc.txt` from all SIPOCs' Process sections (format in Context).
 
 **Wait for user approval before continuing.**
 
@@ -347,22 +355,21 @@ Wait for confirmation. Append the action's Q/A (sub-phases 2.1–2.5) as a new `
 Run automatically after every SIPOC is written:
 
 ```
-[ ] Phase 1 inventory sourced from final/operations.md (Logics locked by opscale-bpmn) and 1:1 with the businessRuleTask nodes in final/process.bpmn
-[ ] One SIPOC per Logic unit — file count in final/actions/ matches the Phase 1 inventory
-[ ] logs/sipoc.md has one `## Action — {kebab-id}` section per businessRuleTask
-[ ] Every SIPOC walked 2.1 (inputs) → 2.2 (suppliers) → 2.3 (outputs) → 2.4 (customers) → 2.5 (process imported from final/operations.md)
+[ ] Phase 1 inventory sourced from docs/plan/operations.md (Logics locked by opscale-bpmn) and 1:1 with the businessRuleTask nodes in docs/plan/logic.bpmn
+[ ] One SIPOC per Logic unit — file count in docs/plan/actions/ matches the Phase 1 inventory
+[ ] Every SIPOC walked 2.1 (inputs) → 2.2 (suppliers) → 2.3 (outputs) → 2.4 (customers) → 2.5 (process imported from docs/plan/operations.md)
 [ ] Every SIPOC filename equals the BPMN logic.id (kebab-case, lowercase)
 [ ] Every SIPOC has all 7 sections (Identifier block, Suppliers, Inputs, Process, Outputs, Customers, Business Rules, Failure modes)
 [ ] Every SIPOC has a one-sentence description after the heading
 [ ] Every Input traces to a named, typed Supplier (no "TBD", no "various")
 [ ] Every Output traces to a named, typed Customer (no "TBD", no "various")
-[ ] Every Process step is a plain CRUD on one entity (or a `compose {leaf-action-id}` call) and traces to an item in the `final/operations.md` composition for this Logic; final step is `return result`
+[ ] Every Process step is a plain CRUD on one entity (or a `compose {leaf-action-id}` call) and traces to an item in the `docs/plan/operations.md` composition for this Logic; final step is `return result`
 [ ] Every Outputs row includes `success: bool` as the first entry
-[ ] Every Business Rule cited (BR-NN) exists in final/process.md and was elicited in BPMN Phase 2.1 for the owning subprocess
-[ ] Every "Composes" entry exists as another SIPOC file in final/actions/
-[ ] No SIPOC references an entity that doesn't exist in final/domain.dbml
-[ ] Every Input type is a business-type slug from the registry, an entity name from final/domain.dbml, or a scalar — never a framework class — and matches the DBML `type:{slug}` note of the column it feeds, when one exists
-[ ] final/sipoc.txt written — one block per businessRuleTask, each block matching its SIPOC's Process section (minus `return result`)
+[ ] Every Business Rule cited (BR-NN) exists in docs/plan/process.txt and was elicited in BPMN Phase 2.1 for the owning subprocess
+[ ] Every "Composes" entry exists as another SIPOC file in docs/plan/actions/
+[ ] No SIPOC references an entity that doesn't exist in docs/plan/domain.dbml
+[ ] Every Input type is a business-type slug from the registry, an entity name from docs/plan/domain.dbml, or a scalar — never a framework class — and matches the DBML `type:{slug}` note of the column it feeds, when one exists
+[ ] docs/plan/sipoc.txt written — one block per businessRuleTask, each block matching its SIPOC's Process section (minus `return result`)
 ```
 
 If any check fails, repair the affected SIPOC and re-run the gate before marking the skill complete.
@@ -370,12 +377,12 @@ If any check fails, repair the affected SIPOC and re-run the gate before marking
 **Smoke gate (MANDATORY before marking the skill complete).** The validation gate covers structural correctness. The smoke gate catches drift between the Logic units locked by `opscale-bpmn` and what was actually written — a three-way count: `operations.md` Logics = **unique** BPMN logic ids = SIPOC files. The BPMN side counts unique `logic.id` values, never raw `businessRuleTask` occurrences: the same Logic may appear as several nodes (reused across branches — e.g. `discard-candidate` reachable from three gateways) and each tag also opens and closes, so a line count always overshoots:
 
 ```bash
-SPEC_DIR=$(ls -d .specify/specs/*/ 2>/dev/null | head -1)
-[ -n "$SPEC_DIR" ] || { echo "No spec dir found"; exit 1; }
+PLAN_DIR=docs/plan
+[ -d "$PLAN_DIR" ] || { echo "No docs/plan directory found"; exit 1; }
 
-OPS_COUNT=$(grep -cE '^[[:space:]]*- [a-z0-9-]+ — business step' "$SPEC_DIR/final/operations.md" 2>/dev/null || echo 0)
-BPMN_COUNT=$(grep -o '{"type":"logic","id":"[a-z0-9-]*"' "$SPEC_DIR/final/process.bpmn" 2>/dev/null | sort -u | wc -l | tr -d ' ')
-SIPOC_COUNT=$(ls -1 "$SPEC_DIR/final/actions/"*.sipoc.md 2>/dev/null | wc -l | tr -d ' ')
+OPS_COUNT=$(grep -cE '^[[:space:]]*- [a-z0-9-]+ — business step' "$PLAN_DIR/operations.md" 2>/dev/null || echo 0)
+BPMN_COUNT=$(grep -o '{"type":"logic","id":"[a-z0-9-]*"' "$PLAN_DIR/logic.bpmn" 2>/dev/null | sort -u | wc -l | tr -d ' ')
+SIPOC_COUNT=$(ls -1 "$PLAN_DIR/actions/"*.md 2>/dev/null | wc -l | tr -d ' ')
 
 if [ "$OPS_COUNT" -ne "$BPMN_COUNT" ] || [ "$BPMN_COUNT" -ne "$SIPOC_COUNT" ]; then
   echo "operations.md Logics ($OPS_COUNT) != unique BPMN logic ids ($BPMN_COUNT) != SIPOC files ($SIPOC_COUNT)"
@@ -389,31 +396,33 @@ Do NOT mark the skill `PASS` based on file count alone — also verify that **ea
 
 **Wait for user approval before continuing.**
 
-### Phase 4 — Update plan.md
+### Phase 4 — Update plan.md (spec-kit repos only)
 
-Append a short pointer to `.specify/specs/{NNN}-{module-name}/plan.md`:
+This phase is **conditional on `.specify/` existing** in the repo (spec-kit projects initialized by `opscale-init`). When `.specify/` is absent — e.g. running in Claude Desktop, or running the Plan phase in a repo before init — **skip this phase explicitly**: state that no spec-kit `plan.md` exists to update, and finish. The `docs/plan/` outputs are complete on their own.
+
+When `.specify/` exists, append a short pointer to `.specify/specs/{NNN}-{module-name}/plan.md`:
 
 ```markdown
 ## SIPOC catalog
 
 | # | Action | Identifier | BPMN task | SIPOC file |
 |---|--------|-----------|-----------|-----------|
-| 1 | [Name] | `[kebab-id]` | [task] | `final/actions/[kebab-id].sipoc.md` |
-| 2 | [Name] | `[kebab-id]` | [task] | `final/actions/[kebab-id].sipoc.md` |
+| 1 | [Name] | `[kebab-id]` | [task] | `docs/plan/actions/[kebab-id].md` |
+| 2 | [Name] | `[kebab-id]` | [task] | `docs/plan/actions/[kebab-id].md` |
 ```
 
-This row count must match the count of `businessRuleTask` nodes in the BPMN and the count of files in `final/actions/`. Three places, one number.
+This row count must match the count of `businessRuleTask` nodes in the BPMN and the count of files in `docs/plan/actions/`. Three places, one number.
 
 **Wait for user approval before continuing.**
 
 ## Sample
 
-Full anonymized `.sipoc.md` example and a full reference `final/sipoc.txt` (recruitment module, shared across the four Plan skills — one block per logic id in `bpmn.txt`) — see `references/sample-output.md`.
+Full anonymized SIPOC example (`docs/plan/actions/{kebab-id}.md`) and a full reference `docs/plan/sipoc.txt` (recruitment module, shared across the four Plan skills — one block per logic id in the `subprocesses/` outlines) — see `references/sample-output.md`.
 
 ## Success condition
 
 ```bash
-node scripts/validate-sipoc.mjs --sipoc-dir=.specify/specs/*/final/actions/
+node scripts/validate-sipoc.mjs --sipoc-dir=docs/plan/actions
 ```
 
 Exit code 0 = pass.

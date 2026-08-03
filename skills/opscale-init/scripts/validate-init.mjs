@@ -40,6 +40,26 @@ function main() {
     }
   }
 
+  // Plan intake folder (docs/plan/)
+  const planReadme = path.join(root, 'docs/plan/README.md');
+  if (!fs.existsSync(planReadme)) {
+    errors.push(`docs/plan/README.md (Plan manifest) missing → ${planReadme}:1`);
+  } else {
+    passes.push('docs/plan/README.md exists');
+  }
+  const planContextDir = path.join(root, 'docs/plan/context');
+  if (!fs.existsSync(planContextDir)) {
+    errors.push(`docs/plan/context/ missing → ${planContextDir}:1`);
+  } else {
+    passes.push('docs/plan/context/ exists');
+    const registry = path.join(planContextDir, 'business-types.md');
+    if (!fs.existsSync(registry)) {
+      errors.push(`business-types registry missing → ${registry}:1`);
+    } else {
+      passes.push('docs/plan/context/business-types.md exists');
+    }
+  }
+
   // commit-msg husky hook
   const commitMsg = path.join(root, '.husky/commit-msg');
   if (!fs.existsSync(commitMsg)) {

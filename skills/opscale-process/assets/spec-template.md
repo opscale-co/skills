@@ -1,83 +1,56 @@
-# Template — final/process.md (module macro-process)
+# Templates — docs/plan/context/names.md + docs/plan/process.txt
 
-Section headings and structural keywords (`Stages:`, `Flows:`, "ends at") stay
-in English exactly as written here — validators and downstream skills parse
-them literally. The prose, step lines, and entity names are written in the
-user's language. Use **readable canonical entity names** (natural words, not
-snake_case, no DDD jargon). The emoji is the only step marker — never write the
-type word. Replace every `[...]`. **Five sections**, plain titles, no rationale:
-Name normalization, Lifecycle, Ordered flow, Relations, Narrative.
+The structural keywords (`Trigger:`, `Ends with:`) stay in English exactly as
+written here — validators and downstream skills parse them literally. Step
+lines and entity names are written in the user's language, as **readable
+canonical names** (natural words, not snake_case, no DDD jargon). Steps carry
+no type marker — no emoji, no type word; each line is just the business
+activity. Replace every `[...]`.
 
 ---
 
-# Module: [Name]
+## docs/plan/context/names.md
 
-## Name normalization
+```markdown
+# Names — [Module]
 
 | Canónico | ← alias |
 |---|---|
 | [Canonical name] | [alias, alias] |
 | [Canonical name] | [alias, alias] |
+```
 
-## Lifecycle
+---
 
-> One sub-block per lifecycle entity (typically every aggregate root). Stages
-> are plain words in the user's language and flow left-to-right. Every flow is
-> a verb+noun phrase and MUST terminate at a stage transition — no orphan
-> flows. Drives Phase 4: each flow becomes a candidate subprocess.
+## docs/plan/process.txt
 
-### [Entity]
-**Stages:** [Stage1] → [Stage2] → [Stage3] → [FinalStage]
-**Flows:**
-- [Verb + noun] — ends at `[Stage]`
-- [Verb + noun] — ends at `[Stage]`
+Plain text — no markdown, no emojis. One block per subprocess, blocks
+separated by exactly one blank line. Each block: the subprocess name line,
+its `Trigger:` line, its `Ends with:` line (`—` only for the final
+subprocess), then its numbered steps. Numbering is sequential across the
+whole module — it does NOT restart per subprocess. Branches reference
+destinations by step number; Yes/No labels use the user's language
+(`Sí`, `No`, `True`, `False`, ...).
 
-### [Another Entity]
-**Stages:** [Stage1] → [Stage2] → [FinalStage]
-**Flows:**
-- [Verb + noun] — ends at `[Stage]`
+```
+[Subprocess 1 name]
+Trigger: [what starts the module]
+Ends with: [wait for X — the event that opens Subprocess 2]
+1) [plain step]
+2) [question?] — Yes → 3 · No → 4
+3) [plain step] → 5
+4) [notify someone — internal step]
+5) [last internal step before the wait]
 
-## Ordered flow
+[Subprocess 2 name]
+Trigger: the wait from [Subprocess 1 name] resolved ([X arrived])
+Ends with: [wait for Y]
+6) [plain step]
+7) [deliver file — internal step]
 
-> Subprocesses are bounded by a wait (`⏳`). Notifications (`📩`) and file
-> deliveries (`📄`) are internal steps; they only close a subprocess when a
-> `⏳` immediately follows them. One step per line. Numbering is sequential
-> across the whole module — it does NOT restart per subprocess. Branches
-> reference destinations by step number. Yes/No labels use the user's language
-> (`Sí`, `No`, `True`, `False`, ...).
-
-### Subprocess 1: [Subprocess name]
-*Trigger:* [what starts the module]
-1) 📝 [plain step]
-2) ⚙️ [plain step]
-3) 🔀 [question?] — Yes → 4 · No → 5
-4) ✅ [plain step] → 6
-5) 📩 [notify someone — internal step]
-6) ⏳ [wait for X — boundary; ends Subprocess 1]
-
-### Subprocess 2: [Subprocess name]
-*Trigger:* the wait from Subprocess 1 resolved ([X arrived])
-7) 📝 [plain step]
-8) ⚙️ [plain step]
-9) 📄 [deliver file — internal step]
-10) ⏳ [wait for Y — boundary; ends Subprocess 2]
-
-### Subprocess 3: [Subprocess name]
-*Trigger:* the wait from Subprocess 2 resolved
-11) 📝 [plain step]
-12) 📩 [notify someone — internal step; final subprocess, no closing wait]
-
-## Relations
-- [Canonical] [relates to] [Canonical] [and …]
-- [Canonical] [relates to] [Canonical]
-
-## Narrative
-
-[2–3 lines: what the module does overall.]
-
-[One short paragraph per subprocess of the flow, in order — naming the same
-entities the normalization list uses, mentioning each decision and the wait
-(`⏳`) that closes the subprocess (or noting that it's the final subprocess
-with no closing wait). Notifications and file deliveries are mentioned where
-they happen inside the subprocess, not as boundaries. No detail that isn't
-in the flow.]
+[Subprocess 3 name]
+Trigger: the wait from [Subprocess 2 name] resolved
+Ends with: —
+8) [plain step]
+9) [notify someone — internal step; final subprocess, no closing wait]
+```

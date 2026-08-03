@@ -15,7 +15,7 @@ Project Loans {
 
   Note: '''
   # Subdomain: Loans — Application lifecycle (policy-driven)
-  Source spec: .specify/specs/001-admission/final/process.md
+  Source spec: docs/plan/process.txt
   Modeling standard: FIBO (Party / Decision concepts) + ACTUS (ANN)
 
   ## Bounded Context
@@ -23,10 +23,6 @@ Project Loans {
   - Per-cycle: verifications, scores, decisions, requirements, documents
   - Depends on: external Party Reference Data (parties), Auth (users)
 
-  ## Key Business Rules
-  - BR-01: a Counterparty may have N applications historically, but at most
-    one Member per application (UNIQUE members.application_id)
-  - BR-02: strict status transitions on applications (see ApplicationStatus)
   '''
 }
 
@@ -40,12 +36,12 @@ Enum ApplicationStatus {
 }
 
 Table applications {
-  id              varchar(26)        [pk, note: 'ULID']
-  code            varchar(20)        [not null, unique]
-  status          ApplicationStatus  [not null, default: 'Pending']
-  current_cycle   int                [not null, default: 1]
+  id              varchar(26)        [pk, note: 'ULID // type:identifier']
+  code            varchar(50)        [not null, unique, note: 'Human-readable application number // type:document']
+  status          ApplicationStatus  [not null, default: 'Pending', note: 'Lifecycle state']
+  current_cycle   int                [not null, default: 1, note: 'Evaluation cycle, 1-based // type:quantity']
 
-  policy_id       varchar(26)        [ref: > policies.id, not null]
+  policy_id       varchar(26)        [ref: > policies.id, not null, note: 'Active policy applied // type:identifier']
   party_id        varchar(26)        [not null, note: '// external_ref:parties | organization.parties — Counterparty that applies']
   assigned_to     varchar(26)        [null,     note: '// external_ref:users | auth.users — assigned operator']
 
@@ -58,14 +54,14 @@ Table applications {
 }
 
 Table verifications {
-  id              varchar(26)  [pk]
-  application_id  varchar(26)  [ref: > applications.id, not null]
-  cycle_number    int          [not null, default: 1]
-  rule_id         varchar(26)  [ref: > rules.id, not null]
-  score           float        [null]
+  id              varchar(26)   [pk, note: 'ULID // type:identifier']
+  application_id  varchar(26)   [ref: > applications.id, not null, note: 'Evaluated application // type:identifier']
+  cycle_number    int           [not null, default: 1, note: 'Cycle this verification belongs to // type:quantity']
+  rule_id         varchar(26)   [ref: > rules.id, not null, note: 'Rule verified // type:identifier']
+  score           decimal(2,1)  [null, note: 'Weighted score for the chosen option // type:rating']
 
-  created_at      timestamp    [not null]
-  updated_at      timestamp    [not null]
+  created_at      timestamp     [not null]
+  updated_at      timestamp     [not null]
 
   indexes {
     (application_id, cycle_number, rule_id) [unique, name: 'uq_verifications_cycle_rule']
@@ -73,11 +69,11 @@ Table verifications {
 }
 
 Table members {
-  id              varchar(26)  [pk]
-  application_id  varchar(26)  [ref: > applications.id, not null, unique]
+  id              varchar(26)  [pk, note: 'ULID // type:identifier']
+  application_id  varchar(26)  [ref: > applications.id, not null, unique, note: 'Origin application // type:identifier']
   party_id        varchar(26)  [not null, note: '// external_ref:parties | organization.parties']
-  code            varchar(20)  [not null, unique]
-  joined_at       timestamp    [not null]
+  code            varchar(50)  [not null, unique, note: 'Member number // type:document']
+  joined_at       timestamp    [not null, note: 'Activation moment // type:moment']
 }
 
 // Intra-subdomain relation
@@ -89,9 +85,9 @@ Ref: verifications.application_id > applications.id
 ```
 
 
-## Sample final/dbml.txt
+## Sample docs/plan/dbml.txt
 
-Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `bpmn.txt` with its operations, every logic id in `bpmn.txt` has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
+Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `docs/plan/subprocesses/` with its operations, every logic id there has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
 
 ```
 requisition

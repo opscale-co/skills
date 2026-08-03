@@ -1,122 +1,42 @@
-# Output context methods — override only when needed
+# Adapter surfaces — the pipeline handles them; do not override
 
-## Output context methods — override only when needed
+Since opscale-co/actions ^2.2 the base `Opscale\Actions\Action` runs the full
+SIPOC pipeline on every adapter (Nova, HTTP, CLI, MCP): prefill resolution,
+input validation, `canRun()` gate, `handle()`, output validation and the
+`EmitsEvent` dispatch. Each adapter already translates the `Result` envelope
+to its native channel:
 
-The `Opscale\Actions\Action` base class provides default behavior for all four
-output contexts. Only implement a context method when you need to **customize how
-the result is returned** — not just because the action is used in that context.
+| Adapter | Success | Soft fail (`fail()` / `canRun()`) | Hard fail (Throwable) |
+|---------|---------|-----------------------------------|----------------------|
+| Nova (`asNovaAction`) | `Action::message(...)` | `Action::danger(reason)` | `Action::danger(message)` |
+| HTTP (`asController`) | JSON `{success: true, data}` | 422 `{success: false, message, data}` | exception bubbles |
+| CLI (`asCommand`) | info output | error output | exception bubbles |
+| MCP (`asMCPTool`) | tool response + `outputSchema` | MCP error response | MCP error |
 
-### When to override
+**Never override `asNovaAction()` / `asController()` / `asCommand()` /
+`asMCPTool()`.** The two customization needs that used to justify overrides
+are now first-class hooks:
 
-| Method | Override when... |
-|--------|-----------------|
-| `asNovaAction()` | You need to navigate, show a custom danger message, or handle ValidationException specially |
-| `asController()` | You need a custom HTTP response format or status code |
-| `asCommand()` | You need custom terminal output formatting |
-| `asMCPTool()` | You need to shape the MCP tool response differently |
-
-If the default behavior (return the array as-is) is sufficient, do not add the method.
-
-### asNovaAction() — when result needs custom Nova feedback
+1. **"The entity comes from the Nova selection"** → a `prefill()` closure:
 
 ```php
-public function asNovaAction(ActionFields $fields, Collection $models): mixed
+#[\Override]
+public function prefill(): array
 {
-    try {
-        $attributes = $fields->toArray();
-        $attributes['[entity]'] = $models->first();
-
-        $this->fill($attributes);
-        $this->validate();
-
-        $result = $this->handle($attributes);
-
-        if (empty($result) || ! $result['success']) {
-            return Action::danger($result['message'] ?? 'Something went wrong.');
-        }
-
-        // Navigate to the result record:
-        return Action::visit("/resources/[resource-uri]/{$result['[entity]']->id}");
-        // Or show a success message:
-        // return Action::message($result['message']);
-
-    } catch (ValidationException $e) {
-        $errors = collect($e->errors())
-            ->map(fn ($msgs, $field) => "{$field}: " . implode(', ', $msgs))
-            ->implode("\n");
-
-        return Action::danger($errors);
-
-    } catch (\Throwable $e) {
-        return Action::danger($e->getMessage());
-    }
+    return ['entity' => fn ($ctx) => $ctx?->models?->first()];
 }
 ```
 
-### getActionFields() — always define when action needs user input
+The closure receives the adapter context (Nova: object with `->fields` and
+`->models`; HTTP: the `Request`; CLI: the `Command`; MCP: the MCP `Request`).
+Returning null drops the entry so the caller-supplied value survives — the
+same Action works on every surface.
 
-```php
-public function getActionFields(): array
-{
-    return [
-        Text::make(__('[Label]'), '[field]')
-            ->rules('required', 'string', 'max:255'),
+2. **"Render a nicer form"** → the Nova adapter infers fields from
+`parameters()` rules and `options()` (see SKILL.md → Nova field inference).
+`getActionFields()` should not be overridden either; adjust rules/options
+instead.
 
-        Textarea::make(__('[Label]'), '[field]')
-            ->rules('nullable', 'string'),
-
-        Select::make(__('[Label]'), '[field]')
-            ->options([...])
-            ->searchable()
-            ->nullable(),
-    ];
-}
-```
-
-### asController() — when custom HTTP response needed
-
-```php
-public function asController(Request $request): \Illuminate\Http\JsonResponse
-{
-    $result = $this->handle($request->validated());
-
-    if (! $result['success']) {
-        return response()->json(['message' => $result['message']], 422);
-    }
-
-    return response()->json($result);
-}
-```
-
-### asCommand() — when custom terminal output needed
-
-```php
-public function asCommand(Command $command): void
-{
-    $result = $this->handle([
-        '[param]' => $command->argument('[param]'),
-    ]);
-
-    $command->info($result['success']
-        ? $result['message']
-        : 'Failed: ' . $result['message']
-    );
-}
-```
-
-### asMCPTool() — when custom MCP response shape needed
-
-```php
-public function asMCPTool(array $arguments): array
-{
-    $result = $this->handle($arguments);
-
-    // Shape the response for the MCP client
-    return [
-        'status'  => $result['success'] ? 'ok' : 'error',
-        'payload' => $result,
-    ];
-}
-```
-
----
+The only remaining legitimate override is a truly custom response shape
+(e.g. `Action::visit(...)` navigation after success). Treat it as an
+exception that must be justified in the PR, not a pattern.

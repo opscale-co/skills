@@ -1,8 +1,9 @@
 ---
 name: opscale-init
 description: >
-  Bootstraps an Opscale/Laravel Nova module for Spec-Driven Development. Step 0 —
-  must run before every other Opscale skill. Trigger: "start a new module", "set
+  Bootstraps an Opscale/Laravel Nova module for Spec-Driven Development. Step 0
+  of the implementation track — required before Generate/Review/Presentation
+  skills; the Plan phase runs without it. Trigger: "start a new module", "set
   up spec-kit", "initialize the project", "create the constitution".
   Use it whenever a new Opscale module is started, even if phrased as "set this up". Not for adding features to an already-initialized project — that's opscale-iterate.
 ---
@@ -16,6 +17,10 @@ description: >
 Bootstrap a new Opscale module or project with GitHub spec-kit's Spec-Driven Development scaffold, then write an Opscale-specific `constitution.md` that encodes the architectural DNA Claude Code must follow across every skill in the sequence.
 
 The constitution is the single most important file in the project. Every subsequent skill (`opscale-process`, `opscale-dbml`, `opscale-bpmn`, etc.) produces artifacts that Claude Code validates against it. Getting it right once here prevents drift across the entire development lifecycle.
+
+Init also creates the **Plan intake folder** `docs/plan/` (with its manifest `README.md` and `context/`): the flat, exportable home of every Plan-phase artifact — written directly by the Plan skills in Claude Code, or dropped in from a Claude Desktop planning session. Layout: `references/artifact-paths.md`.
+
+**Init is NOT a prerequisite of the Plan phase.** The Plan skills (`opscale-map`, `opscale-process`, `opscale-dbml`, `opscale-bpmn`, `opscale-sipoc`, `opscale-ontology`) create and populate `docs/plan/` on their own, in Claude Code or Claude Desktop, with or without a repo — a Desktop session may well be running on a repo folder and write there directly. Init is required before the **Generate/Review/Presentation** skills (everything that touches the Laravel side). When init runs on a project whose `docs/plan/` already has Plan artifacts, that is the normal flow, not an anomaly — Phase 6b below adopts them as-is.
 
 ### Prerequisites — project context (MUST be a Laravel/PHP project)
 
@@ -304,45 +309,50 @@ The following commands must be available:
 
 **Wait for user approval before continuing.**
 
-### Phase 6 — Establish the per-module spec layout
+### Phase 6 — Create the Plan intake folder (`docs/plan/`)
 
-Every module folder under `.specify/specs/{NNN}-{module-name}/` follows the same split: `logs/` for phase-by-phase Q/A records, `final/` for the canonical downstream-consumable artifacts. Spec-kit's own `plan.md` / `tasks.md` live at the spec root.
+Plan-phase artifacts live in a **flat, exportable `docs/plan/` folder** — plain documents, stack-agnostic, one module per `docs/plan/` (multi-module apps keep one per module repo). Spec-kit keeps only its own files under `.specify/` (constitution, `business-types.php`, `plan.md` / `tasks.md`, scripts, templates). Canonical layout and per-file formats: `references/artifact-paths.md`.
 
-```
-.specify/specs/{NNN}-{module-name}/
-├── plan.md                       ← spec-kit: tech decisions (live)
-├── tasks.md                      ← spec-kit: ordered task breakdown (live)
-├── logs/                         ← phase-by-phase Q/A records (replaced each run)
-│   ├── process.md
-│   ├── dbml.md
-│   ├── bpmn.md
-│   └── sipoc.md
-└── final/                        ← canonical, downstream-consumable artifacts
-    ├── process.md                ← opscale-process spec
-    ├── domain.dbml               ← raw DBML
-    ├── external-refs.md          ← cross-subdomain ref index (only if ≥1 ref)
-    ├── process.bpmn              ← raw BPMN 2.0 XML
-    └── actions/
-        └── {kebab-id}.sipoc.md   ← one per businessRuleTask
+**6a. Create the intake folder and its manifest:**
+
+```bash
+mkdir -p docs/plan/context
+cp references/plan-readme.md docs/plan/README.md   # skip if it already exists
 ```
 
-Canonical paths reference: `references/artifact-paths.md`.
+`docs/plan/README.md` is the folder's **manifest**: it documents which skill produces which file, in which order, so the folder "expects" the outputs before any of them exist. It is also the landing zone for files downloaded from a Claude Desktop planning session — the user drops them here and the pipeline continues from them. In pipeline order:
 
-**Logs vs. final:**
+| # | Skill | Produces (under `docs/plan/`) |
+|---|-------|-------------------------------|
+| 1 | `opscale-map` | `context/system.map.md` |
+| 2 | `opscale-process` | `context/names.md` + `process.txt` |
+| 3 | `opscale-dbml` | `domain.dbml` + `dbml.txt` + `naming.md` + `context/external-refs.md` |
+| 4 | `opscale-bpmn` | `logic.bpmn` + `operations.md` + `subprocesses/{kebab-name}.txt` |
+| 5 | `opscale-sipoc` | `actions/{kebab-id}.md` (one per Logic) + `sipoc.txt` |
+| 6 | `opscale-ontology` | `ontology.html` (Plan closer) |
 
-| Folder | Lifecycle | Read by |
-|--------|-----------|---------|
-| `final/` | **Live** — overwritten by every re-run and iteration | Downstream skills (domain, ui, logic, test, sipoc) and BPMN/DBML tooling |
-| `logs/` | **Replaced each run** — the Q/A record of how the live artifact was produced | Humans auditing decisions; `opscale-iterate` when continuing a module |
+Do not pre-create `actions/` or empty artifact files — the Plan skills create them when they run.
 
-`opscale-iterate` records iteration narrative separately in its own iteration log (see that skill); the four Plan skills do NOT write iteration narratives.
+**6b. Recognize pre-existing Plan artifacts.** If `docs/plan/` already contains Plan artifacts when init runs (typically brought from a Claude Desktop planning session), do NOT demand the Plan phase be re-run. Compare the folder's contents against the manifest table and report which Plan steps are already satisfied and where the pipeline resumes:
 
-When initializing the project, do NOT pre-create empty `logs/` or `final/` folders — they appear naturally the first time `opscale-process`, `opscale-dbml`, `opscale-bpmn`, or `opscale-sipoc` run for a given module. This step just documents the convention so every downstream skill follows it.
+```
+Plan intake — docs/plan/ already contains artifacts:
+  [x] opscale-map      — context/system.map.md
+  [x] opscale-process  — context/names.md + process.txt
+  [ ] opscale-dbml     — missing
+  [ ] opscale-bpmn     — missing
+  [ ] opscale-sipoc    — missing
+  [ ] opscale-ontology — missing
 
-**Business-types registry.** Copy two files into `.specify/memory/` — **skip any that already exist** (never overwrite a project's extended copies):
+Plan steps 1–2 satisfied. Resume the pipeline at opscale-dbml.
+```
 
-1. `references/business-types.md` → `.specify/memory/business-types.md` — the **canonical, language-agnostic registry**: one slug per business type with meaning, storage, validation semantics, and UI intent. This is what the Plan phase reads: `opscale-dbml` types entity attributes with it (`// type:{slug}` notes), `opscale-sipoc` types Action inputs. Plan artifacts reference slugs only — never a class or framework rule.
-2. `references/business-types.php` → `.specify/memory/business-types.php` — the **Laravel/Nova implementation binding** of that registry (concrete field classes, validation rule strings, casts). Consumed only by Generate: `opscale-domain` (casts/rules), `opscale-ui` (field selection), `opscale-logic` (`parameters()` rules).
+Never overwrite files already present in `docs/plan/` — they are the source the rest of the pipeline reads.
+
+**6c. Business-types registry.** Copy two files — **skip any that already exist** (never overwrite a project's extended copies):
+
+1. `references/business-types.md` → `docs/plan/context/business-types.md` — the **canonical, language-agnostic registry**: one slug per business type with meaning, storage, validation semantics, and UI intent. This is what the Plan phase reads: `opscale-dbml` types entity attributes with it (`// type:{slug}` notes), `opscale-sipoc` types Action inputs. Plan artifacts reference slugs only — never a class or framework rule.
+2. `references/business-types.php` → `.specify/memory/business-types.php` — the **Laravel/Nova implementation binding** of that registry (concrete field classes, validation rule strings, casts). Stays on the spec-kit side. Consumed only by Generate: `opscale-domain` (casts/rules), `opscale-ui` (field selection), `opscale-logic` (`parameters()` rules).
 
 Registry first, binding second — a slug missing from either side fails the Generate gates.
 
@@ -355,18 +365,12 @@ Explain to the user how the Opscale skill sequence maps to spec-kit's workflow:
 ```
 OPSCALE SKILL           → ARTIFACT
 ─────────────────────────────────────────────────────────────────────────
-opscale-map             → .specify/memory/domain-map.md (Step 1, app-level; re-run before each new module)
-opscale-process         → .specify/specs/{NNN-module}/final/process.md
-                          .specify/specs/{NNN-module}/logs/process.md
-opscale-dbml            → .specify/specs/{NNN-module}/final/domain.dbml
-                          .specify/specs/{NNN-module}/final/external-refs.md
-                          .specify/specs/{NNN-module}/final/naming.md
-                          .specify/specs/{NNN-module}/logs/dbml.md
-opscale-bpmn            → .specify/specs/{NNN-module}/final/process.bpmn
-                          .specify/specs/{NNN-module}/final/operations.md
-                          .specify/specs/{NNN-module}/logs/bpmn.md
-opscale-sipoc           → .specify/specs/{NNN-module}/final/actions/{id}.sipoc.md
-                          .specify/specs/{NNN-module}/logs/sipoc.md
+opscale-map             → docs/plan/context/system.map.md (Step 1, app-level; re-run before each new module)
+opscale-process         → docs/plan/process.txt (+ context/names.md)
+opscale-dbml            → docs/plan/domain.dbml (+ dbml.txt, naming.md, context/external-refs.md)
+opscale-bpmn            → docs/plan/logic.bpmn (+ operations.md, subprocesses/)
+opscale-sipoc           → docs/plan/actions/{kebab-id}.md (+ sipoc.txt)
+opscale-ontology        → docs/plan/ontology.html (Plan closer)
                           /speckit.clarify  ← validate before planning
 opscale-domain          ↘
 opscale-ui            → .specify/specs/{NNN-module}/plan.md
@@ -382,7 +386,7 @@ opscale-release         ↗
 opscale-ai              → .claude/skills/{slug}-setup.md (installer skill for consumers)
 ```
 
-Each module gets its own numbered folder: `001-membership`, `002-kyc`, `003-loans`, etc.
+Plan artifacts live flat in `docs/plan/` (one per module repo — see `references/artifact-paths.md`). The numbered folders under `.specify/specs/` (`001-membership`, `002-kyc`, `003-loans`, …) hold only spec-kit's own `plan.md` / `tasks.md`, written by the `/speckit.*` commands.
 
 **Wait for user approval before continuing.**
 
@@ -412,6 +416,7 @@ Based on what exists, recommend where to join the sequence:
 | What exists | Recommended entry point |
 |-------------|------------------------|
 | Nothing — greenfield | Step 2: `opscale-process` |
+| Plan artifacts already in `docs/plan/` (e.g. from a Claude Desktop planning session) | First missing Plan step per the Phase 6b report — do not re-run satisfied steps |
 | Business docs but no code | Step 2: `opscale-process` (formalize into spec) |
 | Models + migrations but no spec | Step 2: `opscale-process` (reverse-document what exists) |
 | Models + migrations + spec | Step 3: `opscale-dbml` (formalize data model from existing schema) |

@@ -21,9 +21,9 @@ Generate Laravel Nova Resource classes that expose domain entities in the admin 
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
-| 2 | `opscale-process` has been run | `final/process.md` exists and PASS | Stop. Run `/opscale-process`. |
-| 3 | `opscale-dbml` has been run | `final/domain.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
-| 4 | `opscale-bpmn` has been run | `final/process.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
+| 2 | `opscale-process` has been run | `docs/plan/process.txt` exists and PASS | Stop. Run `/opscale-process`. |
+| 3 | `opscale-dbml` has been run | `docs/plan/domain.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `docs/plan/logic.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
 | 5 | `opscale-domain` has been run | `src/Models/` contains one model per DBML aggregate root | Stop. Run `/opscale-domain`. |
 | 6 | `tasks.md` entries for all domain bundles marked complete | Check `tasks.md` for unchecked `Implement {Entity}` items | Finish pending domain tasks before starting UI. |
 
@@ -142,7 +142,7 @@ The JSON contract for each is documented at the top of the matching `scripts/gen
 
 ### Phase 1 — Inventory aggregate roots
 
-Walk `src/Models/` and identify every aggregate root (model not consumed only as a HasMany child). Cross-reference with `final/domain.dbml` to confirm. Present the inventory:
+Walk `src/Models/` and identify every aggregate root (model not consumed only as a HasMany child). Cross-reference with `docs/plan/domain.dbml` to confirm. Present the inventory:
 
 ```
 Nova UI inventory for [Module Name]:
@@ -247,7 +247,7 @@ Ordering inside an aggregate's bundle: field-trait first (so the Resource and Re
 
 The JSON contract for each script lives in its header comment. The skill is responsible for picking the right Nova field per column (`Text` / `Select` / `BelongsTo` / `Boolean` / `Number` / `DateTime` …) and emitting the `status_badge` map and `has_many_relationships` list — the script does not look at the Eloquent model.
 
-**Business types drive field selection.** Before picking a field heuristically, check the column's DBML note: a `// type:{slug}` note means the field, its `config`, and its `->help()` hint come from the Laravel/Nova **binding** (`.specify/memory/business-types.php`; canonical slugs in `.specify/memory/business-types.md`) — an `email` column renders `Email::make`, a `money` column renders `Currency::make` with its currency config, never a bare `Text::make`. Heuristics apply only to columns with no `type:` note. **Why:** the registry is what guarantees the same business type looks and validates identically across every module.
+**Business types drive field selection.** Before picking a field heuristically, check the column's DBML note: a `// type:{slug}` note means the field, its `config`, and its `->help()` hint come from the Laravel/Nova **binding** (`.specify/memory/business-types.php`; canonical slugs in `docs/plan/context/business-types.md`) — an `email` column renders `Email::make`, a `money` column renders `Currency::make` with its currency config, never a bare `Text::make`. Heuristics apply only to columns with no `type:` note. **Why:** the registry is what guarantees the same business type looks and validates identically across every module.
 
 **Three invariants the JSON normalization must enforce** (the scripts assume they hold):
 

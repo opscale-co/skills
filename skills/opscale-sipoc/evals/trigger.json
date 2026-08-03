@@ -8,7 +8,7 @@
     "should_trigger": true
   },
   {
-    "query": "describe each action in final/process.bpmn — inputs, process, outputs",
+    "query": "describe each action in the module's bpmn file — inputs, process, outputs",
     "should_trigger": true
   },
   {

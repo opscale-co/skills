@@ -12,7 +12,7 @@
     "should_trigger": true
   },
   {
-    "query": "create the process diagram from final/process.md and final/domain.dbml",
+    "query": "create the process diagram from docs/plan/process.txt and docs/plan/domain.dbml",
     "should_trigger": true
   },
   {
@@ -60,7 +60,7 @@
     "should_trigger": false
   },
   {
-    "query": "build a nova bpmn viewer field for the process file",
+    "query": "build an admin panel viewer widget for the process file",
     "should_trigger": false
   },
   {
@@ -68,7 +68,7 @@
     "should_trigger": false
   },
   {
-    "query": "showcase the module end to end in nova for the stakeholders",
+    "query": "showcase the module end to end in the admin panel for the stakeholders",
     "should_trigger": false
   },
   {

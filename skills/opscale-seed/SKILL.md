@@ -16,7 +16,7 @@ description: >
 
 ### Purpose — why this skill exists
 
-The demo must let someone **walk a complete flow of the module**, not just see a row in each table. The seeded dataset has to be **coherent and connected** — the records of one process link to the next so `opscale-showcase` can drive each subprocess in `final/process.md` *Ordered flow* end to end, and so empty/half-populated pages don't mask Resource bugs (missing relations, broken casts, enum mismatches). Every module ends up reinventing the seeder; this skill makes the convention explicit.
+The demo must let someone **walk a complete flow of the module**, not just see a row in each table. The seeded dataset has to be **coherent and connected** — the records of one process link to the next so `opscale-showcase` can drive each subprocess in `docs/plan/process.txt` end to end, and so empty/half-populated pages don't mask Resource bugs (missing relations, broken casts, enum mismatches). Every module ends up reinventing the seeder; this skill makes the convention explicit.
 
 This skill is **Step 1 of the Presentation phase**. It runs after Review has signed off on quality and is the entry point that turns the module into a functional demo: it produces the seeded baseline that `opscale-menu` then organizes and that `opscale-showcase` walks through end-to-end.
 
@@ -51,7 +51,7 @@ Entities must be created in FK-dependency order. The skill walks the DBML / mode
 3. **Catalog tables** — anything with `is_active` and no FKs: denominations, policies, templates. Real-world defaults (USD denominations 1/5/10/20/50/100 + coins; UIF threshold $10,000; one TransactionTemplate per BPMN logic id that mentions a Template).
 4. **Aggregate roots in topological order** — open day, then vault session + drawer session, then one transaction + one transfer + one count + one discrepancy + one authorization request.
 5. **Resolved states, not pending** — seeded records should be in "operating"/"executed"/"confirmed"/"open" states by default so the detail page exercises the happy path. Add one record in a pending state if the module has a critical pending-flow UI to demonstrate.
-6. **One complete flow per process** — for each subprocess in `final/process.md` *Ordered flow*, seed the connected records needed to walk it from start to finish (the trigger record, the entities each step touches, the final outcome). The dataset is the script `opscale-showcase` follows; if a process can't be walked end to end on the seed, the seed is incomplete.
+6. **One complete flow per process** — for each subprocess in `docs/plan/process.txt`, seed the connected records needed to walk it from start to finish (the trigger record, the entities each step touches, the final outcome). The dataset is the script `opscale-showcase` follows; if a process can't be walked end to end on the seed, the seed is incomplete.
 
 ### Template
 
@@ -119,7 +119,7 @@ class DatabaseSeeder extends Seeder
 
 Read `src/Models/` and `src/Models/Enums/`. Build the topological order from FK constraints. Identify catalog tables (no FKs to other tables in the package + an `is_active` column) and aggregate roots (everything else with an FK chain that bottoms out at a catalog or root).
 
-Cross-reference `final/process.md` *Ordered flow* — each subprocess must have an end-to-end walkable dataset.
+Cross-reference `docs/plan/process.txt` — each subprocess must have an end-to-end walkable dataset.
 
 Present the planned order:
 
@@ -138,7 +138,7 @@ Aggregate roots (8):
   - vaults
   - ...
 
-Flows covered (from Ordered flow):
+Flows covered (from process.txt):
   - [flow 1]   - records seeded: ...
   - [flow 2]   - records seeded: ...
 ```
@@ -147,7 +147,7 @@ Flows covered (from Ordered flow):
 
 ### Phase 2 — Propose the connected dataset
 
-For each flow in `final/process.md` *Ordered flow*, list the connected chain of records the seed will create so the operator (or `opscale-showcase`) can step through the entire process on the seeded data:
+For each flow in `docs/plan/process.txt`, list the connected chain of records the seed will create so the operator (or `opscale-showcase`) can step through the entire process on the seeded data:
 
 ```
 Flow: [name]
@@ -191,7 +191,7 @@ foreach ([
 ] as $m) echo $m . ": " . $m::count() . PHP_EOL;'
 ```
 
-If any aggregate ends with 0 records, the seeder is missing it. Fix and re-run until every aggregate root has at least one record AND every flow in *Ordered flow* can be walked end to end on the seeded data.
+If any aggregate ends with 0 records, the seeder is missing it. Fix and re-run until every aggregate root has at least one record AND every subprocess in process.txt can be walked end to end on the seeded data.
 
 **Wait for user approval before continuing.**
 

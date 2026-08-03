@@ -23,22 +23,21 @@ Closes an `Application` in `Qualified` with one of three approval
 sub-types, recording a `Decision(Approve)` in the current cycle.
 
 ## Suppliers
-- 💻 `ScoreApplication` (High branch) or `CheckRequirements` — provides
-  `application` in `Qualified` **via Nova context**
-- 👤 Admission committee — provides `approvalType`, `reason` and overrides
-- 💻 `config('loans.contract_terms_template')` — default template
-- 💻 Auth subdomain — provides `decided_by` **via `auth()->id()`**
+- 💻 System — provides `application` in `Qualified` **via UI context** and
+  `decided_by` **via the authenticated-user context**
+- 👤 User — provides `approvalType`, `reason` and overrides
+- 💻 System — provides the default template **via module configuration**
 
 ## Inputs
-| Input            | Source                | How obtained                              | Type   | Validation rules          | Description                                 |
-|------------------|-----------------------|-------------------------------------------|--------|---------------------------|--------------------------------------------|
-| application      | 💻 Nova context        | auto-resolved from the Nova resource page | model  | status='Qualified'        | auto-resolved via `ResolvesFromContext`    |
-| approvalType     | 👤 Committee (Select)  | user picks in the Action form dropdown    | string | required, in: Std,CT,CR   | dropdown in the Action form                |
-| reason           | 👤 Committee (Textarea)| user types in the Action form             | string | required, min:10, max:2000| mandatory textarea in the form             |
-| extraReqTypes    | 👤 Committee (MultiSelect)| user picks in the Action form          | array  | nullable                  | only visible for the ChangedRequirements sub-type |
+| Input            | Source | How obtained                              | Type   | Validation rules          | Description                                 |
+|------------------|--------|-------------------------------------------|--------|---------------------------|--------------------------------------------|
+| application      | 💻     | auto-resolved from the UI context         | entity | status='Qualified'        | auto-resolved via context auto-resolution  |
+| approvalType     | 👤     | user picks in the Action form dropdown    | string | required, in: Std,CT,CR   | dropdown in the Action form                |
+| reason           | 👤     | user types in the Action form             | string | required, min:10, max:2000| mandatory textarea in the form             |
+| extraReqTypes    | 👤     | user picks in the Action form             | array  | nullable                  | only visible for the ChangedRequirements sub-type |
 
 ## Process
-1. resolve `application` from Nova context; guard `status === Qualified` (BR-01)
+1. resolve `application` from UI context; guard `status === Qualified` (BR-01)
 2. switch (`approvalType`):
    - **Standard** → `approveAsIs(reason, Standard, [])`
    - **ChangedTerms** → `approveAsIs(reason, ChangedTerms, overrides)`
@@ -48,20 +47,19 @@ sub-types, recording a `Decision(Approve)` in the current cycle.
 4. return the result array
 
 ## Outputs
-| Output key        | Type           | Description                       | Consumers                |
-|-------------------|----------------|-----------------------------------|--------------------------|
-| success           | bool           | Whether the operation succeeded   | All callers              |
-| approval_type     | string         | Sub-type issued                   | 👤 Committee, audit      |
-| decision_id       | string (ULID)  | Newly created `Decision`          | 👤 Committee, audit      |
-| contract_terms_id | string?(ULID)  | `ContractTerms` (Standard/CT only)| 💻 `ActivateApplication` |
-| new_status        | string         | Approved | SemiQualified         | 💻 BPMN downstream       |
+| Output key        | Type           | Description                       | Consumers    |
+|-------------------|----------------|-----------------------------------|--------------|
+| success           | bool           | Whether the operation succeeded   | All callers  |
+| approval_type     | string         | Sub-type issued                   | 👤           |
+| decision_id       | string (ULID)  | Newly created `Decision`          | 👤           |
+| contract_terms_id | string?(ULID)  | `ContractTerms` (Standard/CT only)| 💻           |
+| new_status        | string         | Approved | SemiQualified         | 💻           |
 
 ## Customers
-- 💻 `ActivateApplication` (Standard / ChangedTerms) — consumes
-  `ContractTerms` + `application` to create the `Member`
-- 💻 `CheckRequirements` (ChangedRequirements) — consumes the
-  `Application` again once the Applicant fulfills the new `Requirement`s
-- 👤 Admission committee — consumes `Decision` as an auditable record
+- 💻 System — consumes `ContractTerms` + `application` downstream
+  (activation on Standard / ChangedTerms; re-verification on
+  ChangedRequirements)
+- 👤 User — consumes `Decision` as an auditable record
 
 ## Business Rules enforced
 - **BR-01** — Strict transitions: `Qualified → Approved` (Standard,
@@ -70,19 +68,19 @@ sub-types, recording a `Decision(Approve)` in the current cycle.
   not erase the previous decision, it opens a new cycle.
 
 ## Failure modes
-- **Soft failure** (return `['success' => false, 'message' => '…']`):
+- **Soft failure** (returns `success=false` + `message`):
   - `approvalType === ChangedRequirements` and `extraTypes` is empty.
-- **Hard failure** (throw `RuntimeException`):
+- **Hard failure** (throws):
   - `application.status !== Qualified` — precondition violated (BR-01).
   - `current_cycle + 1 > policy.max_iterations` — bound exceeded.
-  - missing `reason` — blocked in `validateAttributes()` before
-    entering `handle()`.
+  - missing `reason` — blocked by input validation before the
+    Action body runs.
 ```
 
 
-## Sample final/sipoc.txt
+## Sample docs/plan/sipoc.txt
 
-Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `bpmn.txt` with its operations, every logic id in `bpmn.txt` has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
+Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `docs/plan/subprocesses/` with its operations, every logic id there has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
 
 ```
 Route approval (route-approval)

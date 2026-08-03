@@ -1,6 +1,6 @@
 # Cross-subdomain virtual relations — code templates
 
-When `final/external-refs.md` carries an `external-refs` index, the domain
+When `docs/plan/context/external-refs.md` carries an `external-refs` index, the domain
 layer emits two extra artifacts and wires every cross-subdomain column into a
 real `BelongsTo` resolved through a host-supplied contract — instead of a
 dangling comment.

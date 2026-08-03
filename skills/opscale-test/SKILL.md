@@ -33,7 +33,7 @@ Configure the complete testing and code quality stack AND generate the actual te
 | 2 | Inside a PHP/Laravel project | `composer.json` exists | Stop. Re-run `/opscale-init`. |
 | 3 | (To generate Unit tests) `src/Models/` populated | List files | Run `/opscale-domain` first OR proceed and the Unit-test generator will produce zero files. |
 | 4 | (To generate Feature tests) `src/Services/Actions/` populated | List files | Run `/opscale-logic` first OR proceed without Feature tests. |
-| 5 | (To generate Browser tests) `src/Nova/` populated AND final/process.md has *Ordered flow* subprocesses | List files | Run `/opscale-ui` and `/opscale-process` first OR proceed without Browser tests. |
+| 5 | (To generate Browser tests) `src/Nova/` populated AND docs/plan/process.txt has subprocess blocks | List files | Run `/opscale-ui` and `/opscale-process` first OR proceed without Browser tests. |
 
 This skill belongs to the **Review phase**. The Review phase (`debug`, `test`, `release`) can be invoked at any point after `opscale-init`. The strict order **inside** Review is: `test` must run before `release`.
 
@@ -53,7 +53,7 @@ tests/
 |-------|-------|--------------|--------|-----|------------|
 | **Unit** | **Domain** | Models, Enums, Value Objects, Repositories, Migrations/Schema | Pest | In-memory SQLite | `src/Models/`, `src/Models/Enums/`, `src/Models/ValueObjects/`, `src/Models/Repositories/`, `database/migrations/` |
 | **Feature** | **Actions** | Each Action class executed end-to-end with real DB, real events, real side effects (no DB mocks) | Pest | In-memory SQLite | `src/Services/Actions/` |
-| **Browser** | **UI (Nova)** | One file **per flow** in `final/process.md` *Ordered flow* | Pest + Dusk | Workbench SQLite file | final/process.md *Ordered flow* + `src/Nova/` |
+| **Browser** | **UI (Nova)** | One file **per flow** in `docs/plan/process.txt` | Pest + Dusk | Workbench SQLite file | docs/plan/process.txt + `src/Nova/` |
 
 **Strict layer assignment — no overlap:**
 - Domain logic (model methods, VO immutability, enum transitions, schema) → **Unit only**
@@ -133,7 +133,7 @@ This is because `opscale-co/actions` uses `asListener()` for event handling, but
 2. **Strict layer assignment — no overlap:**
    - Unit → **Domain only**: Models, Enums, Value Objects, Repositories, Migrations/Schema.
    - Feature → **Actions only**: one test per class in `src/Services/Actions/`. Hits real DB, asserts events, asserts state. **No DB mocks.**
-   - Browser → **flow journeys**: one test class per flow in `final/process.md` *Ordered flow*, one `#[Test]` method per path. Drives the full user journey through Nova. **No DB-level business asserts** — those stay in Feature tests.
+   - Browser → **flow journeys**: one test class per flow in `docs/plan/process.txt`, one `#[Test]` method per path. Drives the full user journey through Nova. **No DB-level business asserts** — those stay in Feature tests.
 3. **Browser tests use Nova DevTool + Testbench Dusk + Workbench** — `DuskTestCase` extends `Orchestra\Testbench\Dusk\TestCase` with `WithWorkbench`.
 4. **Workbench seeders are mandatory** — `workbench/database/seeders/DatabaseSeeder.php` must seed: (a) `admin@laravel.com / password` for `loginToNova()`, and (b) 1–3 records per aggregate root.
 5. **`composer run build` is the single environment-recreation command** — must work from a clean clone.
@@ -153,7 +153,7 @@ This is because `opscale-co/actions` uses `asListener()` for event handling, but
 
 ### Phase 1 — Verify prerequisites
 
-Confirm the constitution exists, `composer.json` is present, and identify which source directories are populated (Models, Actions, Nova, process.md). The test suites you can generate depend on which source layers exist.
+Confirm the constitution exists, `composer.json` is present, and identify which source directories are populated (Models, Actions, Nova, process.txt). The test suites you can generate depend on which source layers exist.
 
 Decide whether this run is **stack-only** (configure now, generate when source appears later) or **full** (configure + generate). For new modules, full is recommended.
 
@@ -237,13 +237,13 @@ The skill walks `src/` and spawns generator agents in parallel to produce the te
 | `src/Models/Repositories/*.php` | `unit-test-generator` (type=repository) | Unit |
 | `database/migrations/*.php` | `unit-test-generator` (type=migration) | Unit |
 | `src/Services/Actions/*.php` | `feature-test-generator` | Feature |
-| final/process.md *Ordered flow* (driving the `src/Nova/` screens) | `web-test-generator` | Browser |
+| docs/plan/process.txt (driving the `src/Nova/` screens) | `web-test-generator` | Browser |
 
 **5a. Unit layer** — spawn all `unit-test-generator` agents in parallel. **Sub-gate: confirm before proceeding.**
 
 **5b. Feature layer** — spawn all `feature-test-generator` agents in parallel. **Sub-gate: confirm before proceeding.**
 
-**5c. Browser layer** — spawn `web-test-generator` agents, one per flow in `final/process.md` *Ordered flow*. **Sub-gate: confirm before proceeding.**
+**5c. Browser layer** — spawn `web-test-generator` agents, one per flow in `docs/plan/process.txt`. **Sub-gate: confirm before proceeding.**
 
 **What each agent produces:**
 
@@ -299,7 +299,7 @@ TEST CONFIGURATION + GENERATION GATE
 [ ] composer run build + composer run serve work from a clean clone
 [ ] Unit test per Model / Enum / VO / Repository / migration
 [ ] Feature test per Action (real DB, real events)
-[ ] One Browser flow test per Ordered flow subprocess
+[ ] One Browser flow test per process.txt subprocess
 [ ] Every Browser test uses loginToNova(), submitForm(), assertNoErrorToast()
 [ ] No raw ->pause() calls in Browser tests; no DB-level business asserts in Browser tests
 [ ] PHPStan level 9, all strict-rules, --memory-limit=512M, passes clean

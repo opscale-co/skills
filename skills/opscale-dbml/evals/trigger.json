@@ -1,6 +1,6 @@
 [
   {
-    "query": "create the data model for the billing module from final/process.md",
+    "query": "create the data model for the billing module from docs/plan/process.txt",
     "should_trigger": true
   },
   {
@@ -24,7 +24,7 @@
     "should_trigger": true
   },
   {
-    "query": "turn the normalized names in .specify/specs/003-orders/final/process.md into a data model",
+    "query": "turn the normalized names in docs/plan/context/names.md into a data model",
     "should_trigger": true
   },
   {

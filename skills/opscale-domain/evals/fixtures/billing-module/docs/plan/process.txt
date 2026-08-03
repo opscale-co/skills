@@ -1,0 +1,11 @@
+Invoicing
+Trigger: an operator needs to bill a customer
+Ends with: wait for the customer's payment
+1) Register the customer
+2) Create the invoice with its items
+3) Issue the invoice (validates totals, sets status Issued)
+
+Settlement
+Trigger: the wait from Invoicing resolved (payment arrived)
+Ends with: —
+4) Record the payment (sets status Paid)

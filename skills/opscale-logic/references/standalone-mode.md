@@ -39,7 +39,7 @@ If `.specify/` does NOT exist (rare — package was never run through
 `opscale-init`), skip this phase and proceed to Phase 4 directly. Otherwise:
 
 **3a. Build a synthetic spec folder for this Action batch.** Standalone mode
-has no `final/process.bpmn`, so create a minimal `.specify/specs/{NNN}-actions-{date}/`
+has no `docs/plan/logic.bpmn`, so create a minimal `.specify/specs/{NNN}-actions-{date}/`
 folder and seed it with the Action definitions the user provided.
 
 **3b. Run `/speckit.plan`** with the same payload structure as the BPMN-driven
@@ -59,7 +59,10 @@ was skipped), in dependency order:
 - **Class name**: PascalCase from action name
 - **`identifier()`**: kebab-case from class name (e.g. `CalculateInterest` → `calculate-interest`)
 - **`parameters()`**: from provided parameter definitions
-- **`handle()` body**: implement the described logic
+- **`outputs()`**: from the described return values — REQUIRED (abstract in ^2.2)
+- **`canRun()` body**: state preconditions the user described, as reason strings
+- **`handle()` body**: implement the described logic — validated `$inputs`, `succeed()`/`fail()`
+- **`emits_event`**: true when the action must notify a system consumer
 
 Same generator-vs-agents decision as BPMN-driven Phase 4: ≤ 10 actions → agents;
 11+ → deterministic generator script. Same single-quote escape invariant

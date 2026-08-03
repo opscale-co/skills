@@ -73,6 +73,10 @@ prerequisites and outputs in its `SKILL.md`. ...
 ## 3. Companion files seeded next to `.specify/`
 
 ```
+docs/plan/                     # Plan intake folder (flat, exportable — see references/artifact-paths.md)
+├── README.md                  # manifest: which skill produces which file, in order
+└── context/
+    └── business-types.md      # canonical business-type registry (Plan side)
 .claude/skills/                # speckit-* skills (constitution, plan, tasks, …)
 CLAUDE.md                      # context for Claude Code, points at constitution
 commitlint.config.mjs          # Conventional Commits — enforced by lint-staged
