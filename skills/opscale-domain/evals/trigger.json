@@ -4,7 +4,7 @@
     "should_trigger": true
   },
   {
-    "query": "create the models from docs/plan/domain.dbml",
+    "query": "create the models from docs/plan/dbml.dbml",
     "should_trigger": true
   },
   {

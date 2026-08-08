@@ -21,9 +21,11 @@ Maintain the single app-level artifact that ties the whole ontology together abo
 
 ```
 Software (app)
-└── Domain        = a business line (Human Resources, Finance, Sales…)
-    └── Subdomain = a module — one business process, one docs/plan/ folder
+└── Domain        = a business line (Human Resources, Finance, Sales…)   id: {domain-slug}
+    └── Subdomain = a module — one business process, one docs/plan/ folder   id: {domain-slug}/{module-slug}
 ```
+
+This skill also assigns the top two **ontology ids**: each domain gets a kebab-case project slug (`finance`) and each subdomain the composed project id `{domain}/{module}` (`finance/billing`). Downstream, `opscale-ontology` carries them in its `%% module:` metadata. Ids are stable — renaming a business line's display name does not change its slug without an explicit decision.
 
 Every other Opscale skill works **inside** one module. Nothing else records which business line a module belongs to, which modules exist or are planned, or which module owns the entities that other modules reference virtually. This skill writes that record: `docs/plan/context/system.map.md`. One module per `docs/plan/` — multi-module apps keep one `docs/plan/` per module repo, and this map is the shared app-level view each module's plan folder carries a copy of, maintained by this skill.
 
@@ -46,6 +48,8 @@ The mode depends on whether a writable project folder is available — not on wh
 
 - **Writable project folder (Claude Code, or Claude Desktop on a repo/folder):** write directly to `docs/plan/context/system.map.md`, creating the folders if missing.
 - **No folder access (chat-only session):** produce exactly the same file as a downloadable output, labeled with its destination path `docs/plan/context/system.map.md`; the user drops it into the repo afterwards.
+
+**Propose → approve → write → validate.** Nothing is assumed: every phase and sub-phase ends in an explicit user approval, and no artifact is written before the user approved its content in conversation. Validators run after writing; a failed gate is fixed and re-run, never silently patched.
 
 ### When to run
 
@@ -70,12 +74,12 @@ Updated: {ISO-8601 date}
 
 ## Domains
 
-### {Domain name, e.g. Sales}
+### {Domain name, e.g. Sales} ({domain-slug})
 > {One line: what this business line does for the company}
 
-| Subdomain (module) | Location | Status | Purpose |
-|---|---|---|---|
-| {slug} | `{repo}/docs/plan/` | planned \| plan \| generated \| released | {one line} |
+| Id | Subdomain (module) | Location | Status | Purpose |
+|---|---|---|---|---|
+| {domain-slug}/{module-slug} | {slug} | `{repo}/docs/plan/` | planned \| plan \| generated \| released | {one line} |
 
 ## Cross-module references
 
@@ -106,7 +110,7 @@ Inventory what exists before asking. Read, if present: the current `docs/plan/co
 
 ```
 Current map: [exists — last updated {date} | none yet]
-Current module plan artifacts: [process.txt / domain.dbml / logic.bpmn / actions/] → status {…}
+Current module plan artifacts: [process.txt / dbml.dbml / bpmn.bpmn / sipoc/] → status {…}
 Known modules (from the map): {slug — location — reachable? — external-refs read?}
 Contract slugs declared across reachable modules: {slug list, with consumer module each}
 ```
@@ -152,12 +156,15 @@ A slug owned by a module that is not yet on the map adds that module as **planne
 
 **Wait for user approval before continuing.**
 
-### Phase 4 — Write and gate
+### Phase 4 — Propose, approve, write, gate
 
-Write `docs/plan/context/system.map.md` from the template (creating `docs/plan/context/` if missing; in Claude Desktop, produce the file as a downloadable labeled with that path). Replace in place; the `Updated:` line carries the run date. Then walk the gate:
+Assemble the complete map from the template **in conversation first** and present it to the user — the full markdown, exactly as it will be written. **Wait for user approval of the assembled map before writing anything** (propose → approve → write → validate; never write an artifact before its approval).
+
+Only after approval, write `docs/plan/context/system.map.md` (creating `docs/plan/context/` if missing; in Claude Desktop, produce the file as a downloadable labeled with that path). Replace in place; the `Updated:` line carries the run date. Then walk the gate:
 
 ```
 [ ] Software header present: `> {purpose}` line right under `# System map — {App Name}`
+[ ] Every domain heading carries its kebab slug (`### {Name} ({slug})`); every module row carries its project id `{domain}/{module}` in the Id column
 [ ] The map is exhaustive: EVERY domain and EVERY subdomain (module) of the software appears — not just the ones being planned now; missing ones enter as `planned`
 [ ] Every known module appears in exactly one domain table, with its Location
 [ ] Every domain has a one-line purpose
@@ -183,20 +190,20 @@ Updated: 2026-07-22
 
 ## Domains
 
-### Sales
+### Sales (sales)
 > Wins and fulfills customer orders.
 
-| Subdomain (module) | Location | Status | Purpose |
-|---|---|---|---|
-| orders | `acme-orders/docs/plan/` | generated | Order intake to fulfillment |
-| catalog | `acme-catalog/docs/plan/` | plan | Products and pricing |
+| Id | Subdomain (module) | Location | Status | Purpose |
+|---|---|---|---|---|
+| sales/orders | orders | `acme-orders/docs/plan/` | generated | Order intake to fulfillment |
+| sales/catalog | catalog | `acme-catalog/docs/plan/` | plan | Products and pricing |
 
-### Finance
+### Finance (finance)
 > Controls the money: cash, accounting, and payments.
 
-| Subdomain (module) | Location | Status | Purpose |
-|---|---|---|---|
-| cash | `acme-cash/docs/plan/` | released | Cash sessions and cash counts |
+| Id | Subdomain (module) | Location | Status | Purpose |
+|---|---|---|---|---|
+| finance/cash | cash | `acme-cash/docs/plan/` | released | Cash sessions and cash counts |
 
 ## Cross-module references
 

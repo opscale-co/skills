@@ -36,14 +36,14 @@ Enum ApplicationStatus {
 }
 
 Table applications {
-  id              varchar(26)        [pk, note: 'ULID // type:identifier']
-  code            varchar(50)        [not null, unique, note: 'Human-readable application number // type:document']
+  id              identifier         [pk, note: 'ULID']
+  code            document           [not null, unique, note: 'Human-readable application number']
   status          ApplicationStatus  [not null, default: 'Pending', note: 'Lifecycle state']
-  current_cycle   int                [not null, default: 1, note: 'Evaluation cycle, 1-based // type:quantity']
+  current_cycle   quantity           [not null, default: 1, note: 'Evaluation cycle, 1-based']
 
-  policy_id       varchar(26)        [ref: > policies.id, not null, note: 'Active policy applied // type:identifier']
-  party_id        varchar(26)        [not null, note: '// external_ref:parties | organization.parties — Counterparty that applies']
-  assigned_to     varchar(26)        [null,     note: '// external_ref:users | auth.users — assigned operator']
+  policy_id       identifier         [ref: > policies.id, not null, note: 'Active policy applied']
+  applicant_id    identifier         [not null, note: '// external_ref:parties | organization.parties — Counterparty that applies (role-named: the external entity name is uncertain)']
+  assigned_to     identifier         [null,     note: '// external_ref:users | auth.users — assigned operator']
 
   created_at      timestamp          [not null]
   updated_at      timestamp          [not null]
@@ -51,14 +51,20 @@ Table applications {
   indexes {
     status [name: 'idx_applications_status']
   }
+
+  Note: '''
+  applications — A member's request for a loan, evaluated in cycles against
+  the active policy until a terminal decision. The opening kebab id is this
+  table's name with dashes; every table Note opens with its id.
+  '''
 }
 
 Table verifications {
-  id              varchar(26)   [pk, note: 'ULID // type:identifier']
-  application_id  varchar(26)   [ref: > applications.id, not null, note: 'Evaluated application // type:identifier']
-  cycle_number    int           [not null, default: 1, note: 'Cycle this verification belongs to // type:quantity']
-  rule_id         varchar(26)   [ref: > rules.id, not null, note: 'Rule verified // type:identifier']
-  score           decimal(2,1)  [null, note: 'Weighted score for the chosen option // type:rating']
+  id              identifier    [pk, note: 'ULID']
+  application_id  identifier    [ref: > applications.id, not null, note: 'Evaluated application']
+  cycle_number    quantity      [not null, default: 1, note: 'Cycle this verification belongs to']
+  rule_id         identifier    [ref: > rules.id, not null, note: 'Rule verified']
+  score           rating        [null, note: 'Weighted score for the chosen option']
 
   created_at      timestamp     [not null]
   updated_at      timestamp     [not null]
@@ -66,14 +72,22 @@ Table verifications {
   indexes {
     (application_id, cycle_number, rule_id) [unique, name: 'uq_verifications_cycle_rule']
   }
+
+  Note: '''
+  verifications — One rule check inside an evaluation cycle of an application.
+  '''
 }
 
 Table members {
-  id              varchar(26)  [pk, note: 'ULID // type:identifier']
-  application_id  varchar(26)  [ref: > applications.id, not null, unique, note: 'Origin application // type:identifier']
-  party_id        varchar(26)  [not null, note: '// external_ref:parties | organization.parties']
-  code            varchar(50)  [not null, unique, note: 'Member number // type:document']
-  joined_at       timestamp    [not null, note: 'Activation moment // type:moment']
+  id              identifier   [pk, note: 'ULID']
+  application_id  identifier   [ref: > applications.id, not null, unique, note: 'Origin application']
+  person_id       identifier   [not null, note: '// external_ref:parties | organization.parties — the member as a person']
+  code            document     [not null, unique, note: 'Member number']
+  joined_at       moment       [not null, note: 'Activation moment']
+
+  Note: '''
+  members — The approved applicant once activated as a member of the cooperative.
+  '''
 }
 
 // Intra-subdomain relation
@@ -87,7 +101,7 @@ Ref: verifications.application_id > applications.id
 
 ## Sample docs/plan/dbml.txt
 
-Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `docs/plan/subprocesses/` with its operations, every logic id there has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
+Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `docs/plan/bpmn.txt` with its operations, every logic id there has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
 
 ```
 requisition

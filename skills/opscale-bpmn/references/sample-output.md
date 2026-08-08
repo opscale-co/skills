@@ -9,6 +9,12 @@ For the canonical specification of the format, see this skill's
 
 ---
 
+The XML is **self-contained**: the `<bpmn:process>` documentation carries the
+module + modeling standard, and every task's documentation JSON carries its
+business step and subprocess — Logics also carry their governing rules and
+composed members (CRUDs and Outputs). There are no sendTask nodes: Outputs
+live inside their Logic. No companion file is needed to interpret the diagram.
+
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions
@@ -17,6 +23,7 @@ For the canonical specification of the format, see this skill's
   targetNamespace="http://opscale.co/bpmn">
 
   <bpmn:process id="proc_loans" isExecutable="false">
+    <bpmn:documentation>{"module":"loans","standard":"FIBO (Party / Decision concepts)"}</bpmn:documentation>
 
     <bpmn:laneSet id="ls_loans">
       <bpmn:lane id="lane_admission_preparation" name="SP1 Admission — Preparation">
@@ -30,20 +37,22 @@ For the canonical specification of the format, see this skill's
 
     <!-- CRUD step — emitted by the UI layer, not by an Action -->
     <bpmn:serviceTask id="service_create_application" name="Create application">
-      <bpmn:documentation>{"type":"crud","entity":"applications","action":"create"}</bpmn:documentation>
+      <bpmn:documentation>{"type":"crud","oid":"SP-01-01-C01","entity":"applications","action":"create","step":"Receive the application","subprocess":"Admission"}</bpmn:documentation>
       <bpmn:incoming>flow_001</bpmn:incoming>
       <bpmn:outgoing>flow_002</bpmn:outgoing>
     </bpmn:serviceTask>
 
-    <!-- Business-rule step — backed 1:1 by an Action with the same identifier -->
+    <!-- Business-rule step — backed 1:1 by an Action with the same identifier.
+         "rules" is the 2.1 prose (BR-NN numbering is assigned later by
+         opscale-sipoc); "composed" is the CRUD bundle the rule forces. -->
     <bpmn:businessRuleTask id="rule_check_kyc" name="Check KYC">
-      <bpmn:documentation>{"type":"logic","id":"check-kyc"}</bpmn:documentation>
+      <bpmn:documentation>{"type":"logic","oid":"SP-01-02-L01","id":"check-kyc","step":"Verify the applicant identity","subprocess":"Admission","rules":["an application cannot advance without an acknowledged KYC verification"],"composed":[{"oid":"SP-01-02-L01-C01","entity":"applications","action":"read"},{"oid":"SP-01-02-L01-C02","entity":"verifications","action":"create"},{"oid":"SP-01-02-L01-C03","entity":"applications","action":"update"}]}</bpmn:documentation>
       <bpmn:incoming>flow_002</bpmn:incoming>
       <bpmn:outgoing>flow_003</bpmn:outgoing>
     </bpmn:businessRuleTask>
 
     <bpmn:businessRuleTask id="rule_score_application" name="Score application">
-      <bpmn:documentation>{"type":"logic","id":"score-application"}</bpmn:documentation>
+      <bpmn:documentation>{"type":"logic","oid":"SP-01-03-L01","id":"score-application","step":"Score the application","subprocess":"Admission","rules":["the score combines every verified rule of the active policy"],"composed":[{"oid":"SP-01-03-L01-C01","entity":"verifications","action":"read"},{"oid":"SP-01-03-L01-C02","entity":"scores","action":"create"},{"oid":"SP-01-03-L01-O01","content":"score summary to the analyst"}]}</bpmn:documentation>
       <bpmn:incoming>flow_003</bpmn:incoming>
       <bpmn:outgoing>flow_004</bpmn:outgoing>
     </bpmn:businessRuleTask>
@@ -71,107 +80,110 @@ For the canonical specification of the format, see this skill's
 ```
 
 
-## Sample docs/plan/subprocesses/
+## Sample docs/plan/bpmn.txt
 
-Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` samples of all the Plan skills, so the lists chain: every step here appears in `docs/plan/process.txt` (same subprocesses, same order), every logic id here has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`. One file per subprocess block of `process.txt` — filename = subprocess name in kebab-case.
+Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` samples of all the Plan skills, so the lists chain: every step here appears in `docs/plan/process.txt` (same subprocesses, same order), every logic id here has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
 
-`docs/plan/subprocesses/position-requisition.txt`:
+One section per subprocess block of `process.txt` (same count, order, ids, names), separated by a blank line: the `SP-XX {name}` line, then each business step with its operations. Top-level lines are only standalone crud (`- {oid} crud: {action} {entity}`) and logic (`- {oid} logic: {kebab-id}`). Under each logic, its composed members are indented two extra spaces with the nested oid `{parent}-[C|L|O]AA` — CRUDs **and Outputs**. **Outputs only ever appear composed inside a Logic, never as a top-level line** (a notification is the effect of a rule resolving). Lines are concise: crud = `{action} {entity}`, logic = bare kebab Action id, output = brief content (never the channel).
 
 ```
+SP-01 Position requisition
 Describe the requested position
-- crud: create requisition
-
+- SP-01-01-C01 crud: create requisition
 Route the approval chain
-- logic: Route approval (route-approval)
-
+- SP-01-02-L01 logic: route-approval
+  - SP-01-02-L01-C01 crud: read requisition
+  - SP-01-02-L01-C02 crud: create approval
 Record each approval decision
-- logic: Approve requisition (approve-requisition)
-- logic: Reject requisition (reject-requisition)
-- output: notify the requester
-```
+- SP-01-03-L01 logic: approve-requisition
+  - SP-01-03-L01-C01 crud: update approval
+  - SP-01-03-L01-C02 crud: update requisition
+  - SP-01-03-L01-O01 output: approval notice to the requester
+- SP-01-03-L02 logic: reject-requisition
+  - SP-01-03-L02-C01 crud: update approval
+  - SP-01-03-L02-C02 crud: update requisition
+  - SP-01-03-L02-O01 output: rejection notice to the requester
 
-`docs/plan/subprocesses/job-posting.txt`:
-
-```
+SP-02 Job posting
 Notify internal employees
-- output: post the opening on the employee portal
-
+- SP-02-01-L01 logic: announce-opening
+  - SP-02-01-L01-C01 crud: read requisition
+  - SP-02-01-L01-O01 output: opening announcement to employees
 Publish the opening with tracked links
-- logic: Publish requisition (publish-requisition)
-- output: publish to job boards and social networks
-```
+- SP-02-02-L01 logic: publish-requisition
+  - SP-02-02-L01-C01 crud: read requisition
+  - SP-02-02-L01-C02 crud: create posting
 
-`docs/plan/subprocesses/application-and-screening.txt`:
-
-```
+SP-03 Application and screening
 Register each candidate with consent
-- crud: create candidate
-
+- SP-03-01-C01 crud: create candidate
 Screen resumes against the approved profile
-- logic: Screen candidate (screen-candidate)
-
+- SP-03-02-L01 logic: screen-candidate
+  - SP-03-02-L01-C01 crud: read requisition
+  - SP-03-02-L01-C02 crud: update candidate
 Send assessments to qualified candidates
-- crud: create assessment
-- output: email the assessment invitation
-```
+- SP-03-03-L01 logic: send-assessment
+  - SP-03-03-L01-C01 crud: create assessment
+  - SP-03-03-L01-O01 output: assessment invitation to the candidate
 
-`docs/plan/subprocesses/interviews-and-verification.txt`:
-
-```
+SP-04 Interviews and verification
 Schedule each interview round
-- logic: Schedule interview (schedule-interview)
-- output: send the confirmation with location details
-
+- SP-04-01-L01 logic: schedule-interview
+  - SP-04-01-L01-C01 crud: read candidate
+  - SP-04-01-L01-C02 crud: create interview
+  - SP-04-01-L01-O01 output: interview confirmation with location
 Record the standardized evaluation form
-- crud: update interview
-
+- SP-04-02-C01 crud: update interview
 Advance or discard with documented reason
-- logic: Discard candidate (discard-candidate)
-- output: send the closure message
-
+- SP-04-03-L01 logic: discard-candidate
+  - SP-04-03-L01-C01 crud: update candidate
+  - SP-04-03-L01-O01 output: closure message to the candidate
 Request work references
-- crud: create reference
-- output: contact the referee
-
+- SP-04-04-L01 logic: request-references
+  - SP-04-04-L01-C01 crud: create reference
+  - SP-04-04-L01-O01 output: reference request to the referee
 Request background checks for sensitive positions
-- crud: create background_check
-```
+- SP-04-05-C01 crud: create background_check
 
-`docs/plan/subprocesses/decision-and-offer.txt`:
-
-```
+SP-05 Decision and offer
 Consolidate the comparative file
-- crud: read candidate
-
+- SP-05-01-C01 crud: read candidate
 Record the committee decision
-- logic: Decide finalist (decide-finalist)
-
+- SP-05-02-L01 logic: decide-finalist
+  - SP-05-02-L01-C01 crud: read interview
+  - SP-05-02-L01-C02 crud: create decision
 Send the offer
-- logic: Extend offer (extend-offer)
-- output: send the offer letter
-
+- SP-05-03-L01 logic: extend-offer
+  - SP-05-03-L01-C01 crud: read decision
+  - SP-05-03-L01-C02 crud: create offer
+  - SP-05-03-L01-O01 output: offer letter to the candidate
 Escalate a counteroffer beyond the approved range
-- logic: Revalidate offer (revalidate-offer)
-```
+- SP-05-04-L01 logic: revalidate-offer
+  - SP-05-04-L01-C01 crud: read offer
+  - SP-05-04-L01-C02 crud: update offer
 
-`docs/plan/subprocesses/hiring-and-closure.txt`:
-
-```
+SP-06 Hiring and closure
 Record the signed acceptance
-- logic: Accept offer (accept-offer)
-
+- SP-06-01-L01 logic: accept-offer
+  - SP-06-01-L01-C01 crud: read offer
+  - SP-06-01-L01-C02 crud: update offer
 Handle a rejected offer
-- logic: Reject offer (reject-offer)
-
+- SP-06-02-L01 logic: reject-offer
+  - SP-06-02-L01-C01 crud: update offer
+  - SP-06-02-L01-C02 crud: update candidate
 Open the employee record
-- output: hand off the hiring file to the employee module
-
+- SP-06-03-L01 logic: open-employee-record
+  - SP-06-03-L01-C01 crud: read candidate
+  - SP-06-03-L01-O01 output: hiring file handoff to the employee module
 Close the requisition as filled
-- logic: Hire candidate (hire-candidate)
-
+- SP-06-04-L01 logic: hire-candidate
+  - SP-06-04-L01-C01 crud: update candidate
+  - SP-06-04-L01-C02 crud: update requisition
 Archive all candidate files
-- logic: Archive candidates (archive-candidates)
-
+- SP-06-05-L01 logic: archive-candidates
+  - SP-06-05-L01-C01 crud: update candidate
 Send the welcome
-- output: email the welcome to the new employee and team
+- SP-06-06-L01 logic: send-welcome
+  - SP-06-06-L01-C01 crud: read candidate
+  - SP-06-06-L01-O01 output: welcome to the new employee and team
 ```

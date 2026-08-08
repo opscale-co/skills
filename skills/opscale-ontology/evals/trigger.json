@@ -28,7 +28,7 @@
     "should_trigger": true
   },
   {
-    "query": "render docs/plan/ontology.html for the recruitment module",
+    "query": "render docs/plan/ontology.mmd for the recruitment module",
     "should_trigger": true
   },
   {

@@ -18,8 +18,8 @@ description: >
 
 Model a **whole module** as one connected flow — a macro-process composed of **subprocesses bounded by waits**. The only thing that truly closes one subprocess and opens the next is having to wait for something external; everything else (notifications, file deliveries, decisions) is an internal step. Stay at the operational level. Deliver exactly three things:
 
-1. **Name normalization** — list the things involved under one readable name each, folding every synonym into it (`client / customer / user → Member`). The same real thing is named the same everywhere. Persisted to `docs/plan/context/names.md`.
-2. **Flow** — reorder however the user told it (from the end, out of order, scattered) into subprocesses with their steps; each subprocess declares the event that opens it (`Trigger:`) and the wait that closes it (`Ends with:`, `—` if it's the final subprocess). Persisted to `docs/plan/process.txt`.
+1. **Name normalization** — list the things involved under one readable name each, folding every synonym into it (`client / customer / user → Member`). The same real thing is named the same everywhere. Persisted to `docs/plan/context/names.md`. This table is **input** for `opscale-dbml`'s reconciliation — the final entities (and their kebab-case entity ids) emerge there, not here, so no ids are assigned in this skill beyond the subprocess/step ids below.
+2. **Flow** — reorder however the user told it (from the end, out of order, scattered) into subprocesses with their steps; each subprocess declares the event that opens it (`Trigger:`) and the wait that closes it (`Ends with:`, `—` if it's the final subprocess). Persisted as **two outputs**: `docs/plan/process.mmd` (the diagram — a self-contained Mermaid flowchart of the macro-flow) and `docs/plan/process.txt` (the relative ontology — the same flow as plain text blocks).
 3. **Interrelation** — every step and every entity connects to the rest. Nothing is an island. (Elicitation principle — connections are resolved in conversation; the data-model relations are formalized later by `opscale-dbml`.)
 
 This is an **interactive** skill: it does not guess or silently drop. When something is loose or a name is ambiguous, it **asks**.
@@ -38,6 +38,8 @@ The mode depends on whether a writable project folder is available — not on wh
 - **No folder access (chat-only session):** the skill produces exactly the same files as downloadable outputs, each labeled with its destination path ("place at `docs/plan/process.txt`").
 
 The validator gate in *Success condition* is mandatory in **both** environments — both have console access, and the script is dependency-free and runs offline from the skill bundle.
+
+**Propose → approve → write → validate.** Nothing is assumed: every phase and sub-phase ends in an explicit user approval, and no artifact is written before the user approved its content in conversation. Validators run after writing; a failed gate is fixed and re-run, never silently patched.
 
 ### Role & tone
 
@@ -60,7 +62,13 @@ Language-neutral (do not translate): the structural keywords (`Trigger:`, `Ends 
 
 ### Business steps
 
-**A step here is a *business step*** — a broad activity described in the user's own words ("Validate references", "Prepare the delivery"), NOT an atomic technical operation. One business step later decomposes into one or more atomic operations (CRUD / Logic / Output) in `opscale-bpmn`, which records that decomposition in `docs/plan/operations.md` and `docs/plan/subprocesses/`. Five business steps can turn into twenty operations — that's expected. Keep business steps at the granularity the business owner narrates; do not pre-split them into technical operations here, because that swaps the audience: this flow is for stakeholders, the operation sequence is for engineers.
+**A step here is a *business step*** — a **macro business activity**: the kind of thing a stakeholder would name as one coherent piece of the process ("Integrate the file", "Validate the supplier", "Onboard the member"), one that naturally involves **several moves** (register + document + notify). It is NOT an atomic technical operation. One business step later decomposes into *several* atomic operations (CRUD / Logic / Output) in `opscale-bpmn`, which records that decomposition inside `docs/plan/bpmn.bpmn` (embedded metadata) and readably in `docs/plan/bpmn.txt`. A handful of business steps can turn into twenty operations — that's expected. This flow is for stakeholders; the operation sequence is for engineers.
+
+**The litmus test — operation vs. step.** If a candidate step reads as a single verb on a single object that would become one create/read/update/delete or one notification (`Archive the documentation`, `Register the bank account`, `Notify the supplier`, `Update the record`), it is an **operation, not a step** — fold it into the coherent activity it belongs to. A step *groups* the operations that happen together toward one business outcome. The one reasonable exception is the **initial creation of the module's central entity** (the record's birth): that first step may be a lone create; from there on, steps are macro.
+
+**"One step ≈ one operation" is a symptom, not a rule.** There is no operation-count gate here (`opscale-process` runs before the decomposition exists). But while eliciting, watch for it: if a step resolves to a single operation, it is probably too fine — propose the macro activity that contains it and confirm with the user.
+
+**Keep the wording plain — the activity's name, nothing more.** No explanatory clauses about state (`… as pending`), conditions (`… according to its type`), effects (`… blocking new purchases and payments`), and no enumerations of documents/fields. Those are operation-level detail; they are not lost, they resurface as operations in `opscale-bpmn`. As a **soft reference (not a rule), a subprocess is usually a handful — about 2 to 4 — of macro steps** (decision/branch lines don't count toward that). Many more short one-move lines is the signal that atomic operations are masquerading as steps.
 
 Steps carry **no type marker** — no emoji, no type word (`crud`, `event`, …). This skill only identifies the subprocesses, the steps inside each one, and the events that separate them. Classifying each step into operation types is `opscale-bpmn`'s job, done from the step's meaning during decomposition — a step that records something feeds `opscale-dbml` with its entity name; everything else stays a plain business activity here.
 
@@ -70,7 +78,7 @@ Collect every distinct thing the narrative names. Give each **one readable canon
 
 > You called it "client", "user" and "member" — are these the same thing? I'll use **Member**. OK?
 
-Record the result as a markdown table — `| Canónico | ← alias |` header, one row per canonical name (the validator requires the table form, ≥2 data rows) — persisted to `docs/plan/context/names.md`. This table is the handoff to `opscale-dbml`; the modeling (keys, types, relations, cardinality) happens there, not here.
+Record the result as a markdown table — `| Canónico | ← alias |` header, one row per canonical name (the validator requires the table form, ≥2 data rows) — persisted to `docs/plan/context/names.md`. The table carries **no ids**: it is the input `opscale-dbml` reconciles against a modeling standard, and only the entities that survive that reconciliation (merged, renamed, dropped) receive their kebab-case entity id — assigned there, on the final list. This table is the handoff to `opscale-dbml`; the modeling (keys, types, relations, cardinality) happens there, not here.
 
 ### Central entity and life stages — for subprocesses, NOT for enums
 
@@ -86,12 +94,12 @@ Lay the module out as subprocesses bounded by waits. A subprocess is a continuou
 - The `Trigger:` and `Ends with:` lines ARE the events that separate the subprocesses. Downstream, `opscale-bpmn` turns each `Ends with:` wait into the intermediate catch event joining one flow segment to the next.
 - Inside each subprocess, steps flow continuously, possibly with branches, and may include notifications or file deliveries along the way — those are internal steps, never boundaries. If a notification is sent and then the flow waits for the reply, the notification is the subprocess's last step and the wait goes on the `Ends with:` line.
 
-**Format: one step per line, numbered sequentially across the whole module (`1)`, `2)`, `3)`, ... — numbering does not restart per subprocess). Never write long arrow chains on a single line — every step is its own row.**
+**Format: each subprocess block opens with its id and name (`SP-01 {Subprocess name}` — `SP-XX` sequential, two digits); inside it, one step per line, numbered locally `01)`, `02)`, … (two digits, numbering RESTARTS at 01 in every subprocess). The step's ontology id is `SP-XX-YY`. Never write long arrow chains on a single line — every step is its own row.**
 
 Connections are written by referencing step numbers, not by chaining arrows:
 
 - **Linear:** the next-numbered step is the implicit continuation.
-- **Branch** — write the question on the branching line and the destinations as `Yes → N` / `No → M` on the same line (branch labels follow the user's language: `Yes`/`No`, `Sí`/`No`, etc.). Each destination must be a step number that exists. A step with branch destinations is what `opscale-bpmn` later maps to a gateway.
+- **Branch** — write the question on the branching line and the destinations as `Yes → 03` / `No → 01` on the same line (branch labels follow the user's language: `Yes`/`No`, `Sí`/`No`, etc.). Each destination is a **local** step number that exists in the same subprocess — a branch never crosses a subprocess boundary (the segment is continuous; crossing happens only through waits). A step with branch destinations is what `opscale-bpmn` later maps to a gateway.
 - **Merge** — two branches that reconverge both end pointing to the same next step number.
 
 Every step must connect: it comes from a previous step (by number) and leads to a next one (or a branch, or the subprocess's closing wait). Every entity must appear in at least one step. Anything mentioned but unconnected is an **island**.
@@ -104,36 +112,63 @@ Integrate the answer into the flow before continuing. Repeat until nothing is lo
 
 ### Output
 
-Two files (canonical paths: `references/artifact-paths.md`):
+Two outputs plus the shared names registry (canonical paths: `references/artifact-paths.md`):
 
 ```
 docs/plan/
 ├── context/
-│   └── names.md     # name normalization table (canonical ← aliases)
-└── process.txt      # the flow: subprocess blocks with Trigger / Ends with / numbered steps
+│   └── names.md     # name normalization table (canonical ← aliases; no ids — input for dbml)
+├── process.mmd      # the diagram: Mermaid flowchart of the macro-flow (self-contained)
+└── process.txt      # the relative ontology: subprocess blocks with Trigger / Ends with / numbered steps
 ```
 
-**`docs/plan/context/names.md`** — a title line (`# Names — {Module}`) followed by the normalization table (`| Canónico | ← alias |`, ≥2 data rows). This is what `opscale-dbml` reads to lock entity names.
+**`docs/plan/process.mmd`** — a **Mermaid `flowchart TD`** of the whole macro-flow, self-contained (rule: the diagram carries all the metadata needed to interpret it; `names.md` and the conversation are generation support). Structure contract — node ids are parseable, labels are free text in the user's language:
+
+- `%%` metadata line right after the header: `%% module: {Module Name}` (no entity lines — entity ids are assigned later by `opscale-dbml`).
+- One `subgraph spXX ["SP-XX {Subprocess name}"]` per subprocess, in `process.txt` order (`XX` = the subprocess id digits).
+- One node per step, id `sXX_YY` (subprocess XX, local step YY — the ontology id `SP-XX-YY` with mermaid-safe underscores): `sXX_YY["YY) {step text}"]` — steps with branch destinations use the gateway shape `sXX_YY{"YY) {question}?"}` and their outgoing edges carry the branch labels (`s01_02 -- Yes --> s01_03`).
+- Event nodes: `t0(["{module trigger}"])` before the first subgraph, and one `wXX(["wait: {Ends with text}"])` node between consecutive subgraphs (the closing wait of subprocess XX); the final subprocess has no wait node.
+- Edges follow the flow: `t0 --> s01_01`, sequential steps `sXX_YY --> sXX_{YY+1}`, branch edges to their targets (always inside the same subgraph), the last step of subprocess XX `--> wXX`, and `wXX --> s{XX+1}_01` into the next subprocess's first step.
+
+**The gate lints the Mermaid.** `validate-process.mjs --mmd=…` runs a self-contained Mermaid syntax linter (Node stdlib, no bundled Mermaid — works offline in Claude Code and Desktop alike) before the structural cross-checks: it verifies the `flowchart TD` header, balanced quotes and brackets on every line, `subgraph`/`end` balance, valid node ids, and well-formed arrows — so a diagram that would not render fails the gate, not the reviewer's browser. Keep every label **double-quoted** (`"01) …"`) and free of raw `"` inside it.
+
+```mermaid
+flowchart TD
+%% module: Publishing
+  t0(["an author submits an article"]) --> s01_01
+  subgraph sp01 ["SP-01 Editorial review"]
+    s01_01["01) Send to review"] --> s01_02{"02) Checklist complete?"}
+    s01_02 -- Yes --> s01_03["03) Publish the article"]
+    s01_02 -- No --> s01_01
+  end
+  s01_03 --> w01(["wait: the author confirms the final version"])
+  w01 --> s02_01
+  subgraph sp02 ["SP-02 Publication"]
+    s02_01["01) Notify the author"]
+  end
+```
+
+**`docs/plan/context/names.md`** — a title line (`# Names — {Module}`) followed by the normalization table (`| Canónico | ← alias |`, ≥2 data rows, no id column). This is what `opscale-dbml` reads as input to lock the final entity names (and assign their kebab-case entity ids there).
 
 **`docs/plan/process.txt`** — plain text, no markdown, no emojis. One block per subprocess, blocks separated by one blank line:
 
 ```
-{Subprocess 1 name}
+SP-01 {Subprocess 1 name}
 Trigger: {what starts the module}
 Ends with: {wait for X}
-1) {step}
-2) {question?} — Yes → 3 · No → 4
-3) {step}
-4) {step}
+01) {step}
+02) {question?} — Yes → 03 · No → 04
+03) {step}
+04) {step}
 
-{Subprocess 2 name}
+SP-02 {Subprocess 2 name}
 Trigger: the wait from {Subprocess 1 name} resolved ({X arrived})
 Ends with: —
-5) {step}
-6) {step}
+01) {step}
+02) {step}
 ```
 
-**Why plain text:** every downstream consumer (`opscale-bpmn` segments, `opscale-ontology` counts, `opscale-test` browser flows, `opscale-showcase` walks, `opscale-menu` grouping) parses this file cheaply — subprocess blocks by blank lines, steps by `N)` lines, events by the two keywords.
+**Why plain text:** every downstream consumer (`opscale-bpmn` segments, `opscale-ontology` counts, `opscale-test` browser flows, `opscale-showcase` walks, `opscale-menu` grouping) parses this file cheaply — subprocess blocks by blank lines (first line = `SP-XX {name}`), steps by local `YY)` lines (full id `SP-XX-YY`), events by the two keywords.
 
 ### Keep it readable
 
@@ -180,13 +215,13 @@ From that, propose the breakdown:
 ```
 ## Proposed subprocesses
 
-1. **[Subprocess 1 name]**
+SP-01 **[Subprocess 1 name]**
    Trigger: [what starts the whole module]
    Ends with: [wait for X — e.g. "reply from the customer", "timer of 24h"]
-2. **[Subprocess 2 name]**
-   Trigger: the wait from Subprocess 1 resolved ([X arrived])
+SP-02 **[Subprocess 2 name]**
+   Trigger: the wait from SP-01 resolved ([X arrived])
    Ends with: [wait for Y]
-3. **[Subprocess N name]**
+SP-NN **[Subprocess N name]**
    Trigger: …
    Ends with: — (final subprocess; no further wait)
 
@@ -202,7 +237,7 @@ The breakdown the user confirms here is the contract: every step in Phase 5 live
 
 ### Phase 5 — Detail each subprocess
 
-Once authorized, walk each subprocess in order and lay out its numbered steps — plain business activities, no type markers. A subprocess is a continuous chain of internal steps; the wait that closes it lives on its `Ends with:` line, never as a numbered step (the final subprocess ends with its last internal step and `Ends with: —`). When a notification triggers a wait, the notification is the last numbered step and the wait stays on the `Ends with:` line. Numbering is sequential across the whole module; it does not restart per subprocess.
+Once authorized, walk each subprocess in order and lay out its numbered steps — **macro business activities** (see *Business steps*), no type markers, plainly worded (the activity's name; no explanatory clauses, no enumerations, no data detail — that resurfaces as operations in `opscale-bpmn`). Apply the litmus test as you go: if a step reads as a single operation (one create/read/update/delete or one notification, outside the central entity's initial create), fold it into the coherent activity it belongs to and confirm. Reference is a handful (≈2-4) of macro steps per subprocess. A subprocess is a continuous chain of internal steps; the wait that closes it lives on its `Ends with:` line, never as a numbered step (the final subprocess ends with its last internal step and `Ends with: —`). When a notification triggers a wait, the notification is the last numbered step and the wait stays on the `Ends with:` line. Numbering is **local**: two digits, restarting at `01)` in every subprocess — the step's full id is `SP-XX-YY`.
 
 **Wait for user approval before continuing.**
 
@@ -214,23 +249,24 @@ Walk every step and every entity. For each that doesn't connect, **ask** the use
 
 ### Phase 7 — Finalize and write
 
-Confirm the normalized names and the flow, then write the two files in the user's language:
+Confirm the normalized names and the flow, then write the three files in the user's language:
 
 1. `docs/plan/context/names.md` — the title line and the normalization table (create `docs/plan/context/` if missing).
 2. `docs/plan/process.txt` — the subprocess blocks exactly as described in Output.
+3. `docs/plan/process.mmd` — the Mermaid flowchart exactly as described in Output (same subprocesses, same step numbers, same branches — the diagram and the text are two views of the one confirmed flow).
 
-Replace either file if it already exists. The flow the user confirmed and the file contents must never disagree.
+Replace any file if it already exists. The flow the user confirmed and the file contents must never disagree.
 
 **Wait for user approval before continuing.**
 
 ## Sample
 
-Full reference `docs/plan/process.txt` + `docs/plan/context/names.md` (recruitment module, shared across the Plan skills so the lists chain) — see `references/sample-output.md`.
+Full reference `docs/plan/process.txt` + `docs/plan/context/names.md` + a `docs/plan/process.mmd` excerpt (recruitment module, shared across the Plan skills so the lists chain) — see `references/sample-output.md`.
 
 ## Success condition
 
 ```bash
-node scripts/validate-process.mjs --process-txt=docs/plan/process.txt --names-file=docs/plan/context/names.md
+node scripts/validate-process.mjs --process-txt=docs/plan/process.txt --names-file=docs/plan/context/names.md --mmd=docs/plan/process.mmd
 ```
 
 Exit code 0 = pass.

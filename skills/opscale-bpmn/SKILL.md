@@ -15,22 +15,24 @@ description: >
 
 Transform a validated spec and DBML into a BPMN 2.0 XML file that maps the business process to executable Opscale operations. The BPMN is the authoritative source for what gets implemented — every task maps directly to a class.
 
-Outputs are written to `docs/plan/logic.bpmn` (raw BPMN 2.0 XML — the diagram), `docs/plan/operations.md` (canonical operation sequence + CRUD composition per Logic — the artifact `opscale-sipoc` imports), and `docs/plan/subprocesses/` (one plain outline per subprocess: each business step and the operations it decomposes into). Canonical paths: `references/artifact-paths.md`.
+Outputs are exactly two: `docs/plan/bpmn.bpmn` (raw BPMN 2.0 XML — the diagram, **self-contained**: every task's `<documentation>` JSON carries its business step, subprocess, and — for Logics — governing rules and composed CRUDs/Outputs; this embedded metadata is what `opscale-sipoc` imports) and `docs/plan/bpmn.txt` (this skill's relative ontology: per subprocess, each business step and the operations it decomposes into, with each Logic's composed CRUDs and Outputs indented beneath it). Note: an Output is never a standalone node — it is always composed inside the Logic that dispatches it. Canonical paths: `references/artifact-paths.md`.
 
 ### Modes
 
 The mode depends on whether a writable project folder is available — not on which app is running. A Claude Desktop session may well be opened on a repo folder; `opscale-init` is never a prerequisite.
 
-- **Writable project folder (Claude Code, or Claude Desktop on a repo/folder):** write the three outputs directly to `docs/plan/`.
-- **No folder access (chat-only session):** produce exactly the same files as downloadable outputs, each labeled with its destination path (`docs/plan/logic.bpmn`, `docs/plan/operations.md`, `docs/plan/subprocesses/{kebab}.txt`); the user drops them into the repo afterwards.
-- **The validation gate is mandatory in both environments.** The skill ships its own `node_modules`, so `node scripts/validate-bpmn.mjs docs/plan/logic.bpmn` runs offline — no `npm install`, anywhere, ever.
+- **Writable project folder (Claude Code, or Claude Desktop on a repo/folder):** write the two outputs directly to `docs/plan/`.
+- **No folder access (chat-only session):** produce exactly the same files as downloadable outputs, each labeled with its destination path (`docs/plan/bpmn.bpmn`, `docs/plan/bpmn.txt`); the user drops them into the repo afterwards.
+- **The validation gate is mandatory in both environments.** The skill ships its own `node_modules`, so `node scripts/validate-bpmn.mjs docs/plan/bpmn.bpmn` runs offline — no `npm install`, anywhere, ever.
+
+**Propose → approve → write → validate.** Nothing is assumed: every phase and sub-phase ends in an explicit user approval, and no artifact is written before the user approved its content in conversation. Validators run after writing; a failed gate is fixed and re-run, never silently patched.
 
 ### Prerequisites — MUST be satisfied (ordered)
 
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
 | 1 | `opscale-process` has been run for this module | `docs/plan/process.txt` and `docs/plan/context/names.md` exist and PASS | Stop. Run `/opscale-process` first. |
-| 2 | `opscale-dbml` has been run for this module | `docs/plan/domain.dbml` exists and PASS | Stop. Run `/opscale-dbml` first. |
+| 2 | `opscale-dbml` has been run for this module | `docs/plan/dbml.dbml` exists and PASS | Stop. Run `/opscale-dbml` first. |
 
 This skill is **Step 3 of the Plan phase**. The Plan phase is `process → dbml → bpmn → sipoc` — strictly ordered, no skipping. After `opscale-sipoc`, the module enters the Generate phase (`domain → ui → logic`).
 
@@ -38,14 +40,16 @@ This skill is **Step 3 of the Plan phase**. The Plan phase is `process → dbml 
 
 | Category | Elements |
 |----------|----------|
-| Tasks | `serviceTask` (crud), `businessRuleTask` (logic), `sendTask` (output) |
+| Tasks | `serviceTask` (crud), `businessRuleTask` (logic) |
 | Gateways | `exclusiveGateway`, `parallelGateway`, `inclusiveGateway`, `eventBasedGateway` |
 | Events | `startEvent`, `endEvent`, `intermediateCatchEvent`, `intermediateThrowEvent` |
 | Flows | `sequenceFlow`, `messageFlow` |
 
+Note: there is **no `sendTask`** — Outputs are not nodes; they are composed members of a Logic's `businessRuleTask`.
+
 ### Opscale Task Types
 
-Only three task types are allowed. Everything else is forbidden.
+Only two node task types exist (`serviceTask`, `businessRuleTask`); everything else is forbidden. Outputs are the third *category* but live as composed metadata inside a Logic, not as their own node.
 
 #### serviceTask — `crud`
 
@@ -53,19 +57,19 @@ Persistence and query operations on domain entities. No business logic, no condi
 
 #### businessRuleTask — `logic`
 
-Encapsulated business operation — anything **heavier than a single CRUD**. A step is `logic` when it does one or more of: queries an **external source** to proceed, requires an **approval** by an authorized role, **gathers additional data** before it can continue, **calculates / transforms** with formulas, or **coordinates multiple entities**. Maps to exactly one Opscale Action class.
+Encapsulated business operation — anything **heavier than a single CRUD**. A step is `logic` when it does one or more of: queries an **external source** to proceed, requires an **approval** by an authorized role, **gathers additional data** before it can continue, **calculates / transforms** with formulas, or **coordinates multiple entities**. Maps to exactly one Opscale Action class. Its `composed` array carries the CRUDs it orchestrates **and the Outputs it dispatches**.
 
 **Naming — MANDATORY: `verb + noun` in natural language.** Sentence case, spaces between words, no PascalCase, no class-name form, no abbreviations. Examples: `"Calculate interest"`, `"Approve loan"`. The `id` inside `<documentation>` is the kebab-case slug derived from that phrase — downstream skills derive the Action class name from it.
 
-#### sendTask — `output`
+#### output — composed member (no node)
 
-Dispatches something that leaves the system — email, push, PDF, SMS, WhatsApp, webhook, dashboard. Maps to exactly one Output class. One channel per task.
+Something that leaves the system (a notification, a document, a webhook). Maps to exactly one Output class at Generate time, dispatched by the Action of its owning Logic. **An Output is never a node** — it is an entry in some Logic's `composed` array. The Plan records only WHAT leaves (the `"content"` phrase); the concrete channel (email, push, PDF, SMS, webhook, …) is decided in the Generate phase.
 
-| Use businessRuleTask for | Use serviceTask (crud) for | Use sendTask for |
+| Use businessRuleTask for | Use serviceTask (crud) for | Compose an output inside a Logic for |
 |-------------------------|---------------------------|------------------|
-| Calculate totals, apply discounts | Get customer data | Send email, push, SMS, WhatsApp |
-| Validate business rules | Query product list | Generate and deliver PDF reports |
-| Generate sequential numbers | Read configuration | Call external webhooks |
+| Calculate totals, apply discounts | Get customer data | The notification a decision sends |
+| Validate business rules | Query product list | The document an approval delivers |
+| Generate sequential numbers | Read configuration | The webhook a state change fires |
 | Apply complex transformations | Search records, simple lookups | |
 
 For the verbatim XML snippet for each task type (with `<documentation>` payload shape), see `references/bpmn-templates.md`.
@@ -76,17 +80,19 @@ For the verbatim XML snippet for each task type (with `<documentation>` payload 
 
 ### General rule — the five operation categories
 
-Operations are the atomic, technical level — what a business step decomposes into. Every operation line in every subprocess is exactly one of (the first three are **operations** proper; Event and Gateway are **flow elements** that structure the sequence):
+Operations are the atomic, technical level — what a business step decomposes into. Every operation is exactly one of the five categories below. **Only CRUD and Logic can be *standalone* (step-level) operations**; **Output is never standalone — it is always composed inside a Logic** (see below); Event and Gateway are **flow elements** that structure the sequence:
 
 | Category | BPMN element | What it is |
 |---|---|---|
-| **CRUD** | `serviceTask` (type=crud) | A single create / read / update / delete on one entity. No business rules, no orchestration |
-| **Logic** | `businessRuleTask` (type=logic) | **An orchestrated bundle of CRUDs driven by a business rule** — sometimes plus an external lookup, an approval, or a calculation. The bundle is what makes it a Logic; a Logic with zero CRUDs is suspicious — re-examine it |
-| **Output** | `sendTask` (type=output) | Something that leaves the system: email, push, SMS, WhatsApp, PDF, webhook, dashboard |
+| **CRUD** | `serviceTask` (type=crud) | A single create / read / update / delete on one entity. No business rules, no orchestration. Standalone only when no Logic absorbs it |
+| **Logic** | `businessRuleTask` (type=logic) | **An orchestrated bundle of CRUDs (and its Outputs) driven by a business rule** — sometimes plus an external lookup, an approval, or a calculation. The bundle is what makes it a Logic; a Logic with zero CRUDs is suspicious — re-examine it |
+| **Output** | composed member of a Logic (type=output) | Something that leaves the system (a notification, a document, a webhook). **Always part of a Logic** — never a standalone node. It is the effect the Logic dispatches once its rule resolves |
 | **Event** | `intermediateCatchEvent` | A wait for something external to arrive |
 | **Gateway** | `exclusiveGateway` (or `parallel`/`inclusive`) | A branch on a condition |
 
 Nothing else is a step. If you cannot place a candidate step into one of these five, you have either (a) discovered a sub-step that belongs inside a Logic, or (b) something that does not belong in the BPMN at all (UI affordance, infra detail). Ask before forcing it in.
+
+**Outputs are never loose — they belong to the Logic that produces them.** A notification/document/webhook is the *consequence* of a business rule resolving: you notify **because** something was decided, changed, or approved. So every Output is composed inside the Logic that dispatches it — it appears in that Logic's composition (alongside its CRUDs), never as a step-level sibling and never as its own `sendTask` node. When a business step reads as "just a notification" with no data change of its own, its Output attaches to the Logic whose outcome it communicates (usually in the same or the immediately preceding step). If there is genuinely no such Logic, that is a modeling gap — the state change the notification reports was probably left as a loose CRUD that should be a Logic; surface it and ask, do not emit a standalone output.
 
 **Logic = orchestrated CRUDs.** The classic shape is a constrained state transition: a record cannot move from status A to status B freely — moving it also requires reading X, validating Y, and creating Z. Examples:
 
@@ -94,7 +100,7 @@ Nothing else is a step. If you cannot place a candidate step into one of these f
 - *Publish article* (`publish-article`): `read review_checklist` (verify all complete) + `update articles.status → published`.
 - *Approve loan* (`approve-loan`): `read credit_score` (external) + `update loan.status → approved` + `create approval_record`.
 
-The CRUDs that compose a Logic are not separate `serviceTask` nodes in the BPMN — they live inside the Logic's `businessRuleTask`. Only CRUDs that do **not** belong to any Logic become standalone `serviceTask` nodes.
+The CRUDs — **and the Outputs** — that compose a Logic are not separate nodes in the BPMN: they live inside the Logic's `businessRuleTask` (its `composed` array). Only CRUDs that do **not** belong to any Logic become standalone `serviceTask` nodes; Outputs are **always** composed, so there are **no `sendTask` nodes** at all.
 
 **Approvals are two-outcome.** Every approval business step (a formal go/no-go by an authorized role — spot them by meaning, e.g. "approve", "authorize", "sign off") implies both resolutions: the approving Logic and its rejecting counterpart (`approve-x` / `reject-x`), each with its own guarded transition and its own SIPOC, separated by the gateway that carries the decision. The same applies to any acceptance the flow waits on (an offer can be declined). Modeling only the happy path is a gap the 2.1 rules elicitation must catch — a lifecycle with an approval stage always has a rejected/declined branch somewhere.
 
@@ -109,23 +115,23 @@ The CRUDs that compose a Logic are not separate `serviceTask` nodes in the BPMN 
 | records something (create/update — names an entity) | one or more `serviceTask` (`type=crud`) |
 | runs business logic (calculate, validate, compare) | `businessRuleTask` (`type=logic`) + the CRUDs it orchestrates |
 | formal approval by an authorized role | `businessRuleTask` (`type=logic`) |
-| sends a message / delivers a file | `sendTask` (`type=output`) — often preceded by the CRUDs that prepare it |
+| sends a message / delivers a file | an **Output composed inside the Logic that produces it** (`type=output`, in that Logic's `composed` array) — never a standalone node |
 | the subprocess's `*Ends with:*` wait | `intermediateCatchEvent` (structural — stays 1:1) |
 | branches on a question (`… → N` destinations) | `exclusiveGateway` (structural — stays 1:1) |
 
-The business step → operations trace is recorded in `docs/plan/operations.md` (every operation lists the business step it came from), so business readers can find their business step and see exactly what it became. The BPMN itself stays at operation level — business steps do not appear as BPMN elements.
+The business step → operations trace is recorded **inside the XML**: every task's `<documentation>` JSON carries `"step"` and `"subprocess"`, and `docs/plan/bpmn.txt` presents the same trace as a plain outline — so business readers can find their business step and see exactly what it became. The BPMN itself stays at operation level — business steps do not appear as BPMN elements, only as metadata.
 
-**The BPMN is flat — no `subProcess` elements.** `docs/plan/process.txt` lists the subprocesses inside the module's macro-flow, but they do NOT become containers in the XML: the whole module is one flat sequence of tasks, gateways and events. Each subprocess boundary is the `intermediateCatchEvent` (the spec's `*Ends with:*` wait) that closes it — the waits are the joints between phases. The subprocess grouping lives in `docs/plan/operations.md`, where every operation is labeled with its subprocess and business step. Model the **whole module**, not a single process.
+**The BPMN is flat — no `subProcess` elements.** `docs/plan/process.txt` lists the subprocesses inside the module's macro-flow, but they do NOT become containers in the XML: the whole module is one flat sequence of tasks, gateways and events. Each subprocess boundary is the `intermediateCatchEvent` (the spec's `*Ends with:*` wait) that closes it — the waits are the joints between phases. The subprocess grouping lives in each task's `<documentation>` JSON (`"subprocess"` key) and, readable at a glance, in `docs/plan/bpmn.txt`. Model the **whole module**, not a single process.
 
 ### Domain rules (general rule — every task references a DBML entity)
 
 The workflow is strictly sequential: **flows → steps per flow → BPMN**. Do not attempt to classify a single step before the user has approved (a) the list of flows and (b) the step list for the flow that step belongs to. Never generate the BPMN until every flow has been walked.
 
-Every CRUD's entity MUST exist in `docs/plan/domain.dbml`. If it doesn't, stop and have the user fix the DBML first. Every Logic must be named **`verb + noun` in natural language** (sentence case). Every gateway branch carries a target step number on the same line.
+Every CRUD's entity MUST exist in `docs/plan/dbml.dbml`. If it doesn't, stop and have the user fix the DBML first. Every Logic must be named **`verb + noun` in natural language** (sentence case). Every gateway branch carries a target step number on the same line.
 
 ### Output, layout, ID conventions
 
-`docs/plan/logic.bpmn` is raw BPMN 2.0 XML — no markdown wrapper, no surrounding prose. Loadable directly in Camunda Modeler or bpmn.io. No summary table prefaces the XML — the Phase 3 consolidated summary is presented in conversation only.
+`docs/plan/bpmn.bpmn` is raw BPMN 2.0 XML — no markdown wrapper, no surrounding prose. Loadable directly in Camunda Modeler or bpmn.io. No summary table prefaces the XML — the Phase 3 consolidated summary is presented in conversation only.
 
 For the full `<bpmn:definitions>` skeleton (process + tasks + gateway + end events + sequence flows + BPMNDiagram with shapes and edges), the layout-rules table (element widths/heights, spacing, flow direction), and the ID-prefix convention table, see `references/bpmn-templates.md`.
 
@@ -138,7 +144,7 @@ For the full `<bpmn:definitions>` skeleton (process + tasks + gateway + end even
 **1a. Read inputs:**
 
 - `docs/plan/process.txt` → the subprocess blocks. Each subprocess block there is a **candidate** flow (as-is) — not a locked one.
-- `docs/plan/domain.dbml` → (i) all table names (the only valid `entity` values for `serviceTask` crud) and (ii) the **modeling standard** recorded by `opscale-dbml` Phase 1 in the Project block's `Note:`. If the standard is not findable there, ask the user which one applies (or "none").
+- `docs/plan/dbml.dbml` → (i) all table names (the only valid `entity` values for `serviceTask` crud) and (ii) the **modeling standard** recorded by `opscale-dbml` Phase 1 in the Project block's `Note:`. If the standard is not findable there, ask the user which one applies (or "none").
 
 **1b. Contrast the as-is candidates against the standard:**
 
@@ -229,8 +235,9 @@ Confirm the atomic sequence (and that each business step's decomposition is fait
 
 Rules during 2.2:
 - Every operation belongs to exactly one business step. If an operation doesn't trace to any business step in `docs/plan/process.txt`, either a business step is missing from the spec (go back and add it with the user, updating `docs/plan/process.txt`) or the operation doesn't belong in the module.
+- **A business step should decompose into several operations** (`opscale-process` writes steps as macro activities). If a step resolves to a single operation — outside the central entity's initial create — that's a sign it arrived too granular from `opscale-process`: surface it and offer to merge it into a neighbouring activity in `docs/plan/process.txt`. This is guidance, not a gate — don't block on it, just flag it.
 - Every line is exactly one of CRUD / Output / Event / Gateway. If a candidate doesn't fit, **stop and ask** — it either belongs inside a Logic (handled in 2.3) or does not belong in the BPMN.
-- Every CRUD's entity MUST exist in `docs/plan/domain.dbml`. If it doesn't, stop and have the user fix the DBML first.
+- Every CRUD's entity MUST exist in `docs/plan/dbml.dbml`. If it doesn't, stop and have the user fix the DBML first.
 - Every gateway branch carries a target step number on the same line (`yes → N  |  no → M`).
 
 Wait for confirmation before 2.3.
@@ -246,10 +253,12 @@ Subprocess "[Subprocess name]" — grouped sequence:
 2. Event         wait for editor to complete checklist
 3. Gateway       checklist complete?  yes → 4  |  no → 2
 4. Logic         "Publish article"     (id: publish-article)
-5. Output  email author "your article is live"
+                   ↳ output: publication notice to the author   ← composed inside publish-article
 
 Confirm the grouping?
 ```
+
+(The output is shown under the Logic that dispatches it — it is part of that Logic, never a standalone line.)
 
 Rules during 2.3:
 - Every Logic must absorb at least one CRUD from the 2.2 atomic sequence. A zero-CRUD Logic is suspicious — re-examine before continuing.
@@ -257,7 +266,8 @@ Rules during 2.3:
 - A Logic normally lives inside one business step. If a business rule forces grouping CRUDs across two business steps, surface it — the business steps may be one activity artificially split, or the rule may be mis-scoped. Ask before grouping across the boundary.
 - Logics must respect the order from 2.2 — grouping collapses contiguous steps, it does not reorder them. Reordering needs to go back to 2.2.
 - A CRUD that no Logic absorbs survives as a standalone CRUD line in the grouped sequence.
-- Outputs, Events, and Gateways are never absorbed into a Logic — they always remain their own line.
+- **Every Output is absorbed into a Logic** — the one that dispatches it (its cause). An Output never survives as a standalone line. If an Output has no Logic to attach to, surface the gap (its underlying state change is probably a loose CRUD that should be a Logic).
+- Events and Gateways are never absorbed into a Logic — they always remain their own line.
 
 Wait for confirmation before 2.4.
 
@@ -280,12 +290,12 @@ Logics (each → one businessRuleTask):
     composed of:
       - read review_checklist (verify all complete)
       - update articles.status → published
+      - output: publication notice to the author
 
 Standalone CRUDs (each → one serviceTask):
 - (none)   ← or: [crud action] on [entity]
 
-Outputs (each → one sendTask):
-- email author "your article is live" — triggered by publish-article
+Outputs: (none standalone — every output is composed inside a Logic above)
 
 Events (each → one intermediateCatchEvent):
 - wait for editor to complete checklist — resumes step 3
@@ -317,8 +327,8 @@ CRUD (serviceTask):
 Logic (businessRuleTask) — verb + noun, natural language:
 - "[Verb noun]" (id: `[verb-noun]`)   (in flow: [flow name])
 
-Output (sendTask):
-- `[channel]` triggered by `[logic-id]`   (in flow: [flow name])
+Output (composed inside a Logic):
+- `[brief content]` — part of `[logic-id]`   (in flow: [flow name])
 
 Flow (top level):
 - Start: [trigger from spec]
@@ -336,74 +346,71 @@ Never generate without explicit confirmation.
 
 ### Phase 4 — Validate XML (assemble, write, validate)
 
-Assemble the complete BPMN 2.0 XML and write it to `docs/plan/logic.bpmn` (create `docs/plan/` if it doesn't exist). Then run the bundled validator against it — from the skill bundle directory, so the bundled `node_modules` resolve; no install, no temp files outside the workspace:
+Assemble the complete BPMN 2.0 XML and write it to `docs/plan/bpmn.bpmn` (create `docs/plan/` if it doesn't exist). Then run the bundled validator against it — from the skill bundle directory, so the bundled `node_modules` resolve; no install, no temp files outside the workspace (`bpmn.txt` doesn't exist yet at this point — the flags are added on the final success-condition run):
 
 ```bash
-node scripts/validate-bpmn.mjs docs/plan/logic.bpmn
+node scripts/validate-bpmn.mjs docs/plan/bpmn.bpmn
 ```
 
 Exit `1` = XML/BPMN structure error, exit `2` = quality warnings (forbidden task types, missing docs, unlabelled gateway branches, orphan tasks, missing start/end events), exit `0` = proceed. On `1` or `2`, fix the XML in place and re-run until it exits `0`. The gate is mandatory in both Claude Code and Claude Desktop (see *Modes*).
 
 For the verbatim run commands, see `references/validator.md`.
 
-Only after the validator exits with `0`, complete the artifact set:
+Only after the validator exits with `0`, complete the artifact set — exactly two files:
 
-1. **`docs/plan/logic.bpmn`** — the validated raw BPMN 2.0 XML (no markdown wrapper). This is the canonical artifact downstream skills (sipoc, logic, outputs, test) and BPMN tooling (Camunda Modeler, bpmn.io) consume directly.
-2. **`docs/plan/operations.md`** — the canonical operation record, one section per locked subprocess, containing verbatim the three confirmed sequences from Phase 2: the **atomic sequence** (2.2 — every CRUD / Output / Event / Gateway individually), the **grouped sequence** (2.3 — Logics replacing their absorbed CRUDs), and the **composition detail** (2.4 — per Logic: `id`, governing rule(s), and the `composed of` CRUD list). This file is what `opscale-sipoc` imports to build each SIPOC's Process section, so the CRUD composition survives re-runs. Format:
+1. **`docs/plan/bpmn.bpmn`** — the validated raw BPMN 2.0 XML (no markdown wrapper), **self-contained**: everything Phase 2 confirmed travels inside the XML as `<documentation>` JSON (see *Embedded metadata* below and `references/bpmn-templates.md` for the verbatim shapes). This is the canonical artifact downstream skills (sipoc, ontology, logic, test) and BPMN tooling (Camunda Modeler, bpmn.io) consume directly — no companion file is needed to interpret it.
 
-   ```markdown
-   # Operations — {module-name}
+   **Embedded metadata (the source of truth):**
+   - `<bpmn:process>`-level `<bpmn:documentation>`: `{"module":"{module-name}","standard":"{modeling standard from dbml Phase 1, or none}"}`.
+   - **Every operation carries its ontology id (`oid`)**: `SP-XX-YY-[C|L|O]ZZ` — subprocess XX and local step YY from `process.txt`, category letter (C crud, L logic, O output), ZZ counting per category within the step. Composed CRUDs and Outputs inside a Logic use the nested form `SP-XX-YY-LZZ-[C|L|O]AA`. Oids are unique across the module.
+   - Every standalone `serviceTask` `<bpmn:documentation>`: `{"type":"crud","oid":"SP-XX-YY-CZZ","entity":"…","action":"…","step":"{business step from process.txt}","subprocess":"{subprocess name}"}`.
+   - Every `businessRuleTask` `<bpmn:documentation>`: `{"type":"logic","oid":"SP-XX-YY-LZZ","id":"{kebab-id}","step":"…","subprocess":"…","rules":["{2.1 rule in prose — BR-NN numbering is assigned later by opscale-sipoc}"],"composed":[…]}`. **Key order is fixed** — `type`, `oid`, then `id` — so downstream regex parsers stay valid.
+   - The `composed` array mixes CRUD and Output members: a CRUD is `{"oid":"SP-XX-YY-LZZ-CAA","entity":"…","action":"…"}`; an **Output is `{"oid":"SP-XX-YY-LZZ-OAA","content":"{brief WHAT leaves the system}"}`** (no channel — that is a Generate-phase decision). There are **no `sendTask` nodes**: every Output lives here, inside its Logic.
+   - A Logic id reused by several nodes (e.g. a shared discard) carries **identical JSON in every node** (same oid included).
+   - The prose in `"rules"` and Output `"content"` must not contain raw `<` or `&` (they break XML parsing) — rephrase or escape.
 
-   ## Subprocess {n}: {name}
+2. **`docs/plan/bpmn.txt`** — this skill's relative ontology, one section per subprocess (same count, order, ids, and names as the `docs/plan/process.txt` blocks). Sections are separated by **one blank line; there are no blank lines inside a section** (the blank line is the subprocess boundary, exactly like `process.txt` blocks). Each section: the `SP-XX {name}` line, then each of its business steps followed by its operations. **Operation lines are concise — the detail lives in the SIPOC, never here**:
 
-   ### Atomic sequence
-   Step 1) "Send to review":
-   1. CRUD    update articles.status → reviewing
-   2. CRUD    create review_checklist
-   ...
+   Only two kinds of **top-level** operation line exist — standalone crud and logic:
+   - `- {oid} crud: {action} {entity}` — the CRUD action and the entity, nothing else (no parentheses, no column/status detail).
+   - `- {oid} logic: {kebab-id}` — only the Action identifier (the natural verb+noun name lives in the XML `name=`).
 
-   ### Grouped sequence
-   1. Logic   "Submit for review" (id: submit-for-review)   [business step 1]
-   ...
+   Under each logic line, its composed members are indented two extra spaces with their nested oids — CRUDs **and Outputs**. **Outputs only ever appear here, indented inside a Logic — never as a top-level line**:
+   - `  - {oid} crud: {action} {entity}`
+   - `  - {oid} output: {brief content}` — WHAT leaves the system, in a few words; never the channel (email/sms/pdf/…).
 
-   ### Composition
-   - submit-for-review — business step: "Send to review" — governed by: [the rule from 2.1, in prose — BR-NN numbering is assigned later by opscale-sipoc]
-     - update articles.status → reviewing
-     - create review_checklist
-   ```
-
-   The business step labels preserve the business → technical trace: a stakeholder finds their business step and sees the operations it became; an engineer finds an operation and sees which business activity justifies it.
-
-3. **`docs/plan/subprocesses/{kebab-subprocess}.txt`** — the same decomposition as plain, parseable outlines, **one file per subprocess** (filename = the subprocess name in kebab-case). Inside each file: each business step of that subprocess on its own line, each operation it decomposes into below prefixed with `- ` (category word + operation), one blank line between business steps:
+   This preserves both the atomic view (every CRUD/Output visible) and the grouped view (which Logic owns it) in one file:
 
    ```
-   # docs/plan/subprocesses/editorial-review.txt
+   SP-01 Editorial review
    Send to review
-   - crud: update articles.status → reviewing
-   - crud: create review_checklist
-
+   - SP-01-01-L01 logic: submit-for-review
+     - SP-01-01-L01-C01 crud: update articles
+     - SP-01-01-L01-C02 crud: create review_checklist
    Publish the article
-   - logic: Publish article (publish-article)
-   - output: email the author
+   - SP-01-02-L01 logic: publish-article
+     - SP-01-02-L01-C01 crud: read review_checklist
+     - SP-01-02-L01-C02 crud: update articles
+     - SP-01-02-L01-O01 output: publication notice to the author
    ```
 
-   One `.txt` per subprocess block in `docs/plan/process.txt` — same count, same order, same names. Every business step of the subprocess appears with ≥ 1 operation. **Why:** gates diff `process.txt` against these files to catch spec ↔ BPMN drift cheaply, without parsing markdown or XML, and each subprocess can be reviewed on its own.
+   Every business step of every subprocess appears with ≥ 1 operation. **Why:** gates diff `process.txt` against this file to catch spec ↔ BPMN drift cheaply, without parsing XML, and `opscale-ontology` builds its tree from it.
 
 Deliver summary:
 
 ```
-BPMN file generated (docs/plan/logic.bpmn + docs/plan/operations.md).
+BPMN generated (docs/plan/bpmn.bpmn + docs/plan/bpmn.txt).
 
 Content:
 - [n] serviceTask (CRUD)
 - [n] businessRuleTask (Logic)
-- [n] sendTask (Output)
+- [n] Outputs (composed inside Logics)
 - [n] gateways
 
 CRUD entities used: [list]
 Operations defined: [list]
 
-Validation: open https://demo.bpmn.io → File → Open → select docs/plan/logic.bpmn
+Validation: open https://demo.bpmn.io → File → Open → select docs/plan/bpmn.bpmn
 
 Need adjustments?
 ```
@@ -414,12 +421,12 @@ Then verify the semantic gate. For the full 26-item checklist (modeling-standard
 
 ## Sample
 
-Excerpt of `docs/plan/logic.bpmn` and a full reference `docs/plan/subprocesses/` set (recruitment module, shared across the four Plan skills — its steps match `process.txt`, its logic ids match `sipoc.txt`) — see `references/sample-output.md`.
+Excerpt of `docs/plan/bpmn.bpmn` (with embedded metadata) and a full reference `docs/plan/bpmn.txt` (recruitment module, shared across the four Plan skills — its steps match `process.txt`, its logic ids match `sipoc.txt`) — see `references/sample-output.md`.
 
 ## Success condition
 
 ```bash
-node scripts/validate-bpmn.mjs docs/plan/logic.bpmn
+node scripts/validate-bpmn.mjs docs/plan/bpmn.bpmn --txt=docs/plan/bpmn.txt --process=docs/plan/process.txt
 ```
 
 Exit code 0 = pass.

@@ -28,7 +28,7 @@ The output is a **commit on the current branch** (or on a new feature branch the
 | 2 | Current directory is a git repo | `git rev-parse --is-inside-work-tree` | Stop. `git init` (or move to the right directory). |
 | 3 | Git tree is clean | `git status --porcelain` returns empty | Stop. Commit or stash before iterating. |
 | 4 | `specify --version` resolves | Run the command | Re-run `/opscale-init` to install spec-kit. |
-| 5 | **Plan phase complete** for at least one module | `docs/plan/process.txt`, `docs/plan/domain.dbml`, `docs/plan/logic.bpmn` all exist and PASS | Stop. Run `/opscale-process` → `/opscale-dbml` → `/opscale-bpmn` first. |
+| 5 | **Plan phase complete** for at least one module | `docs/plan/process.txt`, `docs/plan/dbml.dbml`, `docs/plan/bpmn.bpmn` all exist and PASS | Stop. Run `/opscale-process` → `/opscale-dbml` → `/opscale-bpmn` first. |
 | 6 | **Generate phase complete** for that module | `src/Models/` populated AND `src/Nova/` populated AND `src/Services/Actions/` populated (BPMN-driven modules) | Stop. Run `/opscale-domain` → `/opscale-ui` → `/opscale-logic`. |
 | 7 | **Zero pending tasks** in the module's `tasks.md` | `grep -E '^\s*-\s*\[ \]' .specify/specs/{NNN}-{slug}/tasks.md` returns nothing | Stop. Finish the open tasks before iterating. |
 
@@ -39,8 +39,8 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1                && echo "2. g
 [ -z "$(git status --porcelain)" ]                                 && echo "3. clean     OK"
 specify --version >/dev/null 2>&1                                  && echo "4. spec-kit  OK"
 test -f docs/plan/process.txt                                       && echo "5a. process  OK"
-test -f docs/plan/domain.dbml                                      && echo "5b. dbml     OK"
-test -f docs/plan/logic.bpmn                                     && echo "5c. bpmn     OK"
+test -f docs/plan/dbml.dbml                                      && echo "5b. dbml     OK"
+test -f docs/plan/bpmn.bpmn                                     && echo "5c. bpmn     OK"
 ls src/Models/*.php                  >/dev/null 2>&1               && echo "6a. domain   OK"
 ls src/Nova/*.php                    >/dev/null 2>&1               && echo "6b. ui       OK"
 ls src/Services/Actions/*.php        >/dev/null 2>&1               && echo "6c. logic    OK"

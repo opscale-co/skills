@@ -75,7 +75,7 @@ For each cross-subdomain column the model emits a virtual `BelongsTo` method:
 
 | Column shape | Relation method | Example |
 |--------------|-----------------|---------|
-| `agency_id`, `teller_id`, `witness_id` | strip `_id`, camelCase | `agency_id → agency` |
+| `origin_agency_id`, `teller_id`, `witness_id` | strip `_id`, camelCase | `origin_agency_id → originAgency` |
 | `*_witness_id` (qualified witness) | camelCase the qualified prefix | `opening_witness_id → openingWitness` |
 | `*_by` (actor / audit columns) | camelCase + `User` suffix | `opened_by → openedByUser` |
 

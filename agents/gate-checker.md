@@ -3,8 +3,9 @@ name: gate-checker
 description: >
   Runs the completeness checklist for any Opscale pipeline step. Each step has a
   defined gate with specific checks that must pass before the next step can begin.
-  Checks are artifact-driven — if spec files are not provided, spec-related checks
-  are skipped. Spawned at step boundaries. Read-only — never modifies files.
+  Checks are artifact-driven — if the plan folder (docs/plan/) is not provided,
+  plan-related checks are skipped. Spawned at step boundaries. Read-only — never
+  modifies files.
 tools: Read, Bash, Grep, Glob, sqlite, memory
 model: sonnet
 maxTurns: 12
@@ -20,55 +21,53 @@ path is not provided or doesn't exist, checks that depend on it are skipped.
 
 You receive:
 - `step` — which step's gate to check: `process`, `dbml`, `bpmn`, `domain`, `nova`, `logic`, `debug`, `test`, `release`
-- `spec_dir` — path to `.specify/specs/{NNN}-{module-name}/`. Optional — when not provided, spec-dependent checks are skipped
+- `plan_dir` — path to `docs/plan/`. Optional — when not provided, plan-dependent checks are skipped
 - `src_dir` — path to `src/` (for implementation steps)
 - `project_dir` — path to project root (for config steps)
 
 ## Gate Definitions
 
 ### opscale-process Gate
-- [ ] `final/process.md` exists in spec_dir
-- [ ] Bounded Context section is complete (subdomain slug, responsibility, dependencies)
-- [ ] At least one Actor defined
-- [ ] At least one Trigger defined
-- [ ] At least one Action defined
-- [ ] At least one Artifact of type Entity defined
-- [ ] Business Rules section exists with at least one BR-NN rule
-- [ ] Pre-conditions and Post-conditions defined
+- [ ] `process.txt` exists in plan_dir (plain text, no markdown, no emojis)
+- [ ] Every subprocess block (blocks separated by a blank line) has a name line, a `Trigger:` line, and an `Ends with:` line (`—` allowed on the final block)
+- [ ] Every block opens with its `SP-XX {name}` id line; every block has at least one `YY)` step, numbered locally (two digits, restarting at 01 per subprocess; branch destinations local)
+- [ ] `context/names.md` exists with the normalization table (`| Canónico | ← alias |`, ≥2 data rows, no id column)
 
-*Requires: spec_dir*
+*Requires: plan_dir*
 
 ### opscale-dbml Gate
-- [ ] `final/domain.dbml` exists in spec_dir (raw DBML, no markdown wrapper)
+- [ ] `dbml.dbml` exists in plan_dir (raw DBML, no markdown wrapper)
 - [ ] DBML parses cleanly via `@dbml/core`
-- [ ] Every Entity artifact from final/process.md has a corresponding DBML table
+- [ ] Every entity in `dbml.txt` has its table in `dbml.dbml`, its Note opening with the kebab id (= table name with dashes)
+- [ ] `dbml.txt` exists and lists exactly the DBML tables, one per line
+- [ ] Every column's declared type is a business-type slug or an Enum (`identifier` for id/FK/external-ref columns; no technical types)
 - [ ] No technical/UI/config entities present
 - [ ] No `tenant_id` columns anywhere (Opscale is single-tenant)
 - [ ] All intra-subdomain relationships have FK constraints
 - [ ] Cross-subdomain references are logical only (no FK)
-- [ ] `final/external-refs.md` present and consistent (only if ≥1 external-ref slug)
+- [ ] `context/external-refs.md` present and consistent (only if ≥1 external-ref slug)
 - [ ] Project block Note present
-- [ ] `logs/dbml.md` written
 
-*Requires: spec_dir*
+*Requires: plan_dir*
 
 ### opscale-bpmn Gate
-- [ ] `final/process.bpmn` exists in spec_dir (raw BPMN 2.0 XML, no markdown wrapper)
+- [ ] `bpmn.bpmn` exists in plan_dir (raw BPMN 2.0 XML, no markdown wrapper)
 - [ ] BPMN XML is well-formed and parses via bpmn-moddle
-- [ ] Only serviceTask, businessRuleTask, sendTask used
-- [ ] Every crud serviceTask entity exists in final/domain.dbml
-- [ ] Every businessRuleTask has a logic id in kebab-case
-- [ ] Every sendTask has channel and trigger attributes
+- [ ] Only serviceTask + businessRuleTask nodes used (no sendTask — Outputs are composed inside a Logic)
+- [ ] The `<bpmn:process>` `<bpmn:documentation>` carries the `{"module","standard"}` JSON
+- [ ] Every task carries a `<bpmn:documentation>` JSON — crud/output: `{"type","entity","action","step","subprocess"}`; logic: `{"type":"logic","id","step","subprocess","rules":[…],"composed":[…]}`
+- [ ] Every crud serviceTask JSON `entity` exists in `dbml.txt`
+- [ ] Every businessRuleTask JSON `id` is kebab-case (nodes reusing an id carry identical JSON)
 - [ ] Start event and at least one end event present
 - [ ] Every task has incoming and outgoing flows
 - [ ] Complete BPMNDiagram section with shapes and edges
-- [ ] `logs/bpmn.md` written
+- [ ] `bpmn.txt` exists — per subprocess: name line, business step lines with `- {category}: ` operations, composed CRUDs indented under each `- logic:`
 
-*Requires: spec_dir*
+*Requires: plan_dir*
 
 ### opscale-domain Gate
 
-**When spec_dir is available:**
+**When plan_dir is available:**
 - [ ] Migration exists for every DBML table
 - [ ] Model exists for every DBML table
 - [ ] Enum exists for every DBML enum
@@ -79,11 +78,10 @@ You receive:
 - [ ] All models use Validatable trait
 - [ ] All models use their repository trait
 - [ ] `declare(strict_types=1)` in every PHP file
-- [ ] plan.md updated with domain section (if spec_dir exists)
 
 ### opscale-ui Gate
 
-**When spec_dir is available:**
+**When plan_dir is available:**
 - [ ] Resource exists for every aggregate root in DBML
 
 **Always (structural checks):**
@@ -92,20 +90,18 @@ You receive:
 - [ ] No business logic in Nova files
 - [ ] All strings use __() for translation
 - [ ] Status fields use Badge, not Select/Text
-- [ ] plan.md updated with Nova section (if spec_dir exists)
 
 ### opscale-logic Gate
 
-**When spec_dir is available:**
-- [ ] Action exists for every businessRuleTask in BPMN
-- [ ] Every Action's identifier() matches BPMN logic id
+**When plan_dir is available:**
+- [ ] Action exists for every distinct businessRuleTask logic id in `bpmn.bpmn`
+- [ ] Every Action's identifier() matches its BPMN logic `id`
 
 **Always (structural checks):**
 - [ ] Every Action extends Opscale\Actions\Action
 - [ ] Every handle() starts with fill() then validate()
 - [ ] Every handle() returns array with success key
 - [ ] No HTTP context in handle() methods
-- [ ] plan.md updated with logic section (if spec_dir exists)
 
 ### opscale-debug Gate
 - [ ] Xdebug configured (php.ini or .env for Sail)
@@ -127,14 +123,14 @@ You receive:
 - [ ] rector.php configured targeting PHP 8.3
 - [ ] composer.json quality scripts present
 
-**When spec_dir is available:**
+**When plan_dir is available:**
 - [ ] Orchestra Testbench installed and TestCase.php created
 - [ ] phpunit.xml.dist configured with three test suites (Unit, Feature, Web)
 - [ ] Unit test exists for every domain component (models, enums, VOs, repos, schema)
 - [ ] Feature test exists for every Action
-- [ ] Web test exists for every flow path
+- [ ] Web test exists for every subprocess block in `process.txt` (one flow per block) and each of its paths
 
-**When spec_dir is not available and models don't exist:**
+**When plan_dir is not available and models don't exist:**
 - [ ] phpunit.xml.dist configured with test suites (Unit, Feature — no Web)
 - [ ] Test exists for every public class in src/
 

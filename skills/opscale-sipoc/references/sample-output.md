@@ -13,14 +13,25 @@ For the canonical specification of the format, see this skill's
 # SIPOC — Approve Application
 
 **Identifier:** `approve-application`
+**Operation:** `SP-02-03-L01`
 **BPMN task:** Approve application
-**Subprocess:** SP2 Admission — Review
+**Subprocess:** SP-02 Admission — Review
 **Step:** Resolve the application
 **Business Rules:** BR-01, BR-02
 **Composes:** none
 
 Closes an `Application` in `Qualified` with one of three approval
 sub-types, recording a `Decision(Approve)` in the current cycle.
+
+## SIPOC
+
+| Suppliers | Inputs | Process | Outputs | Customers |
+|---|---|---|---|---|
+| 💻 System | application | crud: read application | success | All callers |
+| 👤 User | approvalType | crud: create decision | approval_type | 👤 User |
+| 💻 System | reason | crud: create contract_terms | decision_id | 💻 System |
+| | extraReqTypes | crud: update application | contract_terms_id | |
+| | | output: decision notice to the applicant | new_status | |
 
 ## Suppliers
 - 💻 System — provides `application` in `Qualified` **via UI context** and
@@ -29,12 +40,12 @@ sub-types, recording a `Decision(Approve)` in the current cycle.
 - 💻 System — provides the default template **via module configuration**
 
 ## Inputs
-| Input            | Source | How obtained                              | Type   | Validation rules          | Description                                 |
-|------------------|--------|-------------------------------------------|--------|---------------------------|--------------------------------------------|
-| application      | 💻     | auto-resolved from the UI context         | entity | status='Qualified'        | auto-resolved via context auto-resolution  |
-| approvalType     | 👤     | user picks in the Action form dropdown    | string | required, in: Std,CT,CR   | dropdown in the Action form                |
-| reason           | 👤     | user types in the Action form             | string | required, min:10, max:2000| mandatory textarea in the form             |
-| extraReqTypes    | 👤     | user picks in the Action form             | array  | nullable                  | only visible for the ChangedRequirements sub-type |
+| Input            | Source | How obtained                              | Type            | Validation rules          | Description                                 |
+|------------------|--------|-------------------------------------------|-----------------|---------------------------|--------------------------------------------|
+| application      | 💻     | auto-resolved from the UI context         | application     | status='Qualified'        | whole record — entity from dbml.dbml       |
+| approvalType     | 👤     | user picks in the Action form dropdown    | ApprovalType    | required                  | Enum declared in dbml.dbml                 |
+| reason           | 👤     | user types in the Action form             | description     | required                  | business type from the registry            |
+| extraReqTypes    | 👤     | user picks in the Action form             | multiOptions    | nullable                  | only visible for the ChangedRequirements sub-type |
 
 ## Process
 1. resolve `application` from UI context; guard `status === Qualified` (BR-01)
@@ -47,13 +58,13 @@ sub-types, recording a `Decision(Approve)` in the current cycle.
 4. return the result array
 
 ## Outputs
-| Output key        | Type           | Description                       | Consumers    |
-|-------------------|----------------|-----------------------------------|--------------|
-| success           | bool           | Whether the operation succeeded   | All callers  |
-| approval_type     | string         | Sub-type issued                   | 👤           |
-| decision_id       | string (ULID)  | Newly created `Decision`          | 👤           |
-| contract_terms_id | string?(ULID)  | `ContractTerms` (Standard/CT only)| 💻           |
-| new_status        | string         | Approved | SemiQualified         | 💻           |
+| Output key        | Type              | Description                       | Consumers    |
+|-------------------|-------------------|-----------------------------------|--------------|
+| success           | bool              | Whether the operation succeeded   | All callers  |
+| approval_type     | ApprovalType      | Sub-type issued (Enum)            | 👤           |
+| decision_id       | identifier        | Newly created `Decision`          | 👤           |
+| contract_terms_id | identifier        | `ContractTerms` (Standard/CT only)| 💻           |
+| new_status        | ApplicationStatus | Approved \| SemiQualified (Enum)  | 💻           |
 
 ## Customers
 - 💻 System — consumes `ContractTerms` + `application` downstream
@@ -80,7 +91,7 @@ sub-types, recording a `Decision(Approve)` in the current cycle.
 
 ## Sample docs/plan/sipoc.txt
 
-Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `docs/plan/subprocesses/` with its operations, every logic id there has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
+Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `docs/plan/bpmn.txt` with its operations, every logic id there has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
 
 ```
 Route approval (route-approval)

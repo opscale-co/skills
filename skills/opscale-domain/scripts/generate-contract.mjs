@@ -43,6 +43,7 @@ function main() {
   const contractRendered = render(contractTemplate, {
     package_namespace: input.package_namespace,
     contract_class,
+    contract_slug: input.contract_slug,
   });
   const contractPath = resolve(input.contracts_dir, `${contract_class}.php`);
   const contractResult = writeOrConflict(contractPath, contractRendered);

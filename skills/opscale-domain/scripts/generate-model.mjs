@@ -4,6 +4,8 @@
 // Input JSON shape:
 //   {
 //     "model_name":        "Order",
+//     "entity_id":         "order",                     // kebab-case entity id (table name with dashes, from the dbml.dbml Note) — stamped as @entity in the class docblock
+//     "entity_name":       "Order",                     // canonical business name (defaults to model_name)
 //     "table_name":        "orders",
 //     "package_namespace": "Opscale\\LoanModule",
 //     "output_dir":        "src/Models",
@@ -208,6 +210,8 @@ function main() {
   const context = {
     package_namespace: input.package_namespace,
     model_name:        input.model_name,
+    entity_id:         input.entity_id || null,
+    entity_name:       input.entity_name || input.model_name,
     table_name:        prefixedTableName,
     // Always emit `protected $table` — the subdomain prefix means the table
     // never matches Laravel's automatic pluralization of the class name.
@@ -237,6 +241,7 @@ function main() {
   console.log(resultLine('GENERATED', result.path));
   if (result.preview) console.log(resultLine('PREVIEW', result.preview));
   console.log(resultLine('MODEL', input.model_name));
+  console.log(resultLine('ENTITY', input.entity_id || '(none)'));
   console.log(resultLine('TABLE', prefixedTableName));
   console.log(resultLine('MODULE_PREFIX', modulePrefix || '(none)'));
   console.log(resultLine('FILLABLE', context.fillable.length));

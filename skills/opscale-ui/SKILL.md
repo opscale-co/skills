@@ -22,8 +22,8 @@ Generate Laravel Nova Resource classes that expose domain entities in the admin 
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
 | 2 | `opscale-process` has been run | `docs/plan/process.txt` exists and PASS | Stop. Run `/opscale-process`. |
-| 3 | `opscale-dbml` has been run | `docs/plan/domain.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
-| 4 | `opscale-bpmn` has been run | `docs/plan/logic.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
+| 3 | `opscale-dbml` has been run | `docs/plan/dbml.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `docs/plan/bpmn.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
 | 5 | `opscale-domain` has been run | `src/Models/` contains one model per DBML aggregate root | Stop. Run `/opscale-domain`. |
 | 6 | `tasks.md` entries for all domain bundles marked complete | Check `tasks.md` for unchecked `Implement {Entity}` items | Finish pending domain tasks before starting UI. |
 
@@ -99,7 +99,7 @@ For the full per-column-type field selection table, standard modifiers, the cano
 
 ### Actions, Cards, Repeatables, Shared Fields
 
-- **Actions** — only add an `actions()` method when the BPMN has `businessRuleTask` or `sendTask` nodes for this entity. Each Action class lives in `src/Nova/Actions/`. Use `::make()` factory pattern.
+- **Actions** — only add an `actions()` method when the BPMN has a `businessRuleTask` (Logic) that operates on this entity (Outputs are composed inside Logics, not separate nodes). Each Action class lives in `src/Nova/Actions/`. Use `::make()` factory pattern.
 - **Cards (Metrics)** — only add a `cards()` method when metrics are defined. Always use `->onlyOnDetail()` unless the metric belongs on the index. Metric classes live in `src/Nova/Metrics/`.
 - **Repeatables** — when an aggregate owns child rows edited inline, use Nova Repeatables. Full pattern in `references/repeatables.md`.
 - **Shared Fields** — when a Resource and its Repeatables share a field set, extract a `{ModelName}Fields` trait instead of redeclaring. Full pattern in `references/shared-fields.md`.
@@ -127,7 +127,7 @@ The JSON contract for each is documented at the top of the matching `scripts/gen
 9. **DateTime always diffForHumans** — `->displayUsing(fn ($v) => $v?->diffForHumans())->exceptOnForms()`.
 10. **Authorization confirmed per resource** — for every aggregate the skill must ask `can create? / can update? / can delete?` and pass answers to `generate-resource.mjs`.
 11. **`fieldsForCreate()` when needed** — extract create/edit fields when they differ from the display view.
-12. **Actions only from BPMN** — only add `actions()` when the BPMN has `businessRuleTask` or `sendTask` nodes for this entity.
+12. **Actions only from BPMN** — only add `actions()` when the BPMN has a `businessRuleTask` (Logic) operating on this entity.
 13. **`@extends Resource<Model>`** — always add the generic docblock for IDE type inference.
 14. **Every aggregate = Resource + Repeatable + shared trait** — always generate all three files per aggregate root.
 15. **Shared fields trait** — `Nova/Concerns/{ModelName}Fields.php` holds `coreFields()`. Both the Resource and Repeatable use it via `use {ModelName}Fields`.
@@ -142,7 +142,7 @@ The JSON contract for each is documented at the top of the matching `scripts/gen
 
 ### Phase 1 — Inventory aggregate roots
 
-Walk `src/Models/` and identify every aggregate root (model not consumed only as a HasMany child). Cross-reference with `docs/plan/domain.dbml` to confirm. Present the inventory:
+Walk `src/Models/` and identify every aggregate root (model not consumed only as a HasMany child). Cross-reference with `docs/plan/dbml.dbml` to confirm. Present the inventory:
 
 ```
 Nova UI inventory for [Module Name]:
@@ -247,7 +247,7 @@ Ordering inside an aggregate's bundle: field-trait first (so the Resource and Re
 
 The JSON contract for each script lives in its header comment. The skill is responsible for picking the right Nova field per column (`Text` / `Select` / `BelongsTo` / `Boolean` / `Number` / `DateTime` …) and emitting the `status_badge` map and `has_many_relationships` list — the script does not look at the Eloquent model.
 
-**Business types drive field selection.** Before picking a field heuristically, check the column's DBML note: a `// type:{slug}` note means the field, its `config`, and its `->help()` hint come from the Laravel/Nova **binding** (`.specify/memory/business-types.php`; canonical slugs in `docs/plan/context/business-types.md`) — an `email` column renders `Email::make`, a `money` column renders `Currency::make` with its currency config, never a bare `Text::make`. Heuristics apply only to columns with no `type:` note. **Why:** the registry is what guarantees the same business type looks and validates identically across every module.
+**Business types drive field selection.** Before picking a field heuristically, check the column's DBML **type**: the business-type slug IS the declared column type (`contact_email email`), and the field, its `config`, and its `->help()` hint come from the Laravel/Nova **binding** (`.specify/memory/business-types.php`; canonical slugs in `docs/plan/context/business-types.md`) — an `email` column renders `Email::make`, a `money` column renders `Currency::make` with its currency config, never a bare `Text::make`. Heuristics apply only to Enum-typed columns (they render as the Enum's select). **Why:** the registry is what guarantees the same business type looks and validates identically across every module.
 
 **Three invariants the JSON normalization must enforce** (the scripts assume they hold):
 

@@ -6,6 +6,9 @@ namespace {{package_namespace}}\Contracts;
 
 use Illuminate\Database\Eloquent\Builder;
 
+/**
+ * @entity ref:{{contract_slug}} — virtual entity owned by another module (docs/plan/context/external-refs.md)
+ */
 interface {{contract_class}}
 {
     public function query(): Builder;

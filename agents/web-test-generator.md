@@ -2,8 +2,9 @@
 name: web-test-generator
 description: >
   Generates a Laravel Dusk browser test file for a complete user flow through
-  the Nova UI. Spawned by opscale-test — one instance per flow in
-  final/process.md *Flujo ordenado*. The generated test drives the real user
+  the Nova UI. Spawned by opscale-test — one instance per subprocess block in
+  docs/plan/process.txt (one subprocess = one flow, its operations detailed in
+  docs/plan/bpmn.txt). The generated test drives the real user
   journey: log in, navigate, fill forms, submit, open Actions, fill Action
   modals, submit, and assert no error toast appears at any step.
 tools: Read, Write, Glob, sqlite, memory
@@ -97,7 +98,8 @@ use PHPUnit\Framework\Attributes\Test;
 /**
  * Browser flow test for "{Flow Name}".
  *
- * Source flow: final/process.md *Flujo ordenado* → "{Flow Name}".
+ * Source flow: docs/plan/process.txt subprocess block "{Flow Name}"
+ * (operations per step: docs/plan/bpmn.txt).
  * One method per flow path (happy + branches + visible failures).
  */
 final class {FlowName}FlowTest extends DuskTestCase
@@ -190,7 +192,7 @@ final class {FlowName}FlowTest extends DuskTestCase
 
 ## Rules (summary)
 
-1. **One file per flow** in `final/process.md` *Flujo ordenado*; **one method per path** (happy + each gateway branch + each UI-visible failure).
+1. **One file per flow** — a flow is one subprocess block of `docs/plan/process.txt`, its per-step operations read from `docs/plan/bpmn.txt`; **one method per path** (happy + each gateway branch + each UI-visible failure).
 2. **Always extend `DuskTestCase`** and use `$this->loginToNova($browser)`.
 3. **Every submit through `$browser->submitForm(...)`**; **every submit followed by `$browser->assertNoErrorToast()`**.
 4. **No manual `->pause()` calls.** The pause is centralized in `submitForm()`.

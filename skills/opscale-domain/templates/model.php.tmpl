@@ -28,6 +28,10 @@ use {{.}};
 use {{package_namespace}}\Models\Repositories\{{model_name}}Repository;
 
 /**
+{{#if entity_id}}
+ * @entity {{entity_id}} — {{entity_name}} (docs/plan/dbml.dbml)
+ *
+{{/if}}
 {{#each property_docs}}
  * @property {{.}}
 {{/each}}

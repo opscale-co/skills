@@ -32,7 +32,7 @@ The validation script and its dependencies stay in the skill bundle — nothing 
 To re-validate an already-written final artifact:
 
 ```bash
-node {SKILL_DIR}/scripts/validate-dbml.mjs docs/plan/domain.dbml {module-slug}
+node {SKILL_DIR}/scripts/validate-dbml.mjs docs/plan/dbml.dbml {module-slug}
 ```
 
 ## Phase 10 — Completeness gate (semantic checks the script can't do)
@@ -40,15 +40,15 @@ node {SKILL_DIR}/scripts/validate-dbml.mjs docs/plan/domain.dbml {module-slug}
 ```
 DBML COMPLETENESS GATE
 ──────────────────────────────────────────────────────
-[ ] Modeling standard chosen in Phase 1 (name or "none") recorded in docs/plan/domain.dbml Project Note and honored across phases 2–6
+[ ] Modeling standard chosen in Phase 1 (name or "none") recorded in docs/plan/dbml.dbml Project Note and honored across phases 2–6
 [ ] External references declared in Phase 3 (or explicit "none") — every cross-subdomain column resolves to a declared slug
 [ ] Script exited with code 0 (syntax + quality pass)
-[ ] docs/plan/domain.dbml written (raw DBML, no markdown fence)
+[ ] docs/plan/dbml.dbml written (raw DBML, no markdown fence)
 [ ] docs/plan/context/external-refs.md written and consistent with DBML notes
-[ ] docs/plan/naming.md written — one row per entity + per external ref, canonical name matches docs/plan/context/names.md
-[ ] docs/plan/dbml.txt written — one line per Table block in domain.dbml, same order, nothing else
-[ ] Every column resolves to exactly one of: `// external_ref:{slug}`, an Enum type, or `// type:{slug}` from the business-types registry (validator-enforced; only created_at/updated_at/deleted_at exempt). No raw types — extend the project registry if nothing matches
-[ ] `id` and every FK column carry `// type:identifier` (validator-enforced)
+[ ] Every table Note opens with its kebab-case entity id (`{kebab} — `, kebab = table name with dashes) — validator-enforced; junction tables get theirs the same way (names.md carries no ids)
+[ ] docs/plan/dbml.txt written — one line per Table block in dbml.dbml, same order, nothing else
+[ ] The business type IS the column type: every column's type is an Enum of this module or a registry slug written directly (`email`, `money`, …) — no technical types (`varchar`/`text`/`int`/`decimal`/`json`), no legacy `// type:` notes (validator-enforced; only created_at/updated_at/deleted_at are `timestamp`)
+[ ] `id`, every FK column, and every external-ref column are typed `identifier` (validator-enforced)
 [ ] Every entity name reconciled against the chosen standard (or industry naming if none), or explicitly kept after asking
 [ ] Every spec entity outside the standard's scope has an explicit decision (drop / extension / fold)
 [ ] Every canonical name in docs/plan/context/names.md has a corresponding DBML table (or an explicit fold/drop decision)

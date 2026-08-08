@@ -4,7 +4,7 @@
 
 | Column | Type | Rule |
 |--------|------|------|
-| `id` | `varchar(26)` | ULID — always first; note `// type:identifier` |
+| `id` | `identifier` | ULID — always first |
 | `created_at` | `timestamp` | Always — structural, no business type note |
 | `updated_at` | `timestamp` | Always — structural, no business type note |
 | `deleted_at` | `timestamp` | Only if spec requires recovery of deleted records — structural, no business type note |
@@ -20,10 +20,10 @@ Present per entity:
 
 | Column | Business type | Constraints | Business meaning |
 |--------|---------------|-------------|-----------------|
-| id | `identifier` (varchar(26)) | pk | ULID generated at application layer |
+| id | `identifier` | pk | ULID generated at application layer |
 | [column] | `[slug]` ([registry storage]) | [not null / null] | [what this value means in business terms] |
 | [status] | Enum `[EnumName]` | not null, default:'[value]' | Current lifecycle state |
-| [fk_id] | `identifier` (varchar(26)) | not null, ref: [table].id | [relationship description] |
+| [fk_id] | `identifier` | not null, ref: [table].id | [relationship description] |
 | created_at | — (structural) | not null | — |
 | updated_at | — (structural) | not null | — |
 

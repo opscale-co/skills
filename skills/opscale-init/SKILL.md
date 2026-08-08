@@ -325,13 +325,13 @@ cp references/plan-readme.md docs/plan/README.md   # skip if it already exists
 | # | Skill | Produces (under `docs/plan/`) |
 |---|-------|-------------------------------|
 | 1 | `opscale-map` | `context/system.map.md` |
-| 2 | `opscale-process` | `context/names.md` + `process.txt` |
-| 3 | `opscale-dbml` | `domain.dbml` + `dbml.txt` + `naming.md` + `context/external-refs.md` |
-| 4 | `opscale-bpmn` | `logic.bpmn` + `operations.md` + `subprocesses/{kebab-name}.txt` |
-| 5 | `opscale-sipoc` | `actions/{kebab-id}.md` (one per Logic) + `sipoc.txt` |
-| 6 | `opscale-ontology` | `ontology.html` (Plan closer) |
+| 2 | `opscale-process` | `process.mmd` + `process.txt` (+ `context/names.md`) |
+| 3 | `opscale-dbml` | `dbml.dbml` + `dbml.txt` + `context/external-refs.md` |
+| 4 | `opscale-bpmn` | `bpmn.bpmn` + `bpmn.txt` |
+| 5 | `opscale-sipoc` | `sipoc/{kebab-id}.md` (one per Logic) + `sipoc.txt` |
+| 6 | `opscale-ontology` | `ontology.mmd` + `ontology.txt` (Plan closer) |
 
-Do not pre-create `actions/` or empty artifact files — the Plan skills create them when they run.
+Do not pre-create `sipoc/` or empty artifact files — the Plan skills create them when they run.
 
 **6b. Recognize pre-existing Plan artifacts.** If `docs/plan/` already contains Plan artifacts when init runs (typically brought from a Claude Desktop planning session), do NOT demand the Plan phase be re-run. Compare the folder's contents against the manifest table and report which Plan steps are already satisfied and where the pipeline resumes:
 
@@ -351,7 +351,7 @@ Never overwrite files already present in `docs/plan/` — they are the source th
 
 **6c. Business-types registry.** Copy two files — **skip any that already exist** (never overwrite a project's extended copies):
 
-1. `references/business-types.md` → `docs/plan/context/business-types.md` — the **canonical, language-agnostic registry**: one slug per business type with meaning, storage, validation semantics, and UI intent. This is what the Plan phase reads: `opscale-dbml` types entity attributes with it (`// type:{slug}` notes), `opscale-sipoc` types Action inputs. Plan artifacts reference slugs only — never a class or framework rule.
+1. `references/business-types.md` → `docs/plan/context/business-types.md` — the **canonical, language-agnostic registry**: one slug per business type with meaning, storage, validation semantics, and UI intent. This is what the Plan phase reads: `opscale-dbml` uses the slugs directly as DBML column types, `opscale-sipoc` types Action inputs and outputs with them. Plan artifacts reference slugs only — never a class or framework rule.
 2. `references/business-types.php` → `.specify/memory/business-types.php` — the **Laravel/Nova implementation binding** of that registry (concrete field classes, validation rule strings, casts). Stays on the spec-kit side. Consumed only by Generate: `opscale-domain` (casts/rules), `opscale-ui` (field selection), `opscale-logic` (`parameters()` rules).
 
 Registry first, binding second — a slug missing from either side fails the Generate gates.
@@ -366,11 +366,11 @@ Explain to the user how the Opscale skill sequence maps to spec-kit's workflow:
 OPSCALE SKILL           → ARTIFACT
 ─────────────────────────────────────────────────────────────────────────
 opscale-map             → docs/plan/context/system.map.md (Step 1, app-level; re-run before each new module)
-opscale-process         → docs/plan/process.txt (+ context/names.md)
-opscale-dbml            → docs/plan/domain.dbml (+ dbml.txt, naming.md, context/external-refs.md)
-opscale-bpmn            → docs/plan/logic.bpmn (+ operations.md, subprocesses/)
-opscale-sipoc           → docs/plan/actions/{kebab-id}.md (+ sipoc.txt)
-opscale-ontology        → docs/plan/ontology.html (Plan closer)
+opscale-process         → docs/plan/process.mmd + process.txt (+ context/names.md)
+opscale-dbml            → docs/plan/dbml.dbml (+ dbml.txt, context/external-refs.md)
+opscale-bpmn            → docs/plan/bpmn.bpmn (+ bpmn.txt)
+opscale-sipoc           → docs/plan/sipoc/{kebab-id}.md (+ sipoc.txt)
+opscale-ontology        → docs/plan/ontology.mmd (+ ontology.txt) (Plan closer)
                           /speckit.clarify  ← validate before planning
 opscale-domain          ↘
 opscale-ui            → .specify/specs/{NNN-module}/plan.md

@@ -14,13 +14,13 @@ function parseArgs(argv) {
 
 function main() {
   const args = parseArgs(process.argv);
-  const sipocDir = args['sipoc-dir'] || 'docs/plan/actions';
+  const sipocDir = args['sipoc-dir'] || 'docs/plan/sipoc';
   const errors = [];
   const passes = [];
   const warnings = [];
 
   if (!sipocDir || !fs.existsSync(sipocDir)) {
-    console.log(`FAIL — sipoc directory not found → ${sipocDir} (pass --sipoc-dir=… or create docs/plan/actions/)`);
+    console.log(`FAIL — sipoc directory not found → ${sipocDir} (pass --sipoc-dir=… or create docs/plan/sipoc/)`);
     process.exit(1);
   }
   passes.push(`sipoc dir at ${sipocDir}`);
@@ -32,6 +32,7 @@ function main() {
 
   const requiredSections = [
     /^#\s+\S/m, // identifier header
+    /^##\s+SIPOC\s*$/m, // one-glance summary table
     /^##\s+Suppliers\b/m,
     /^##\s+Inputs\b/m,
     /^##\s+Process\b/m,
@@ -39,7 +40,7 @@ function main() {
     /^##\s+Customers\b/m,
     /^##\s+Business Rules enforced\b/m,
   ];
-  const sectionNames = ['Identifier (top-level # heading)', '## Suppliers', '## Inputs', '## Process', '## Outputs', '## Customers', '## Business Rules enforced'];
+  const sectionNames = ['Identifier (top-level # heading)', '## SIPOC (summary table)', '## Suppliers', '## Inputs', '## Process', '## Outputs', '## Customers', '## Business Rules enforced'];
 
   for (const f of files) {
     const p = path.join(sipocDir, f);
@@ -62,11 +63,54 @@ function main() {
     } else {
       // already counted as missing section above
     }
-    if (allOk) passes.push(`${f} has all sections + Inputs column`);
+
+    // Type cells use business types: a registry slug, a DBML entity, or a DBML
+    // Enum — never free scalars/objects. Only `success: bool` is exempt.
+    const FORBIDDEN_TYPES = /^(object|array|mixed|string|int|integer|float|double|json|bool|boolean|number|any)\b/i;
+    const typeCell = (row, idx) => (row.split('|')[idx] ?? '').trim();
+    const checkTypeCells = (sectionRe, idx, section) => {
+      const m2 = text.match(sectionRe);
+      if (!m2) return;
+      const rows = m2[0].split('\n').filter((l) => /^\s*\|/.test(l)).slice(2); // skip header + separator
+      for (const row of rows) {
+        const t = typeCell(row, idx);
+        if (!t) continue;
+        const key = typeCell(row, 1);
+        if (section === 'Outputs' && key === 'success' && /^bool/.test(t)) continue;
+        if (FORBIDDEN_TYPES.test(t)) {
+          errors.push(`${f} ${section} type "${t}" is a free scalar/object — use a business-type slug, a DBML entity, or a DBML Enum (extend the registry if nothing fits) → ${p}`);
+          allOk = false;
+        }
+      }
+    };
+    checkTypeCells(/^##\s+Inputs[\s\S]*?(?=^##\s|\Z)/m, 4, 'Inputs');
+    checkTypeCells(/^##\s+Outputs[\s\S]*?(?=^##\s|\Z)/m, 2, 'Outputs');
+
+    // The `## SIPOC` summary table's Process column (3rd column) lists this
+    // Logic's operations — every non-empty cell is prefixed crud:/logic:/output:.
+    const sipocTable = text.match(/^##\s+SIPOC\s*$[\s\S]*?(?=^##\s|\Z)/m);
+    if (sipocTable) {
+      const rows = sipocTable[0].split('\n').filter((l) => /^\s*\|/.test(l)).slice(2); // skip header + separator
+      let sawProcessOp = false;
+      for (const row of rows) {
+        const proc = (row.split('|')[3] ?? '').trim();
+        if (!proc) continue;
+        if (!/^(crud|logic|output):\s+\S/.test(proc)) {
+          errors.push(`${f} ## SIPOC table Process cell "${proc.slice(0, 40)}" must be an operation prefixed crud: / logic: / output: → ${p}`);
+          allOk = false;
+        } else sawProcessOp = true;
+      }
+      if (!sawProcessOp) {
+        errors.push(`${f} ## SIPOC table has no operation in its Process column (crud:/logic:/output:) → ${p}`);
+        allOk = false;
+      }
+    }
+
+    if (allOk) passes.push(`${f} has all sections + SIPOC table + business-typed Inputs/Outputs`);
   }
 
-  // 1:1 with BPMN if logic.bpmn exists
-  const bpmnPath = path.join(path.dirname(sipocDir), 'logic.bpmn');
+  // 1:1 with BPMN if bpmn.bpmn exists
+  const bpmnPath = path.join(path.dirname(sipocDir), 'bpmn.bpmn');
   if (fs.existsSync(bpmnPath)) {
     const bpmnText = fs.readFileSync(bpmnPath, 'utf8');
     const ids = new Set();
@@ -94,7 +138,7 @@ function main() {
       passes.push(`1:1 SIPOC ↔ businessRuleTask (${ids.size} tasks)`);
     }
   } else {
-    warnings.push(`no logic.bpmn at ${bpmnPath} — skipped 1:1 cross-check`);
+    warnings.push(`no bpmn.bpmn at ${bpmnPath} — skipped 1:1 cross-check`);
   }
 
   for (const p of passes) console.log(`PASS — ${p}`);

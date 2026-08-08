@@ -240,7 +240,7 @@ No feature branch merges without passing all of the following:
 
 ### App and module only (not package or library)
 
-6. ✅ DBML (`docs/plan/domain.dbml`) matches actual migrations — zero drift
+6. ✅ DBML (`docs/plan/dbml.dbml`) matches actual migrations — zero drift
 7. ✅ Every BPMN `action` task maps to an implemented Opscale Action — no orphan tasks
 
 ---

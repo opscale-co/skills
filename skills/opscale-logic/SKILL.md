@@ -18,7 +18,7 @@ Generate Opscale Action classes — atomic, typed, independently testable busine
 
 Mode is determined by project type:
 
-- **BPMN-driven** (app/module) — one Action per `businessRuleTask` node in `docs/plan/logic.bpmn`. Parameters derived from BPMN + DBML. Business rules from the SIPOCs (`docs/plan/actions/*.md`, section `Business Rules enforced`).
+- **BPMN-driven** (app/module) — one Action per `businessRuleTask` node in `docs/plan/bpmn.bpmn`. Parameters derived from BPMN + DBML. Business rules from the SIPOCs (`docs/plan/sipoc/*.md`, section `Business Rules enforced`).
 - **Standalone** (package) — Actions defined directly by name, purpose, and parameters. No BPMN or DBML files required.
 
 The same Action class serves multiple execution contexts automatically:
@@ -37,9 +37,9 @@ Output files are written to `src/Services/Actions/` and listed in `.specify/spec
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
 | 2 | `opscale-process` has been run | `docs/plan/process.txt` exists and PASS | Stop. Run `/opscale-process`. |
-| 3 | `opscale-dbml` has been run | `docs/plan/domain.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
-| 4 | `opscale-bpmn` has been run | `docs/plan/logic.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
-| 5 | `opscale-sipoc` has been run | One `docs/plan/actions/{kebab-id}.md` per `businessRuleTask` | Stop. Run `/opscale-sipoc`. |
+| 3 | `opscale-dbml` has been run | `docs/plan/dbml.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `docs/plan/bpmn.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
+| 5 | `opscale-sipoc` has been run | One `docs/plan/sipoc/{kebab-id}.md` per `businessRuleTask` | Stop. Run `/opscale-sipoc`. |
 | 6 | `opscale-domain` has been run | `src/Models/` populated, domain bundle tasks in `tasks.md` complete | Stop. Run `/opscale-domain`. |
 | 7 | `opscale-ui` has been run | `src/Nova/` populated, Nova bundle tasks in `tasks.md` complete | Stop. Run `/opscale-ui`. |
 
@@ -68,7 +68,7 @@ src/
         └── {ActionClassName}.php    (one per businessRuleTask or standalone action)
 ```
 
-In **BPMN-driven mode**, this skill consumes the per-Action SIPOC documents that `opscale-sipoc` already produced under `docs/plan/actions/{kebab-id}.md`. The SIPOC Inputs table feeds `parameters()`; the SIPOC Process section feeds the `handle()` body. This skill does NOT author SIPOCs — that's [opscale-sipoc](../opscale-sipoc/SKILL.md)'s job.
+In **BPMN-driven mode**, this skill consumes the per-Action SIPOC documents that `opscale-sipoc` already produced under `docs/plan/sipoc/{kebab-id}.md`. The SIPOC Inputs table feeds `parameters()`; the SIPOC Process section feeds the `handle()` body. This skill does NOT author SIPOCs — that's [opscale-sipoc](../opscale-sipoc/SKILL.md)'s job.
 
 In **Standalone mode** (packages) there is no SIPOC: the user supplies the same information directly.
 
@@ -237,7 +237,7 @@ The skill is responsible for assembling `handle_body` as ready-to-run PHP (inclu
 ### Domain Rules
 
 1. **One BPMN task = one Action class = one spec-kit task** — never merge two BPMN tasks or two standalone requests into one class, and never let a single Action span more than one entry in `tasks.md`.
-2. **SIPOC is an input, not an output** (BPMN-driven mode) — every Action depends on a SIPOC under `docs/plan/actions/{kebab-id}.md`. This skill consumes them; `opscale-sipoc` produces them.
+2. **SIPOC is an input, not an output** (BPMN-driven mode) — every Action depends on a SIPOC under `docs/plan/sipoc/{kebab-id}.md`. This skill consumes them; `opscale-sipoc` produces them.
 3. **Spec-kit plan + tasks before code** — `/speckit.plan` and `/speckit.tasks` run BEFORE any `action-generator` agent is spawned.
 4. **Every implementation task has a preceding test task** — `tasks.md` lists `Test {ClassName}` immediately before `Implement {ClassName}`.
 5. **handle() receives validated inputs** — never `fill()`/`validate()`/`get()`; read `$inputs` directly and resolve model params through the private resolver (instance | Collection | id).
@@ -260,8 +260,8 @@ The skill is responsible for assembling `handle_body` as ready-to-run PHP (inclu
 ### Phase 1 — Inventory SIPOCs / BPMN logic tasks
 
 **Mode Detection:** determine the mode based on project type:
-- **app/module** projects → `docs/plan/logic.bpmn` exists → **BPMN-driven mode**
-- **package** projects → no `docs/plan/logic.bpmn` or spec files → **Standalone mode**
+- **app/module** projects → `docs/plan/bpmn.bpmn` exists → **BPMN-driven mode**
+- **package** projects → no `docs/plan/bpmn.bpmn` or spec files → **Standalone mode**
 
 For BPMN-driven, extract every `businessRuleTask` and build the generation plan:
 
@@ -293,11 +293,11 @@ For Standalone mode, follow the standalone variant in `references/standalone-mod
 
 Before generating any code, formalize the plan through spec-kit so that every Action becomes a tracked task. This is what makes the implementation phase auditable and what feeds `opscale-test`.
 
-**2a. Build the spec-kit plan input.** Compose a brief that lists every Action to be generated, in dependency order, with its source BPMN task, lane, parameters (from BPMN + DBML), and Business Rules from its SIPOC (`docs/plan/actions/{id}.md`). Pass this as the seed for `/speckit.plan`:
+**2a. Build the spec-kit plan input.** Compose a brief that lists every Action to be generated, in dependency order, with its source BPMN task, lane, parameters (from BPMN + DBML), and Business Rules from its SIPOC (`docs/plan/sipoc/{id}.md`). Pass this as the seed for `/speckit.plan`:
 
 ```
 /speckit.plan "Logic layer for {module-name}: [N] Opscale Actions derived from
-docs/plan/logic.bpmn. Generate one Action class per businessRuleTask. Each Action:
+docs/plan/bpmn.bpmn. Generate one Action class per businessRuleTask. Each Action:
 - extends Opscale\\Actions\\Action (opscale-co/actions ^2.2)
 - declares identifier(), name(), description(), parameters(), handle(), outputs()
   (+ prefill()/options()/canRun()/EmitsEvent per its SIPOC)
@@ -395,10 +395,10 @@ Action templates fail at parse time when apostrophes leak into PHP string litera
 
 ```bash
 # 0. (BPMN-driven mode) Every generated Action has a matching SIPOC
-if [ -f docs/plan/logic.bpmn ]; then
+if [ -f docs/plan/bpmn.bpmn ]; then
   for f in src/Services/Actions/*.php; do
     id=$(grep -oP "return '\\K[a-z][a-z0-9-]*" "$f" | head -1)
-    [ -f "docs/plan/actions/$id.md" ] \
+    [ -f "docs/plan/sipoc/$id.md" ] \
       || { echo "Missing SIPOC for $id"; exit 1; }
   done
 fi

@@ -7,7 +7,7 @@
  * Temp files are auto-deleted after validation.
  *
  * Validates a DBML source using @dbml/core. Accepts either a raw .dbml file
- * (canonical form for docs/plan/domain.dbml) or a .md file containing a fenced
+ * (canonical form for docs/plan/dbml.dbml) or a .md file containing a fenced
  * ```dbml ... ``` block (used by older drafts). Reports syntax errors with line
  * numbers and quality warnings.
  *
@@ -19,7 +19,7 @@
  *   node {SKILL_DIR}/scripts/validate-dbml.mjs docs/plan/.dbml-validate.tmp.dbml loans
  *
  *   # Validate the final output
- *   node {SKILL_DIR}/scripts/validate-dbml.mjs docs/plan/domain.dbml loans
+ *   node {SKILL_DIR}/scripts/validate-dbml.mjs docs/plan/dbml.dbml loans
  *
  * Exit codes:
  *   0 — PASS: no syntax errors, no quality warnings
@@ -154,6 +154,11 @@ refs.forEach(r => {
 const warnings = [];
 const techPatterns = ['is_visible','ui_','display_','cache_','config_','sync_','api_','session_','log_','setting_'];
 
+// Entity-id stamps: every table Note opens with the entity's kebab-case id,
+// which is exactly the table name with dashes (invoice_item → invoice-item).
+// Assigned here on the FINAL entities — names.md is input only and carries
+// no ids.
+
 tables.forEach(t => {
   const fieldNames = t.fields.map(f => f.name);
 
@@ -168,6 +173,15 @@ tables.forEach(t => {
 
   if (!t.note)
     warnings.push(`[${t.name}] Missing table Note block`);
+
+  const noteText = (typeof t.note === 'string' ? t.note : '').trim();
+  const idMatch = noteText.match(/^([a-z][a-z0-9]*(?:-[a-z0-9]+)*)\s+—\s+\S/);
+  const expectedId = t.name.toLowerCase().replace(/_/g, '-');
+  if (t.note && !idMatch) {
+    warnings.push(`[${t.name}] Table Note must open with its entity id: '${expectedId} — {business meaning}' (kebab-case of the table name)`);
+  } else if (idMatch && idMatch[1] !== expectedId) {
+    warnings.push(`[${t.name}] Table Note opens with id '${idMatch[1]}' — the entity id is the table name in kebab-case ('${expectedId}')`);
+  }
 
   // Boilerplate columns (ULID PK, timestamps, active flag, sort order) carry
   // standardized semantics across every Opscale table and do NOT need an
@@ -202,11 +216,14 @@ enums.forEach(e => {
 
 // ── 6b. Business-type coverage (Domain Rule 9) ──────────────────────────────
 //
-// Every column must resolve to exactly one of: external ref, Enum, or a
-// business type from the registry (`type:{slug}` inside the column note).
-// Only the structural timestamps are exempt. `id` and FK columns must be
-// typed `identifier`. Slugs are read from the project registry
-// (docs/plan/context/business-types.md) with fallback to the bundle copy.
+// The business type IS the column type: every column's declared type must be
+// an Enum of this module or a business-type slug from the registry, written
+// directly (`contact_email email`). Technical storage types (varchar, text,
+// int, decimal, json, …) are rejected — storage is resolved by the Generate
+// binding. `id`/FK/external-ref columns are typed `identifier`. Structural
+// timestamps (created_at/updated_at/deleted_at) are `timestamp`. Slugs are
+// read from the project registry (docs/plan/context/business-types.md) with
+// fallback to the bundle copy.
 
 function loadRegistrySlugs() {
   const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -233,6 +250,9 @@ if (!registry) {
   warnings.push(`Business-types registry not found (docs/plan/context/business-types.md or bundle copy) — type coverage NOT checked`);
 } else {
   const enumNames = new Set(enums.map(e => e.name));
+  // `date` is NOT here — it is a registry slug; `timestamp` is handled as the
+  // structural-timestamp type above.
+  const TECH_TYPES = /^(var)?char|^(tiny|medium|long)?text$|^(big|small|medium|tiny)?int(eger)?$|^decimal|^numeric|^float|^double|^json$|^blob|^binary|^bool(ean)?$|^datetime$|^string$/i;
   // FK columns = columns participating in a Ref (either endpoint), plus the pk.
   const refColumns = new Set();
   refs.forEach(r => r.endpoints.forEach(ep =>
@@ -240,22 +260,28 @@ if (!registry) {
   ));
   tables.forEach(t => {
     t.fields.forEach(f => {
-      if (STRUCTURAL_TIMESTAMPS.has(f.name)) return;
+      const typeName = f.type?.type_name ?? '';
+      if (STRUCTURAL_TIMESTAMPS.has(f.name)) {
+        if (typeName !== 'timestamp')
+          warnings.push(`[${t.name}.${f.name}] structural timestamp must be typed \`timestamp\` (found '${typeName}')`);
+        return;
+      }
       const note = typeof f.note === 'string' ? f.note : '';
-      if (note.includes('external_ref:')) return;
-      if (enumNames.has(f.type?.type_name)) return;
-      const m = note.match(/type:([A-Za-z][A-Za-z0-9]*)/);
-      const isIdColumn = f.name === 'id' || refColumns.has(`${t.name}.${f.name}`);
-      if (!m) {
-        warnings.push(`[${t.name}.${f.name}] No business type — every column needs \`// type:{slug}\` in its note (or an Enum type, or an external_ref note). Registry: ${registry.path}`);
+      const isIdColumn = f.name === 'id' || refColumns.has(`${t.name}.${f.name}`) || note.includes('external_ref:');
+      if (isIdColumn) {
+        if (typeName !== 'identifier')
+          warnings.push(`[${t.name}.${f.name}] id/FK/external-ref columns are typed \`identifier\` (found '${typeName}')`);
         return;
       }
-      if (!registry.slugs.has(m[1])) {
-        warnings.push(`[${t.name}.${f.name}] Unknown business type slug 'type:${m[1]}' — not in the registry (${registry.path}). Extend the project registry first.`);
+      if (enumNames.has(typeName)) return;
+      if (note.match(/\btype:[A-Za-z]/))
+        warnings.push(`[${t.name}.${f.name}] legacy \`// type:{slug}\` note — the business type now IS the column type; move the slug to the type and leave only the business meaning in the note`);
+      if (TECH_TYPES.test(typeName)) {
+        warnings.push(`[${t.name}.${f.name}] technical type '${typeName}' — the business type IS the column type (e.g. \`email\`, \`money\`, \`name\`); storage is resolved by the Generate binding. Registry: ${registry.path}`);
         return;
       }
-      if (isIdColumn && m[1] !== 'identifier') {
-        warnings.push(`[${t.name}.${f.name}] id/FK columns must be typed \`// type:identifier\` (found 'type:${m[1]}')`);
+      if (!registry.slugs.has(typeName)) {
+        warnings.push(`[${t.name}.${f.name}] type '${typeName}' is neither an Enum of this module nor a business-type slug in the registry (${registry.path}). Extend the project registry first.`);
       }
     });
   });
@@ -330,17 +356,18 @@ if (warnings.length > 0) {
   warnings.forEach(w => console.log(`   ⚠️   ${w}`));
   console.log(`\n   ${warnings.length} warning(s) found`);
   console.log('\n────────────────────────────────────────────────────────────');
-  console.log('⚠️   REVIEW (exit 2) — fix warnings before writing docs/plan/domain.dbml\n');
+  console.log('⚠️   REVIEW (exit 2) — fix warnings before writing docs/plan/dbml.dbml\n');
   if (isTmp) cleanupTmp(absolutePath);
   process.exit(2);
 } else {
   console.log('   ✅  All tables have id, created_at, updated_at');
   console.log('   ✅  All tables have Note blocks');
+  console.log('   ✅  All tables stamped with their kebab-case entity id');
   console.log('   ✅  All business columns have inline notes (boilerplate exempt)');
   console.log('   ✅  All enum values have notes');
   console.log('   ✅  No suspicious technical column names');
   console.log('\n────────────────────────────────────────────────────────────');
-  console.log('✅  PASS (exit 0) — DBML is valid, write docs/plan/domain.dbml\n');
+  console.log('✅  PASS (exit 0) — DBML is valid, write docs/plan/dbml.dbml\n');
   if (isTmp) cleanupTmp(absolutePath);
   process.exit(0);
 }

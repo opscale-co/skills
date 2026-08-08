@@ -66,7 +66,7 @@ Types whose validation says "value from options source" (`city`, `state`, `gende
 
 | Slug | Meaning | UI intent |
 |---|---|---|
-| `belongs_to` | Owns a single related record (FK lives on this side, typed `// type:identifier`) | searchable relation picker with inline-create |
+| `belongs_to` | Owns a single related record (FK lives on this side, typed `identifier`) | searchable relation picker with inline-create |
 | `has_one` | Inverse single-record relation (FK on the other side) | embedded single related record |
 | `has_many` | Collection of related records (FK on the other side) | collapsible related list |
 
@@ -74,17 +74,17 @@ Types whose validation says "value from options source" (`city`, `state`, `gende
 
 | Skill | Phase | Reads | Contract |
 |---|---|---|---|
-| `opscale-dbml` | Plan | this registry | Each column that matches a business type carries the structured note `// type:{slug}` and uses the storage column above |
+| `opscale-dbml` | Plan | this registry | The slug IS the DBML column type; the Storage column here is what the Generate binding materializes it as |
 | `opscale-sipoc` | Plan | this registry | The Inputs table's **Type** column is a type slug, an entity name, or a plain scalar — in that order of preference |
 | `opscale-domain` | Generate | the binding | A column noted `type:{slug}` gets the binding's cast and validation rules |
 | `opscale-ui` | Generate | the binding | A column noted `type:{slug}` renders as the binding's field with its config; the meaning becomes the help text |
 | `opscale-logic` | Generate | the binding | Inputs typed with a slug resolve to the binding's validation rules in `parameters()` |
 
-Plan artifacts (process.txt, domain.dbml, operations.md, SIPOCs) may only ever reference **slugs** — never a class name, framework field, or language-specific rule string. That keeps every Plan artifact valid for any implementation stack; only the binding is stack-specific.
+Plan artifacts (process.txt, dbml.dbml, operations.md, SIPOCs) may only ever reference **slugs** — never a class name, framework field, or language-specific rule string. That keeps every Plan artifact valid for any implementation stack; only the binding is stack-specific.
 
 ## Business type vs Enum vs external ref — pick one
 
-- **Business type** (`// type:{slug}`) — the value's *format and behavior* are universal (an email is an email in every module).
+- **Business type** (the column's declared type) — the value's *format and behavior* are universal (an email is an email in every module).
 - **Enum block** — the value set is *closed and owned by this module* (an order status). Enums win over the `options` business type when the set is fixed at design time.
 - **External ref** (`// external_ref:{slug}`) — the value is an *ID owned by another module*. Never combine with a business type note on the same column.
 

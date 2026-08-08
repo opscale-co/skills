@@ -4,13 +4,13 @@ A **business type** is a technical type with the business logic already attached
 
 **This file is the canonical registry and it is deliberately language-agnostic** — the Plan phase (dbml, sipoc) describes the solution, not the implementation, so nothing here names a programming language, framework, or class. Each target stack provides an **implementation binding** that maps every slug to concrete framework pieces; the Laravel/Nova binding ships as `business-types.php` in this same directory (consumed only by Generate-phase skills: domain, ui, logic).
 
-`opscale-init` copies this registry into the project as `docs/plan/context/business-types.md` (and the binding as `.specify/memory/business-types.php`, on the spec-kit side), where the team may append project-specific types. Skills read the project copy first and fall back to the bundle copy. **Never invent a type slug inline** — if a concept has no type, add it to the project registry (and its binding) first; that is the whole point of a central registry. Every slug in a binding must exist here, and every slug here must exist in every binding — a mismatch fails the Generate gates.
+The project copy of this registry lives at `docs/plan/context/business-types.md` — seeded by the **first skill that needs it** (`opscale-dbml` or `opscale-sipoc` copy it from their bundled `references/business-types.md`; the Plan phase never requires `opscale-init`). `opscale-init` adopts it — or seeds it if still missing — when bootstrapping the implementation track, and installs the stack binding as `.specify/memory/business-types.php` (spec-kit side). The team may append project-specific types. Skills read the project copy first and fall back to the bundle copy. **Never invent a type slug inline** — if a concept has no type, add it to the project registry (and its binding) first; that is the whole point of a central registry. Every slug in a binding must exist here, and every slug here must exist in every binding — a mismatch fails the Generate gates.
 
 ## The registry
 
 Validation semantics are written in neutral terms; UI intent describes the control, not a widget class. Storage is the DBML column type.
 
-| Slug | Meaning | Storage (DBML) | Validation semantics | UI intent |
+| Slug | Meaning | Storage (binding) | Validation semantics | UI intent |
 |---|---|---|---|---|
 | `address` | Physical or mailing address for contact, shipping, or billing | `varchar(500)` | text, max 500 | single-line text |
 | `area` | Circular coverage area: center point + radius in meters | `json` | optional; valid geo-JSON | map circle editor (default radius 500 m) |
@@ -66,7 +66,7 @@ Types whose validation says "value from options source" (`city`, `state`, `gende
 
 | Slug | Meaning | UI intent |
 |---|---|---|
-| `belongs_to` | Owns a single related record (FK lives on this side, typed `// type:identifier`) | searchable relation picker with inline-create |
+| `belongs_to` | Owns a single related record (FK lives on this side, typed `identifier`) | searchable relation picker with inline-create |
 | `has_one` | Inverse single-record relation (FK on the other side) | embedded single related record |
 | `has_many` | Collection of related records (FK on the other side) | collapsible related list |
 
@@ -74,17 +74,17 @@ Types whose validation says "value from options source" (`city`, `state`, `gende
 
 | Skill | Phase | Reads | Contract |
 |---|---|---|---|
-| `opscale-dbml` | Plan | this registry | Each column that matches a business type carries the structured note `// type:{slug}` and uses the storage column above |
+| `opscale-dbml` | Plan | this registry | The slug IS the DBML column type (`contact_email email`); the Storage column here is what the Generate binding materializes it as |
 | `opscale-sipoc` | Plan | this registry | The Inputs table's **Type** column is a type slug, an entity name, or a plain scalar — in that order of preference |
-| `opscale-domain` | Generate | the binding | A column noted `type:{slug}` gets the binding's cast and validation rules |
-| `opscale-ui` | Generate | the binding | A column noted `type:{slug}` renders as the binding's field with its config; the meaning becomes the help text |
+| `opscale-domain` | Generate | the binding | A column typed `{slug}` gets the binding's storage, cast and validation rules |
+| `opscale-ui` | Generate | the binding | A column typed `{slug}` renders as the binding's field with its config; the meaning becomes the help text |
 | `opscale-logic` | Generate | the binding | Inputs typed with a slug resolve to the binding's validation rules in `parameters()` |
 
-Plan artifacts (process.txt, domain.dbml, operations.md, SIPOCs) may only ever reference **slugs** — never a class name, framework field, or language-specific rule string. That keeps every Plan artifact valid for any implementation stack; only the binding is stack-specific.
+Plan artifacts (process.txt, dbml.dbml, bpmn.bpmn, SIPOCs) may only ever reference **slugs** — never a class name, framework field, or language-specific rule string. That keeps every Plan artifact valid for any implementation stack; only the binding is stack-specific.
 
 ## Business type vs Enum vs external ref — pick one
 
-- **Business type** (`// type:{slug}`) — the value's *format and behavior* are universal (an email is an email in every module).
+- **Business type** (the column's declared type) — the value's *format and behavior* are universal (an email is an email in every module).
 - **Enum block** — the value set is *closed and owned by this module* (an order status). Enums win over the `options` business type when the set is fixed at design time.
 - **External ref** (`// external_ref:{slug}`) — the value is an *ID owned by another module*. Never combine with a business type note on the same column.
 

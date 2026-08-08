@@ -15,7 +15,7 @@ description: >
 ### Purpose
 
 Transform the validated DBML into a complete PHP domain layer. Every class generated
-maps 1:1 to an element in `docs/plan/domain.dbml`. Nothing is created that cannot be traced
+maps 1:1 to an element in `docs/plan/dbml.dbml`. Nothing is created that cannot be traced
 back to the DBML. Output files are written to the package source directory and listed
 in `.specify/specs/{NNN}-{module-name}/plan.md` (domain section).
 
@@ -25,8 +25,8 @@ in `.specify/specs/{NNN}-{module-name}/plan.md` (domain section).
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init` first. |
 | 2 | `opscale-process` has been run | `docs/plan/process.txt` exists and PASS | Stop. Run `/opscale-process`. |
-| 3 | `opscale-dbml` has been run | `docs/plan/domain.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
-| 4 | `opscale-bpmn` has been run | `docs/plan/logic.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
+| 3 | `opscale-dbml` has been run | `docs/plan/dbml.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `docs/plan/bpmn.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
 
 This skill is **Step 1 of the Generate phase**. The full prerequisite chain `init → process → dbml → bpmn` must be PASS before this skill runs. After this skill, `opscale-ui` is next.
 
@@ -82,6 +82,7 @@ The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (eith
 - One migration per DBML table; increment timestamp by 1 second to enforce dependency order
 - `id` → `$table->ulid('id')->primary()`
 - **No `tenant_id` column** — Opscale is single-tenant; isolation is at the database level
+- **Business-typed columns → the binding's storage.** The DBML declares business types as column types (`email`, `money`, `quantity`, …) and carries no physical types; resolve each slug through `.specify/memory/business-types.php` to the concrete column (`email` → `$table->string('{col}', 255)`, `money` → `$table->decimal('{col}', 12, 2)`, `identifier` → `$table->ulid('{col}')`, …)
 - Enum columns → `$table->string('{col}')->default('{default}')`
 - Timestamps → `$table->timestamps()`
 - Soft deletes → `$table->softDeletes()` only if `deleted_at` in DBML
@@ -97,7 +98,7 @@ The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (eith
 - Use `HasUlids` trait — handles PK type and ULID generation automatically
 - `protected $fillable` — all business columns except `id`, timestamps, `deleted_at`
 - `protected $attributes` — default values for columns with DBML `default:`. Emitted as literal PHP value.
-- `protected $casts` — enum columns → Enum class; VO columns → Cast class; dates → `'datetime'`; columns noted `// type:{slug}` in the DBML → the binding's `cast` (and their `rules` go into `$validationRules`) — Laravel binding at `.specify/memory/business-types.php`; canonical slugs defined in `docs/plan/context/business-types.md`
+- `protected $casts` — enum columns → Enum class; VO columns → Cast class; every business-typed column (the DBML column type IS the slug: `email`, `money`, …) → the binding's storage, `cast` and `rules` (`$validationRules`) — the DBML carries no physical types, so migrations/casts always resolve slug → storage through the Laravel binding at `.specify/memory/business-types.php`; canonical slugs defined in `docs/plan/context/business-types.md`
 - Relationships only for intra-subdomain FKs
 - Cross-subdomain columns → comment: no Eloquent relationship, query via target repo
 - `SoftDeletes` trait only if `deleted_at` in DBML
@@ -154,7 +155,7 @@ The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (eith
 
 ### Phase 1 — Inventory the DBML
 
-Read `docs/plan/domain.dbml` (and `docs/plan/context/external-refs.md` if present) and present the full generation plan. **There is no cap on the number of entities, enums, or Value Objects** — generate every element the DBML declares, regardless of count.
+Read `docs/plan/dbml.dbml` (and `docs/plan/context/external-refs.md` if present) and present the full generation plan. **There is no cap on the number of entities, enums, or Value Objects** — generate every element the DBML declares, regardless of count.
 
 ```
 Domain inventory for [Module Name]:
@@ -226,7 +227,7 @@ Before generating any code, formalize the domain plan through spec-kit so every 
 **2a. Run `/speckit.plan`** with the domain inventory from Phase 1:
 
 ```
-/speckit.plan "Domain layer for {module-name}: [N] entities from docs/plan/domain.dbml.
+/speckit.plan "Domain layer for {module-name}: [N] entities from docs/plan/dbml.dbml.
 Generate one task per entity covering its full bundle:
   - 1 migration in database/migrations/
   - 1 Eloquent model in src/Models/
@@ -290,11 +291,11 @@ Generation proceeds in strict dependency order. All file generation runs through
 
 **3d. Contracts + HasContractRelations trait.** If `docs/plan/context/external-refs.md` carries an `external-refs` index, run `scripts/generate-contract.mjs` once per unique slug **before** generating models. Each call emits one `src/Contracts/{ContractName}Contract.php` and (idempotently) the shared `src/Models/Concerns/HasContractRelations.php`. If there is no `docs/plan/context/external-refs.md`, skip this step.
 
-**3e. Models.** Generate all Eloquent model files. Models import contracts and the trait when normalizing each model's `cross_subdomain_refs`.
+**3e. Models.** Generate all Eloquent model files. Models import contracts and the trait when normalizing each model's `cross_subdomain_refs`. Pass each model's `entity_id` (the kebab-case id that opens its table's Note in `docs/plan/dbml.dbml` — the table name with dashes) and `entity_name` (the canonical business name) in the payload — the generator stamps them as the class docblock's `@entity` tag.
 
 **3f. Repositories.** Generate the repository trait per model.
 
-**3g. Complete the name lineage.** Open `docs/plan/naming.md` (written by `opscale-dbml`) and fill the **Model class** column: one FQCN per entity row (e.g. `Opscale\Credits\Models\Application`), and the contract class for each external-reference row (e.g. `UsersContract`). If `docs/plan/naming.md` does not exist (legacy module), create it from the DBML tables and the generated classes. This closes the trace canonical business name → table → class that keeps stakeholders and developers aligned.
+**3g. Verify the name lineage.** There is no lineage file to fill — the lineage is the kebab-id chain: the `{kebab} — ` opening of each table Note in `docs/plan/dbml.dbml` → the `@entity {kebab}` docblock the model generator just stamped (contracts carry `@entity ref:{slug}`). Verify it closed: every table in `docs/plan/dbml.txt` has a model whose docblock carries that table's kebab id (`grep -r "@entity" src/Models` and compare). A model missing its `@entity` tag means its payload omitted `entity_id` — regenerate it. This is what keeps stakeholders and developers aligned: one grep of the kebab id returns the table, its business meaning, and the class.
 
 **3h. Update plan.md.** Append the generated file list to `.specify/specs/{NNN}-{module-name}/plan.md`, including the `Task ID` from `tasks.md` for each entity bundle so the file → task mapping is traceable.
 
