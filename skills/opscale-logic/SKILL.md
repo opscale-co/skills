@@ -2,9 +2,9 @@
 name: opscale-logic
 description: >
   Generates Opscale Action classes from the SIPOCs (or directly for standalone
-  packages). Step 7 — runs after opscale-ui, before opscale-debug. Trigger:
-  "generate the actions", "implement the business logic", "build the logic
-  layer".
+  packages), then their Feature tests. Step after opscale-domain, before
+  opscale-ui. Trigger: "generate the actions", "implement the business logic",
+  "build the logic layer".
   Use it whenever Action/business-logic classes must be generated, even if just "implement the logic". Not for Nova UI (opscale-ui) or the data layer (opscale-domain).
 ---
 
@@ -27,7 +27,9 @@ The same Action class serves multiple execution contexts automatically:
 - **API endpoint** — HTTP via `Route::post('/path', ActionClass::class)`
 - **MCP tool** — AI agent via MCP Server registration
 
-Output files are written to `src/Services/Actions/` and listed in `.specify/specs/{NNN}-{module-name}/plan.md` (logic section) when specs exist.
+This skill also generates the **Feature tests** for every Action it produces (`tests/Feature/{ActionName}Test.php`) — the layer that used to live in `opscale-test`. Each Action ships with its test in the same run.
+
+Output files are written to `src/Services/Actions/` (+ `tests/Feature/`) and listed in `.specify/specs/001-mvp/plan.md` (logic section) when specs exist.
 
 ### Prerequisites
 
@@ -40,10 +42,10 @@ Output files are written to `src/Services/Actions/` and listed in `.specify/spec
 | 3 | `opscale-dbml` has been run | `docs/plan/dbml.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
 | 4 | `opscale-bpmn` has been run | `docs/plan/bpmn.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
 | 5 | `opscale-sipoc` has been run | One `docs/plan/sipoc/{kebab-id}.md` per `businessRuleTask` | Stop. Run `/opscale-sipoc`. |
-| 6 | `opscale-domain` has been run | `src/Models/` populated, domain bundle tasks in `tasks.md` complete | Stop. Run `/opscale-domain`. |
-| 7 | `opscale-ui` has been run | `src/Nova/` populated, Nova bundle tasks in `tasks.md` complete | Stop. Run `/opscale-ui`. |
+| 6 | `opscale-ontology` has been run | `docs/plan/ontology.mmd` + `ontology.txt` exist — the manifest that indexes every Logic (⚙️ node, unique kebab id) | Stop. Run `/opscale-ontology`. |
+| 7 | `opscale-domain` has been run | `src/Models/` populated **and factories exist** (`database/factories/`), domain bundle tasks in `tasks.md` complete — Feature tests seed through these factories | Stop. Run `/opscale-domain`. |
 
-This skill is **Step 3 (last) of the Generate phase**. Order is strict: `domain → ui → logic`. After this skill, the module is feature-complete and ready for the Review phase (`debug → test → release`).
+This skill is **Step 2 of the Generate phase**. Order is strict: `domain → logic → ui`. `opscale-logic` runs **before** `opscale-ui`: the Nova Resources do not exist yet when the Actions are generated — registering each Action on its Resource (with a `canSee` guard) is `opscale-ui`'s job, not this skill's. After `opscale-ui`, the module is feature-complete and ready for the Review phase (`debug → test → release`).
 
 **Standalone mode (package projects):**
 
@@ -193,40 +195,15 @@ override `asNovaAction`/`getActionFields`/`asController`/`asCommand`/
 `asMCPTool` — customize through `prefill()`, `options()` and rules instead.
 Details and the per-adapter translation table: `references/output-context-overrides.md`.
 
-### Nova registration — explicit, per Resource
+### Nova registration is deferred to opscale-ui
 
-Every generated Action with a Nova surface is automatically registered in the corresponding Resource's `actions()` method by `generate-action.mjs`. The skill never asks the LLM to manually edit a Resource to add an Action — the generator does it from the SIPOC's "Target resource(s)" line.
+This skill runs **before** `opscale-ui`, so the Nova Resources do not exist yet — there is nothing for an Action to register onto. This skill therefore **does NOT register Actions on Resources**. It generates the Action classes under `src/Services/Actions/` and stops there.
 
-This keeps two facts in sync:
-- the Action exists in `src/Services/Actions/{Class}.php`
-- the Action is reachable from the Nova UI via the right Resource
+Registering each Action with a Nova surface on the corresponding Resource's `actions()` method — including the `canSee` state-visibility guard derived from the SIPOC's state preconditions — is **`opscale-ui`'s responsibility** when it later builds the Resources. `opscale-ui` reads the same SIPOC Business Rules / Process preconditions and applies the wrapper.
 
-**State-bounded visibility via `canSee`.** When the SIPOC declares a precondition like _"only available when the entity is in state X"_ (parsed from the SIPOC's Business Rules or Process section), the generator wraps the action registration with a `canSee` guard:
+Because of this, the skill never passes a `nova_registration` block to `generate-action.mjs`; the generator still creates `src/Services/Actions/{Class}.php` as usual. The `canSee` pattern catalogue lives in `references/canSee-patterns.md` — retained here as the handoff contract for `opscale-ui`.
 
-```php
-public function actions(NovaRequest $request): array
-{
-    return [
-        ApproveApplication::make()
-            ->canSee(fn ($request) => $request->findModel()?->status?->is(ApplicationStatus::PendingReview)),
-    ];
-}
-```
-
-Multiple permitted states use `in_array`:
-
-```php
-ReassignTask::make()
-    ->canSee(fn ($request) => in_array(
-        $request->findModel()?->status,
-        [TaskStatus::Open, TaskStatus::InProgress],
-        strict: true,
-    )),
-```
-
-When the SIPOC declares no state precondition, the action registers without a `canSee` (Nova default = always visible). The full catalogue is in `references/canSee-patterns.md`.
-
-**Why:** an action visible in an invalid state surfaces to the operator as "click button → mysterious failure"; hiding the action at the Resource level keeps the Nova UI honest about what is doable right now.
+**Why the guard matters (for opscale-ui):** an action visible in an invalid state surfaces to the operator as "click button → mysterious failure"; hiding the action at the Resource level keeps the Nova UI honest about what is doable right now. The `canRun()` gate this skill DOES generate is the authoritative enforcement; the `canSee` opscale-ui adds is the UI affordance built from the same rule.
 
 ### Code template
 
@@ -252,27 +229,45 @@ The skill is responsible for assembling `handle_body` as ready-to-run PHP (inclu
 14. **`description()` is for AI** — write it as if explaining to an AI agent what the tool does and when to invoke it.
 15. **`declare(strict_types=1)`** — every PHP file.
 16. **Single-quote hygiene** — every string emitted into `identifier()`, `name()`, `description()`, and parameter `name`/`description` is wrapped in single quotes by the template. Generators MUST escape apostrophes (`'` → `\'`) on every value.
-17. **Actions are registered on Resources by the generator** — every generated Action with a Nova surface (`asNovaAction`) is auto-added to the corresponding Resource's `actions()` method by `generate-action.mjs`. The skill never asks the LLM to hand-edit a Resource for this.
-18. **State-bounded visibility via `canSee`** — when the SIPOC declares a precondition like _"only available when entity is in state X"_, the generator wraps the action registration with a `canSee` guard. Full pattern catalogue in `references/canSee-patterns.md`.
+17. **Actions are NOT registered on Resources here** — `opscale-ui` runs after this skill, so the Resources do not exist yet. This skill only writes `src/Services/Actions/{Class}.php` (+ its Feature test) and never passes `nova_registration` to the generator. `opscale-ui` performs the registration when it builds the Resources.
+18. **`canSee` state-visibility is opscale-ui's job** — the SIPOC state precondition this skill encodes into `canRun()` is the same rule `opscale-ui` later turns into a `canSee` guard on the Resource. The pattern catalogue in `references/canSee-patterns.md` is the handoff contract for that step.
+19. **One Action = one Feature test** — every generated Action ships a `tests/Feature/{ActionName}Test.php` that exercises `Action::run()` against a real DB (factories from `opscale-domain`, no DB mocks) and covers the four cases: positive, negative, false-positive, false-negative.
 
 ## Steps
 
-### Phase 1 — Inventory SIPOCs / BPMN logic tasks
+### Phase 1 — Inventory Logics from the ontology manifest, then the SIPOC/BPMN detail
 
 **Mode Detection:** determine the mode based on project type:
 - **app/module** projects → `docs/plan/bpmn.bpmn` exists → **BPMN-driven mode**
 - **package** projects → no `docs/plan/bpmn.bpmn` or spec files → **Standalone mode**
 
-For BPMN-driven, extract every `businessRuleTask` and build the generation plan:
+For BPMN-driven mode the **ontology is the manifest** — the source of truth for *which* Actions exist. `sipoc/{kebab}.md` + `bpmn.bpmn` are the *detail* for each one.
+
+**1a. Enumerate the Logics from the ontology.** Read `docs/plan/ontology.txt` (or `ontology.mmd`) and collect every Logic node — the `⚙️` entries (`⚙️ SP-XX-YY-LZZ {kebab-id} [BR-NN, …]`). Take the **unique kebab `logic.id`s** as the definitive set of Actions to generate (a leaf `⚙️` composed inside another Logic is the same Action reused, not a new one — dedupe by kebab id). This count is the manifest that every later phase reconciles against.
+
+**1b. Pull the detail per Logic.** For each unique kebab id, read `docs/plan/sipoc/{kebab}.md` (Inputs → `parameters`, Process → `handle` body, Outputs → `outputs()`, Business Rules → `canRun` state gate) and cross-reference `docs/plan/bpmn.bpmn` (the `{"type":"logic","id":…,"composed":[…]}` documentation JSON) for the composition edges. Build the generation plan:
 
 ```
-Logic Actions to generate:
+Logic Actions to generate (from ontology manifest):
 
-| # | Task name | logic id | Subprocess | Business Rules |
-|---|-----------|----------|------------|----------------|
-| 1 | [name] | [kebab-id] | [subprocess] | BR-01, BR-02 |
-| 2 | [name] | [kebab-id] | [subprocess] | BR-03 |
+| # | Action name | logic id | Subprocess | Business Rules |
+|---|-------------|----------|------------|----------------|
+| 1 | [name] | [kebab-id] | [SP-XX] | BR-01, BR-02 |
+| 2 | [name] | [kebab-id] | [SP-XX] | BR-03 |
 ```
+
+If the number of unique `⚙️` kebab ids in the ontology does not match the number of `sipoc/*.md` files, stop — the Plan is inconsistent; re-run `/opscale-ontology` (or the missing Plan skill) before continuing.
+
+**1c. Business-type check on every parameter (explicit).** Each Action input must be **typed with a business type**, not a raw scalar. The SIPOC Inputs column carries the business-type **slug** from `docs/plan/context/business-types.md`; the executable binding for that slug (field, validation rules, cast) lives in `.specify/memory/business-types.php`. Before generating, verify for every parameter:
+
+```
+[ ] Each parameter's SIPOC type is a business-type slug (not a bare varchar/text/decimal)
+[ ] Every slug used exists in .specify/memory/business-types.php (the binding)
+[ ] The binding's `rules` are folded into the parameter's `rules` array
+[ ] Model/FK/id params use identifier (exists:table,id), never a free string
+```
+
+If a slug is missing from `.specify/memory/business-types.php`, stop and add it to the binding (or re-run the Plan skill that owns it) before generating — an untyped parameter cannot be validated.
 
 Then resolve dependency order — when an Action calls another Action:
 
@@ -291,7 +286,7 @@ For Standalone mode, follow the standalone variant in `references/standalone-mod
 
 ### Phase 2 — Drive spec-kit plan + tasks
 
-Before generating any code, formalize the plan through spec-kit so that every Action becomes a tracked task. This is what makes the implementation phase auditable and what feeds `opscale-test`.
+Before generating any code, formalize the plan through spec-kit so that every Action becomes a tracked task in the MVP feature (`.specify/specs/001-mvp/`). This is what makes the implementation phase auditable. Each Action gets an `Implement` task **and** a preceding `Test` task (this skill generates that Feature test itself — see Phase 4).
 
 **2a. Build the spec-kit plan input.** Compose a brief that lists every Action to be generated, in dependency order, with its source BPMN task, lane, parameters (from BPMN + DBML), and Business Rules from its SIPOC (`docs/plan/sipoc/{id}.md`). Pass this as the seed for `/speckit.plan`:
 
@@ -363,43 +358,58 @@ For each task in `tasks.md` (dependency order), normalize the matching SIPOC (pr
 
 The script handles all string escaping, parameter formatting, import ordering, and conflict detection. The skill never writes PHP — it just hands the generator the normalized JSON.
 
+**Do NOT include a `nova_registration` block.** `opscale-ui` runs after this skill, so the target Resources do not exist yet. Omit `nova_registration` entirely — the generator writes only `src/Services/Actions/{Class}.php`. `opscale-ui` performs the `actions()` + `canSee` registration later, reading the same SIPOC state preconditions.
+
 If the SIPOC file is missing for any Action in `tasks.md`, stop. Run `/opscale-sipoc` to author the missing SIPOC(s), then return here.
 
 **Wait for user approval before continuing.**
 
-### Phase 4 — Register on Resources with canSee wrappers
+### Phase 4 — Generate the Feature tests (one per Action)
 
-The generator already registers every Action with a Nova surface on the corresponding Resource's `actions()` method, applying `canSee` guards based on the SIPOC's state preconditions (see Context → Nova registration). Verify the wiring:
+Every Action generated in Phase 3 ships its own Feature test. This is the layer that used to live in `opscale-test`; it now runs here so an Action and its proof land together. Spawn the `feature-test-generator` agent (it exists) in parallel — **one instance per Logic/Action** — writing `tests/Feature/{ActionName}Test.php`.
 
-- Every Action with a Nova surface appears in exactly one Resource's `actions()` array.
-- State-bounded Actions carry the expected `canSee` closure shape (single state via `->status?->is(...)`; multiple via `in_array(..., strict: true)`).
-- Actions with no SIPOC state precondition register without a `canSee` guard.
+**Each Feature test MUST explicitly cover the four cases.** For an Action, they mean:
 
-Append to `.specify/specs/{NNN}-{module-name}/plan.md`:
+| Case | Meaning for an Action | Shape of the test |
+|------|-----------------------|-------------------|
+| **Positive** | Preconditions valid → the expected business effect happens | seed a factory in the valid state, `Action::run([...])`, assert `success: true`, assert the persisted state change (`->fresh()`) and any emitted event |
+| **Negative** | A precondition is invalid → the Action rejects / soft-fails | seed a factory in an invalid state (wrong status, missing relation), `Action::run([...])`, assert `success: false` with the `canRun()`/`fail()` reason (BR-NN), assert **no** state change and **no** event |
+| **False-positive** | Inputs *look* valid but a business rule must still reject them | seed data that passes shape validation yet violates a BR (e.g. duplicate, out-of-window, over-limit), assert the Action rejects it — proves the rule fires, not just the type check |
+| **False-negative** | Inputs *look* invalid on the surface but the rule must let them through | seed an edge case that resembles a rejection but is legitimately allowed (e.g. boundary-equal amount, re-run that is genuinely idempotent), assert `success: true` — proves the rule is not over-strict |
+
+Generation contract:
+- **Seed via factories** produced by `opscale-domain` (`{Model}::factory()->create([...])`) — never hand-build models.
+- Call **`Action::run([...])` against the real DB** (in-memory SQLite from the test harness) — **no DB mocks**, no `handle()` calls directly.
+- Assert **business state** (`->fresh()` field/status) and **events** (`Event::fake([...])` + `assertDispatched`/`assertNotDispatched`) — not just the return envelope.
+- One business concern per `it()`; at least one `it()` per Business Rule (BR-NN) the Action enforces, split across the positive/negative/false-positive/false-negative cases as applicable.
+- Spawn the generator with `action_class`, `action_path`, `parameters`, `logic_rules` (the BR-NN set), `models_involved`, `composed_actions`, `events_expected`, `package_namespace`, and `output_dir=tests/Feature`.
+
+Append to `.specify/specs/001-mvp/plan.md`:
 
 ```markdown
 ## Logic Layer
 
-| File | Class | BPMN task | Task ID | Rules |
-|------|-------|-----------|---------|-------|
-| src/Services/Actions/[Class].php | [Class] | [task] | T-NN | BR-01 |
+| Action file | Test file | Class | logic id | Task ID | Rules |
+|-------------|-----------|-------|----------|---------|-------|
+| src/Services/Actions/[Class].php | tests/Feature/[Class]Test.php | [Class] | [kebab-id] | T-NN | BR-01 |
 ```
 
-The `Task ID` column ties each generated file back to its `tasks.md` entry so `opscale-test` and `/speckit.implement` can verify completeness.
+The `Task ID` column ties each generated file back to its `tasks.md` entry in `.specify/specs/001-mvp/` so `/speckit.implement` and the later Review phase can verify completeness.
 
 **Wait for user approval before continuing.**
 
-### Phase 5 — Smoke gate
+### Phase 5 — Gate (linters + Feature tests green)
 
-Action templates fail at parse time when apostrophes leak into PHP string literals, and at runtime when `identifier()` / `parameters()` return non-string values. Always run these checks:
+Action templates fail at parse time when apostrophes leak into PHP string literals, and at runtime when `identifier()` / `parameters()` return non-string values. A Feature test that never ran proves nothing. Run every check:
 
 ```bash
-# 0. (BPMN-driven mode) Every generated Action has a matching SIPOC
+# 0. (BPMN-driven mode) Every generated Action has a matching SIPOC + Feature test
 if [ -f docs/plan/bpmn.bpmn ]; then
   for f in src/Services/Actions/*.php; do
     id=$(grep -oP "return '\\K[a-z][a-z0-9-]*" "$f" | head -1)
-    [ -f "docs/plan/sipoc/$id.md" ] \
-      || { echo "Missing SIPOC for $id"; exit 1; }
+    cls=$(basename "$f" .php)
+    [ -f "docs/plan/sipoc/$id.md" ]      || { echo "Missing SIPOC for $id"; exit 1; }
+    [ -f "tests/Feature/${cls}Test.php" ] || { echo "Missing Feature test for $cls"; exit 1; }
   done
 fi
 
@@ -408,25 +418,28 @@ find src/Services/Actions -name '*.php' -print0 \
   | xargs -0 -n1 php -l > /dev/null \
   || { echo "php -l failed"; exit 1; }
 
-# 2. Every Action instantiates and honors the Opscale Action contract
+# 2. Autoload + honor the Opscale Action contract
 composer dump-autoload --no-scripts > /dev/null
 
-# 3. Composer test suite
-composer test --testsuite=Unit,Feature
+# 3. Linters (Duster + PHPStan via the project's lint/analyse scripts)
+composer lint && composer analyse
+
+# 4. Feature suite must be green
+composer test --testsuite=Feature
 ```
 
-Do NOT mark the gate `PASS` based on file count — Actions with apostrophes in their description compile clean until the moment Laravel autoloads them.
+Do NOT mark the gate `PASS` based on file count — Actions with apostrophes in their description compile clean until the moment Laravel autoloads them. The gate is green only when the linters pass **and** `composer test --testsuite=Feature` exits 0.
 
 **Wait for user approval before continuing.**
 
 ## Sample
 
-Action class excerpt with `canSee` — see `references/sample-output.md`.
+Action class excerpt + Feature test covering the four cases — see `references/sample-output.md`.
 
 ## Success condition
 
 ```bash
-composer test --testsuite=Unit,Feature
+composer test --testsuite=Feature
 ```
 
-Exit code 0 = pass (reflection-load loop must precede it; see Phase 5).
+Exit code 0 = pass (linters + reflection-load loop must precede it; see Phase 5).

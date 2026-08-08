@@ -2,7 +2,7 @@
 name: unit-test-generator
 description: >
   Generates Pest unit test files for domain components: Value Objects, Enums,
-  Repository traits, Eloquent models, and migrations. Spawned by opscale-test
+  Repository traits, Eloquent models, and migrations. Spawned by opscale-domain
   in parallel — one instance per domain component. Unit tests verify the domain
   layer in isolation: immutability, validation, casts, scopes, transitions,
   database schema consistency, and validation rules.

@@ -1,167 +1,138 @@
 # Sample output — opscale-sipoc
 
-Anonymized excerpt derived from a working Opscale module
-(`Unicoop/membresia`). Shows the SHAPE of what the skill produces,
-not the full output.
+One full SIPOC (`docs/plan/sipoc/activate-supplier.md`) and the
+`docs/plan/sipoc.txt` composition list from the **Proveedores** module
+(supplier master lifecycle, `Dominio ERP`, project `compras/proveedores`) —
+the same real module used across the Plan skills so the artifacts chain: this
+Logic is a `businessRuleTask` in `bpmn.bpmn` (its Process is imported from
+that task's `"composed"` array, never re-elaborated), its entities exist in
+`dbml.txt`, and its BR is part of the module-unique registry the SIPOCs
+define. The full set (15 SIPOCs) passes `validate-sipoc.mjs` and the smoke
+gate (15 = 15 = 15).
 
-For the canonical specification of the format, see this skill's
-`SKILL.md` body. The full original file lives in the source module.
+Prose is in **Spanish** (the language of the source flow — the language rule);
+section headings, ids (`BR-NN`, kebab `logic.id`) and the `success` key stay
+language-neutral because `opscale-logic` parses them literally.
 
 ---
 
 ```markdown
-# SIPOC — Approve Application
+# SIPOC — Activar proveedor
 
-**Identifier:** `approve-application`
-**Operation:** `SP-02-03-L01`
-**BPMN task:** Approve application
-**Subprocess:** SP-02 Admission — Review
-**Step:** Resolve the application
-**Business Rules:** BR-01, BR-02
+**Identifier:** `activate-supplier`
+**Operation:** `SP-03-03-L01`
+**BPMN task:** Activar proveedor
+**Subprocess:** SP-03 Activación de proveedor
+**Step:** Activar al proveedor habilitando compras y pagos
+**Business Rules:** BR-06
 **Composes:** none
 
-Closes an `Application` in `Qualified` with one of three approval
-sub-types, recording a `Decision(Approve)` in the current cycle.
+Transita el proveedor a estado activo cuando el veredicto de cumplimiento fue aprobado, habilitando compras y pagos, y notifica el alta.
 
 ## SIPOC
 
 | Suppliers | Inputs | Process | Outputs | Customers |
 |---|---|---|---|---|
-| 💻 System | application | crud: read application | success | All callers |
-| 👤 User | approvalType | crud: create decision | approval_type | 👤 User |
-| 💻 System | reason | crud: create contract_terms | decision_id | 💻 System |
-| | extraReqTypes | crud: update application | contract_terms_id | |
-| | | output: decision notice to the applicant | new_status | |
+| 💻 | proveedor | crud: update supplier | success | All callers |
+|  |  | output: aviso de alta al área solicitante y al proveedor | estado | 👤 |
+|  |  |  |  | 💻 |
 
 ## Suppliers
-- 💻 System — provides `application` in `Qualified` **via UI context** and
-  `decided_by` **via the authenticated-user context**
-- 👤 User — provides `approvalType`, `reason` and overrides
-- 💻 System — provides the default template **via module configuration**
+- 💻 System — provee el proveedor con veredicto aprobado
 
 ## Inputs
-| Input            | Source | How obtained                              | Type            | Validation rules          | Description                                 |
-|------------------|--------|-------------------------------------------|-----------------|---------------------------|--------------------------------------------|
-| application      | 💻     | auto-resolved from the UI context         | application     | status='Qualified'        | whole record — entity from dbml.dbml       |
-| approvalType     | 👤     | user picks in the Action form dropdown    | ApprovalType    | required                  | Enum declared in dbml.dbml                 |
-| reason           | 👤     | user types in the Action form             | description     | required                  | business type from the registry            |
-| extraReqTypes    | 👤     | user picks in the Action form             | multiOptions    | nullable                  | only visible for the ChangedRequirements sub-type |
+| Input | Source | Cómo se obtiene | Type | Validation rules | Description |
+|-------|--------|-----------------|------|------------------|-------------|
+| proveedor | 💻 | registro pasado desde el flujo | supplier | required | Proveedor con veredicto de cumplimiento aprobado |
 
 ## Process
-1. resolve `application` from UI context; guard `status === Qualified` (BR-01)
-2. switch (`approvalType`):
-   - **Standard** → `approveAsIs(reason, Standard, [])`
-   - **ChangedTerms** → `approveAsIs(reason, ChangedTerms, overrides)`
-   - **ChangedRequirements** → `approveWithChangedRequirements(reason, extraTypes)`
-3. within DB transaction: create `Decision`, create `ContractTerms`
-   (Standard/ChangedTerms), update `applications.status`
-4. return the result array
+1. update supplier.status → active (verifica que el veredicto vino aprobado) (BR-06)
+2. output aviso de alta al área solicitante y al proveedor (BR-06)
+3. return result
 
 ## Outputs
-| Output key        | Type              | Description                       | Consumers    |
-|-------------------|-------------------|-----------------------------------|--------------|
-| success           | bool              | Whether the operation succeeded   | All callers  |
-| approval_type     | ApprovalType      | Sub-type issued (Enum)            | 👤           |
-| decision_id       | identifier        | Newly created `Decision`          | 👤           |
-| contract_terms_id | identifier        | `ContractTerms` (Standard/CT only)| 💻           |
-| new_status        | ApplicationStatus | Approved \| SemiQualified (Enum)  | 💻           |
+| Output key | Type | Description | Consumers |
+|------------|------|-------------|-----------|
+| success | bool | Si la operación tuvo éxito | Todos los llamadores |
+| estado | supplier_status | Nuevo estado del proveedor (active) | 💻 |
 
 ## Customers
-- 💻 System — consumes `ContractTerms` + `application` downstream
-  (activation on Standard / ChangedTerms; re-verification on
-  ChangedRequirements)
-- 👤 User — consumes `Decision` as an auditable record
+- 👤 User — el área solicitante y el proveedor que reciben el aviso de alta
+- 💻 System — los módulos de compras y pagos que ya pueden operar con el proveedor
 
 ## Business Rules enforced
-- **BR-01** — Strict transitions: `Qualified → Approved` (Standard,
-  ChangedTerms) or `Qualified → SemiQualified` (ChangedRequirements).
-- **BR-02** — One `Decision(Approve)` per cycle; ChangedRequirements does
-  not erase the previous decision, it opens a new cycle.
+- **BR-06** — El veredicto de cumplimiento debe venir aprobado para activar; la transición pasa el proveedor de en revisión a activo y desde ese momento habilita contratos, facturas y pagos.
 
 ## Failure modes
-- **Soft failure** (returns `success=false` + `message`):
-  - `approvalType === ChangedRequirements` and `extraTypes` is empty.
-- **Hard failure** (throws):
-  - `application.status !== Qualified` — precondition violated (BR-01).
-  - `current_cycle + 1 > policy.max_iterations` — bound exceeded.
-  - missing `reason` — blocked by input validation before the
-    Action body runs.
+- **Soft failure** (returns `success=false` + `message`): el veredicto no vino aprobado
+- **Hard failure** (throws): el proveedor no está en estado en revisión
 ```
 
+Notes on the SHAPE: the `## SIPOC` summary table is filled independently per
+column (blank cells when a column has fewer elements); its Process column
+carries this Logic's composed members prefixed `crud:` / `logic:` / `output:`.
+Types resolve to a business-type slug (`supplier_status` is a DBML Enum,
+`supplier` a DBML entity) — never free scalars; only `success: bool` is
+exempt. Suppliers/Customers carry the actor tag only (👤/💻), no identity.
 
-## Sample docs/plan/sipoc.txt
+## Sample docs/plan/sipoc.txt (full)
 
-Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `docs/plan/bpmn.txt` with its operations, every logic id there has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
+One block per `businessRuleTask` — `{Name} ({kebab-id})` then the composing
+operations — matching each SIPOC's Process section (minus `return result`).
+Gates compare it against `bpmn.txt`/the XML by unique logic ids and
+composed-member counts (15 blocks = 15 unique logic ids = 15 SIPOC files).
 
 ```
-Route approval (route-approval)
-- read requisition (position type, salary range, level)
-- create approval (one per required approver)
-- update requisition.status -> in_approval
+Preparar expediente requerido (build-required-file)
+- create legal_document
+- output solicitud de papeleo al proveedor
 
-Approve requisition (approve-requisition)
-- read approval (verify pending and in order)
-- update approval (decision, signature, timestamp)
-- update requisition.status -> approved (when the chain completes)
+Verificar fuentes oficiales (verify-official-sources)
+- create verification
 
-Reject requisition (reject-requisition)
-- read approval (verify pending and in order)
-- update approval (decision, signature, timestamp)
-- update requisition.status -> rejected
+Devolver expediente para corrección (return-file-for-correction)
+- update supplier
+- output devolución del expediente para corrección
 
-Publish requisition (publish-requisition)
-- read requisition (verify status = approved)
-- create posting (one per channel, tracked link)
-- update requisition.status -> published
+Enviar a cumplimiento (submit-to-compliance)
+- update supplier
 
-Screen candidate (screen-candidate)
-- read requisition (approved profile)
-- read candidate (verify status = applied; resume, assessment results)
-- update candidate.status -> screened | discarded
+Registrar veredicto de cumplimiento (record-compliance-verdict)
+- read supplier
 
-Schedule interview (schedule-interview)
-- read candidate (verify status = screened and assessments complete)
-- create interview
-- update candidate.status -> interviewing
+Activar proveedor (activate-supplier)
+- update supplier
+- output aviso de alta al área solicitante y al proveedor
 
-Discard candidate (discard-candidate)
-- read candidate (verify not hired)
-- update candidate (documented reason)
-- update candidate.status -> discarded
+Devolver a subsanación (return-for-remediation)
+- update supplier
 
-Decide finalist (decide-finalist)
-- read interview (scores per finalist)
-- read reference (responses)
-- read background_check (results)
-- create decision
-- update candidate.status -> selected
+Verificar vencimiento (check-expiration)
+- read legal_document
+- output aviso de renovación al proveedor
 
-Extend offer (extend-offer)
-- read candidate (verify status = selected)
-- create offer
-- update candidate.status -> offered
+Verificar cambio de cuenta (verify-account-change)
+- create verification
+- update financial_account
 
-Revalidate offer (revalidate-offer)
-- read offer (counteroffer vs approved range)
-- create approval (revalidation of the changed terms)
-- update offer (approved new terms)
-- update offer.status -> sent (re-enters the accept / reject cycle)
+Escalar a suspensión (escalate-to-suspension)
+- update performance_assessment
 
-Accept offer (accept-offer)
-- read offer (verify sent and within the response term)
-- update offer.status -> accepted
+Suspender proveedor (suspend-supplier)
+- update supplier
+- output aviso de suspensión al proveedor y a las áreas usuarias
 
-Reject offer (reject-offer)
-- read offer (verify sent and within the response term)
-- update offer.status -> rejected
-- update candidate.status -> discarded (offer declined)
+Verificar regularización (verify-remediation)
+- create verification
 
-Hire candidate (hire-candidate)
-- read offer (verify status = accepted)
-- update candidate.status -> hired
-- update requisition.status -> filled
+Reactivar proveedor (reactivate-supplier)
+- update supplier
+- output aviso de reactivación del proveedor
 
-Archive candidates (archive-candidates)
-- read requisition (verify status = filled)
-- update candidate.status -> archived (all candidates in the process)
+Mantener suspensión (keep-suspended)
+- update verification
+- output informe de lo que falta para regularizar
+
+Dar de baja proveedor (deactivate-supplier)
+- update supplier
 ```

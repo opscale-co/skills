@@ -38,18 +38,41 @@ class [ModelName] extends Resource
     // 6. Cards (metrics) — only when metrics exist
     public function cards(NovaRequest $request): array
 
-    // 7. Actions — only when BPMN has logic tasks for this entity
+    // 7. Actions — every Action from src/Services/Actions/ that targets this
+    //    entity, registered with its canSee guard (see Phase 5)
     public function actions(NovaRequest $request): array
 }
 ```
 
-## After-create redirect for non-root aggregates
+## Actions block — registered by opscale-ui (Phase 5)
 
-Every non-root aggregate resource (i.e., the child shown inside its root's
-Tab) gets a `redirectAfterCreate()` method that returns the parent's
-detail URL. When an operator creates a quota for an application, the
-useful destination is the application — with the new quota visible in
-its tab — not an orphan quota detail page.
+`opscale-logic` produced the Action classes under `src/Services/Actions/`;
+`opscale-ui` wires each one onto the Resource for the entity it operates on.
+Each registration is `{Action}::make()` wrapped in the `canSee` guard matching
+the Action's SIPOC precondition:
+
+```php
+public function actions(NovaRequest $request): array
+{
+    return [
+        ApproveApplication::make()
+            ->canSee(fn ($request) => $request->findModel()?->status?->is(ApplicationStatus::PendingReview)),
+    ];
+}
+```
+
+Single state → `->status?->is(...)`; multiple → `in_array(..., strict: true)`;
+role → `$request->user()?->can('...')`; none → no `canSee`. Full catalogue in
+`references/canSee-patterns.md`. Every Action registers on exactly one
+Resource; `canSee` is a UI affordance, not security.
+
+## After-create redirect for child entities
+
+Every child-entity resource (an entity shown inside its parent's Tab) gets a
+`redirectAfterCreate()` method that returns the parent's detail URL. When an
+operator creates a quota for an application, the useful destination is the
+application — with the new quota visible in its tab — not an orphan quota
+detail page.
 
 ```php
 public static function redirectAfterCreate(NovaRequest $request, $resource): string
@@ -59,8 +82,8 @@ public static function redirectAfterCreate(NovaRequest $request, $resource): str
 ```
 
 The generator emits this method on every Resource whose DBML entity is a
-child of an aggregate root (detected via the `child_of` JSON field).
-Aggregate roots themselves do not get one — the default index landing is
+child of a parent entity (detected via the `child_of` JSON field).
+Root entities (no parent) do not get one — the default index landing is
 correct for them.
 
 ## Authorization patterns

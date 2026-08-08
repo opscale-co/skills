@@ -27,7 +27,7 @@
 
 ### Type-specific notes
 
-- **`library`** — skip the spec, DBML, BPMN, SIPOC, domain, Nova, logic, outputs, and AI steps. Sequence collapses to: write code → `opscale-test` → `opscale-release`. Quality gates (§VIII) still apply in full.
+- **`library`** — skip the spec, DBML, BPMN, SIPOC, domain, Nova, logic, and AI steps. Sequence collapses to: `opscale-init` (harness only) → write code → `opscale-release`. Quality gates (§VIII) still apply in full.
 - **`app`** — container for multiple modules; each module follows the full sequence independently. Cross-module communication uses domain events and IDs only, never direct imports.
 - **`package` vs `module`** — same sequence, different context. A **module** is a bounded context within a larger application (one business subdomain). A **package** is a standalone project that can be used across applications (API tooling, dashboards, authorization).
 
@@ -39,21 +39,21 @@ Per-skill applicability matrix: `README.md` (Skills → Development Sequence). J
 
 Follow the skill sequence strictly. Each skill declares its own prerequisites and outputs in its `SKILL.md`. Canonical artifact paths: `skills/opscale-init/references/artifact-paths.md`. The constitution only enforces the **per-step constraint** that downstream skills (and reviewers) rely on:
 
-| Step | Skill | Constitutional constraint |
-|------|-------|---------------------------|
-| 1 | `opscale-process` | No technical terminology — readable by a business owner. |
-| 2 | `opscale-dbml` | Business entities only; the DBML is the authoritative source — all code generates from it, never the reverse. |
-| 3 | `opscale-bpmn` | Every task references a DBML entity; no new domain concepts may be introduced. Every task classified as exactly one of `crud` / `action` / `output`. |
-| 4 | `opscale-sipoc` | One SIPOC per BPMN `businessRuleTask`; the SIPOC re-states what's in spec+DBML+BPMN — never invents. |
-| 5 | `opscale-domain` | One migration per entity. No Eloquent calls outside Repositories. |
-| 6 | `opscale-ui` | Nova Actions delegate to Opscale Actions — zero business logic inline. |
-| 7 | `opscale-logic` | One BPMN `action` task = one Opscale Action class. No exceptions. Business logic with no BPMN task does not belong in the module. |
-| 8 | `opscale-outputs` | One `output` task = one Output class = one delivery channel. |
-| 9 | `opscale-debug` | Debug tooling (logs, Xdebug, Telescope/Ray) is configured for local + staging only. Nothing in debug config affects production behavior. |
-| 10 | `opscale-test` | Test tasks always precede implementation tasks in `tasks.md`. No implementation task is valid without a preceding test task. |
-| 11 | `opscale-release` | All §VIII quality gates wired into the CI pipeline. |
+| Phase | Skill | Constitutional constraint |
+|-------|-------|---------------------------|
+| Plan | `opscale-process` | No technical terminology — readable by a business owner. |
+| Plan | `opscale-dbml` | Business entities only; the DBML is the authoritative source — all code generates from it, never the reverse. |
+| Plan | `opscale-bpmn` | Every task references a DBML entity; no new domain concepts may be introduced. Every task classified as exactly one of `crud` / `action` / `output`. |
+| Plan | `opscale-sipoc` | One SIPOC per BPMN `businessRuleTask`; the SIPOC re-states what's in spec+DBML+BPMN — never invents. |
+| Plan | `opscale-ontology` | Generated from the other Plan artifacts, never hand-edited; it is the read-only build manifest the Generate phase reads. Regenerated (never edited) whenever a Plan artifact changes. |
+| Generate | `opscale-init` | First step of Generate. Debug tooling (logs, Xdebug, Telescope/Ray) configured for local + staging only — nothing in debug config affects production. Test tasks always precede implementation tasks in `tasks.md`. Opens `001-mvp`. |
+| Generate | `opscale-domain` | One migration per entity. No Eloquent calls outside Repositories. Every domain component ships a Unit test. |
+| Generate | `opscale-logic` | One BPMN `action` task = one Opscale Action class. No exceptions. Every Action ships a Feature test (positive / negative / false-positive / false-negative). |
+| Generate | `opscale-ui` | One Nova Resource per DBML entity, each exposing its relations as tabs; Nova Actions delegate to Opscale Actions — zero business logic inline. Every subprocess ships a Browser flow test. |
+| Review | `opscale-release` | All §VIII quality gates wired into the CI pipeline. |
+| Presentation | `opscale-showcase` | Connected demo seed + process-driven Nova menu + guided Dusk walkthrough. Demo data only, never production data. |
 
-Spec-kit checkpoints: `/speckit.clarify` after Step 3, `/speckit.analyze` after Steps 4–6, `/speckit.tasks` after Step 7, `/speckit.implement` after Step 11.
+Spec-kit checkpoints: `/speckit.clarify` after `opscale-bpmn`, `/speckit.analyze` after `opscale-ontology`, `/speckit.tasks` when `opscale-init` opens `001-mvp`, `/speckit.implement` across `opscale-domain`/`opscale-logic`/`opscale-ui`, before `opscale-release`.
 
 ### Independent — Installer Skill → `opscale-ai`
 

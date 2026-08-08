@@ -26,7 +26,7 @@ This is an **interactive** skill: it does not guess or silently drop. When somet
 
 ### Prerequisites
 
-None hard. If `docs/plan/` doesn't exist, create it. If `docs/plan/context/system.map.md` exists, it may inform naming (module and entity names already mapped at app level), but it is not required.
+None hard. If `docs/plan/` doesn't exist, create it. If `docs/plan/context/system.map.md` exists, it may inform naming (module and entity names already mapped at app level), but it is not required to run this skill. **If it is missing, warn the user at the start (don't block):** `opscale-ontology` — the Plan closer — hard-requires it for the Software/Domain levels, so recommend running `/opscale-map` first rather than discovering the gap four skills later.
 
 Step 1 of the Plan phase.
 
@@ -168,7 +168,7 @@ Ends with: —
 02) {step}
 ```
 
-**Why plain text:** every downstream consumer (`opscale-bpmn` segments, `opscale-ontology` counts, `opscale-test` browser flows, `opscale-showcase` walks, `opscale-menu` grouping) parses this file cheaply — subprocess blocks by blank lines (first line = `SP-XX {name}`), steps by local `YY)` lines (full id `SP-XX-YY`), events by the two keywords.
+**Why plain text:** every downstream consumer (`opscale-bpmn` segments, `opscale-ontology` counts, `opscale-ui` browser flows, `opscale-showcase` walks and menu grouping) parses this file cheaply — subprocess blocks by blank lines (first line = `SP-XX {name}`), steps by local `YY)` lines (full id `SP-XX-YY`), events by the two keywords.
 
 ### Keep it readable
 
@@ -261,7 +261,7 @@ Replace any file if it already exists. The flow the user confirmed and the file 
 
 ## Sample
 
-Full reference `docs/plan/process.txt` + `docs/plan/context/names.md` + a `docs/plan/process.mmd` excerpt (recruitment module, shared across the Plan skills so the lists chain) — see `references/sample-output.md`.
+Full reference `docs/plan/process.txt` + `docs/plan/context/names.md` + a `docs/plan/process.mmd` excerpt (Proveedores module — supplier master lifecycle, shared across the Plan skills so the lists chain; Spanish content demonstrating the language rule) — see `references/sample-output.md`.
 
 ## Success condition
 

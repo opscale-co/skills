@@ -32,8 +32,9 @@ Same as BPMN-driven — if an Action composes others, generate leaves first.
 #### Phase 3 — Drive spec-kit to plan + produce per-Action tasks
 
 Standalone mode still uses spec-kit when the project has been initialized with
-`opscale-init` (i.e. `.specify/` exists). The plan + tasks pair gives the rest
-of the pipeline (especially `opscale-test`) something concrete to bind to.
+`opscale-init` (i.e. `.specify/` exists). The plan + tasks pair (in
+`.specify/specs/001-mvp/`) gives the Feature-test phase and the later Review
+phase something concrete to bind to.
 
 If `.specify/` does NOT exist (rare — package was never run through
 `opscale-init`), skip this phase and proceed to Phase 4 directly. Otherwise:
@@ -64,13 +65,28 @@ was skipped), in dependency order:
 - **`handle()` body**: implement the described logic — validated `$inputs`, `succeed()`/`fail()`
 - **`emits_event`**: true when the action must notify a system consumer
 
-Same generator-vs-agents decision as BPMN-driven Phase 4: ≤ 10 actions → agents;
+Same generator-vs-agents decision as BPMN-driven Phase 3: ≤ 10 actions → agents;
 11+ → deterministic generator script. Same single-quote escape invariant
-applies to every string that lands in a PHP single-quoted literal.
+applies to every string that lands in a PHP single-quoted literal. As in
+BPMN-driven mode, **do NOT pass a `nova_registration` block** — Nova registration
+is `opscale-ui`'s job.
 
-#### Phase 5 — Update plan.md (if specs exist)
+#### Phase 5 — Generate the Feature tests
+
+Exactly as BPMN-driven Phase 4: spawn `feature-test-generator` once per Action →
+`tests/Feature/{ActionName}Test.php`. Each test seeds via the domain factories,
+calls `Action::run()` against the real DB (no mocks), asserts business state +
+events, and covers the four cases — positive, negative, false-positive,
+false-negative (definitions in the SKILL body). Standalone Actions derive the
+false-positive / false-negative cases from the business rules the user described
+rather than from a SIPOC.
+
+#### Phase 6 — Update plan.md + gate (if specs exist)
 
 If `.specify/specs/` exists, append the same Logic Layer table as in BPMN-driven
-Phase 5 (including the `Task ID` column). Otherwise skip.
+Phase 4 (Action file, Test file, Class, id, Task ID, Rules) to
+`.specify/specs/001-mvp/plan.md`. Then run the Phase 5 gate: linters +
+`composer test --testsuite=Feature` green. Otherwise skip the plan append and
+just run the gate.
 
 ---

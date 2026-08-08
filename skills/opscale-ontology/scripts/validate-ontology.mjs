@@ -136,13 +136,16 @@ const nodes = nodeLines.map((l) => {
 
 // classify by depth + emoji, tracking whether we are inside a ⚙️ node.
 // Outputs (📩) are ALWAYS composed inside a Logic — never top-level. `inner`
-// holds composed CRUDs; `innerOutput` holds composed Outputs.
-const tree = { software: [], domain: [], module: [], subprocess: [], step: [], crud: [], logic: [], inner: [], innerOutput: [] };
+// holds composed CRUDs; `innerOutput` holds composed Outputs; `innerLogic`
+// holds composed Logic references (leaf ⚙️ nodes — reuse of an Action defined
+// elsewhere; never expanded here).
+const tree = { software: [], domain: [], module: [], subprocess: [], step: [], crud: [], logic: [], inner: [], innerOutput: [], innerLogic: [] };
 let logicDepth = null;
 for (const n of nodes) {
   if (logicDepth !== null && n.depth <= logicDepth) logicDepth = null;
   if (logicDepth !== null && n.label.startsWith('📝')) { tree.inner.push(n); continue; }
   if (logicDepth !== null && n.label.startsWith('📩')) { tree.innerOutput.push(n); continue; }
+  if (logicDepth !== null && n.label.startsWith('⚙️')) { tree.innerLogic.push(n); continue; }
   if (n.depth === 0) tree.software.push(n);
   else if (n.depth === 1) tree.domain.push(n);
   else if (n.depth === 2) tree.module.push(n);
@@ -199,16 +202,22 @@ if (txtSections.length !== procBlocks.length)
   fail(`bpmn.txt has ${txtSections.length} sections, process.txt has ${procBlocks.length} blocks`);
 
 // Top-level lines: standalone crud + logic. Composed (indented) lines: crud +
-// output. Outputs never appear top-level.
-const txtOps = { crud: 0, logic: 0, inner: 0, innerOutput: 0 };
+// logic reference + output. Outputs never appear top-level.
+const txtOps = { crud: 0, logic: 0, inner: 0, innerOutput: 0, innerLogic: 0 };
 const txtOids = new Set();
 const txtLogicIds = new Set();
+const txtInnerLogicIds = new Set();
 const txtComposedByOid = {};
 let currentLogicOid = null;
 for (const line of bpmnTxt.split('\n')) {
-  const innerM = line.match(/^  - (SP-\S+) (crud|output):/);
+  const innerM = line.match(/^  - (SP-\S+) (crud|logic|output):/);
   if (innerM) {
-    if (innerM[2] === 'crud') txtOps.inner++; else txtOps.innerOutput++;
+    if (innerM[2] === 'crud') txtOps.inner++;
+    else if (innerM[2] === 'logic') {
+      txtOps.innerLogic++;
+      const kebab = (line.match(/logic:\s+([a-z0-9-]+)\s*$/) ?? [])[1];
+      if (kebab) txtInnerLogicIds.add(kebab);
+    } else txtOps.innerOutput++;
     txtOids.add(innerM[1]);
     if (currentLogicOid) txtComposedByOid[currentLogicOid]++;
     continue;
@@ -231,10 +240,12 @@ if (tree.logic.length !== txtOps.logic)
   fail(`logic nodes: ${tree.logic.length} in tree, ${txtOps.logic} logic lines in bpmn.txt`);
 if (tree.inner.length !== txtOps.inner)
   fail(`composed CRUD nodes: ${tree.inner.length} in tree, ${txtOps.inner} indented cruds in bpmn.txt`);
+if (tree.innerLogic.length !== txtOps.innerLogic)
+  fail(`composed Logic reference nodes: ${tree.innerLogic.length} in tree, ${txtOps.innerLogic} indented logic lines in bpmn.txt`);
 
 // every operation node carries an oid, and the oid sets match exactly
 const treeOids = new Set();
-for (const n of [...tree.crud, ...tree.logic, ...tree.inner, ...tree.innerOutput]) {
+for (const n of [...tree.crud, ...tree.logic, ...tree.inner, ...tree.innerOutput, ...tree.innerLogic]) {
   const oid = oidOf(n);
   if (!oid) { fail(`operation node "${n.label}" carries no oid (SP-XX-YY-[C|L|O]ZZ)`); continue; }
   treeOids.add(oid);
@@ -269,6 +280,16 @@ if (sizes.size !== 1)
 for (const [name, s] of Object.entries(sets))
   for (const id of xmlLogicIds)
     if (!s.has(id)) fail(`logic "${id}" missing from ${name}`);
+
+// composed Logic references are reuses: every referenced id must be a Logic
+// defined as its own node (bpmn.bpmn unique logic ids). Tree ⚙️ leaf refs too.
+for (const id of txtInnerLogicIds)
+  if (!xmlLogicIds.has(id)) fail(`composed logic reference "${id}" (bpmn.txt) is not a businessRuleTask logic id in bpmn.bpmn`);
+for (const n of tree.innerLogic) {
+  const kebab = (n.label.match(/[CLO]\d{2,}\s+([a-z][a-z0-9]*(?:-[a-z0-9]+)+)/) ?? [])[1];
+  if (kebab && !xmlLogicIds.has(kebab))
+    fail(`composed logic reference node "${n.label}" — "${kebab}" is not a businessRuleTask logic id in bpmn.bpmn`);
+}
 
 // per-logic composed count: tree inner children vs bpmn.txt (keyed by oid)
 for (let i = 0; i < nodes.length; i++) {
@@ -338,8 +359,9 @@ const outCounts = {
 const treeCrudTotal = tree.crud.length + tree.inner.length;
 if (outCounts.crud !== treeCrudTotal)
   fail(`ontology.txt has ${outCounts.crud} crud lines, tree has ${treeCrudTotal} (standalone + composed)`);
-if (outCounts.logic !== tree.logic.length)
-  fail(`ontology.txt has ${outCounts.logic} logic lines, tree has ${tree.logic.length}`);
+const treeLogicTotal = tree.logic.length + tree.innerLogic.length;
+if (outCounts.logic !== treeLogicTotal)
+  fail(`ontology.txt has ${outCounts.logic} logic lines, tree has ${treeLogicTotal} (standalone + composed references)`);
 if (outCounts.output !== tree.innerOutput.length)
   fail(`ontology.txt has ${outCounts.output} output lines, tree has ${tree.innerOutput.length} (all composed)`);
 if (outLines.length !== nodes.length)
@@ -357,7 +379,8 @@ if (failures.length) {
 console.log(
   `validate-ontology: PASS — ${tree.subprocess.length} subprocesses, ${tree.step.length} steps, ` +
   `${tree.crud.length + tree.logic.length} standalone operations (${tree.logic.length} logic; ` +
-  `${tree.inner.length} composed cruds, ${tree.innerOutput.length} composed outputs), ` +
+  `${tree.inner.length} composed cruds, ${tree.innerLogic.length} composed logic refs, ` +
+  `${tree.innerOutput.length} composed outputs), ` +
   `${brCited.size} rules, ${metaEntities.length} lineage entities`
 );
 process.exit(0);

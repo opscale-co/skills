@@ -1,11 +1,18 @@
 # `canSee` patterns for Nova action registration
 
+> **Applied by opscale-ui, not opscale-logic.** `opscale-logic` runs before
+> `opscale-ui`, so the Nova Resources do not exist yet when the Actions are
+> generated — `opscale-logic` never registers Actions or emits `canSee`. This
+> catalogue is the **handoff contract**: `opscale-ui` reads the same SIPOC state
+> precondition that `opscale-logic` encoded into the Action's `canRun()` and
+> applies the matching wrapper below when it builds the Resource. Kept in this
+> skill because the precondition originates from the SIPOC the logic layer owns.
+
 `canSee(fn ($request) => …)` is the Resource-level visibility guard for
 a Nova action. Wrap each action's registration with the pattern that
-matches its SIPOC precondition. The generator emits the right wrapper
-automatically based on the SIPOC's Business Rules / Process section;
-this file documents every supported shape so the patterns stay
-consistent across modules.
+matches its SIPOC precondition. `opscale-ui` selects the right wrapper
+based on the SIPOC's Business Rules / Process section; this file documents
+every supported shape so the patterns stay consistent across modules.
 
 The action MUST still validate the precondition inside `handle()` — the
 `canSee` is a UI affordance, not security. The handler is the

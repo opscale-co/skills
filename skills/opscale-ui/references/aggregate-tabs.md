@@ -1,20 +1,30 @@
-# Aggregates as tabs of root — pattern reference
+# Relation tabs on every Resource — pattern reference
 
-Every child aggregate of an aggregate root is rendered as a `Tab::make(...)`
-inside the root resource's `fields()` via `Tab::group(...)`. Child aggregates
-NEVER appear as top-level resources in the Nova sidebar — they appear inside
-their root.
+**Every entity now has its own Resource** (one Resource per DBML entity). Each
+Resource renders its own `has-many` / `has-one` relations as `Tab::make(...)`
+inside its `fields()` via `Tab::group(...)`. This is no longer a root-only
+concern: navigation works from any entity to the records related to it, in
+both directions.
+
+Each relation tab shows the related records via a `HasMany`/`HasOne` field
+pointing at the **related entity's own Resource** (which always exists now).
+Whether a Resource also appears in the sidebar is decided later by
+`opscale-showcase` (menu phase) — this skill emits a Resource + relation tabs
+for every entity regardless.
 
 ## Visibility rule
 
-| Child kind | Tab visibility |
+| Relation kind | Tab visibility |
 |------------|----------------|
-| Creatable from UI (operator can add the first child via Nova) | ALWAYS visible — operator needs the entry point to add the first row |
+| Creatable from UI (operator can add the first related row via Nova) | ALWAYS visible — operator needs the entry point to add the first row |
 | System-only (created exclusively by Actions or system events)  | HIDDEN when count = 0 — an empty tab the operator can't populate is noise |
 
-Detection rule for the skill: a child is "creatable from UI" when the child
-Resource has `can_create = true` (set in Phase 3 per-resource authorization).
-Otherwise it is system-only.
+Detection rule for the skill: a relation is "creatable from UI" when the
+related entity's Resource has `can_create = true` (set in Phase 3 per-resource
+authorization). Otherwise it is system-only.
+
+`has-one` relations follow the same rule and render as a `HasOne::make(...)
+->onlyOnDetail()` field inside their own tab.
 
 ## Counts MUST go through Nova, not the Model
 
@@ -101,3 +111,9 @@ the tab is emitted without a `canSee` guard.
 
 The generator also adds the relation to `public static $with = [...]` (or
 `indexQuery()` withCount, configurable via `count_strategy` in the JSON).
+
+`has_one_relationships` uses the same entry shape and is rendered identically,
+except the field is `HasOne::make(...)->onlyOnDetail()` instead of
+`HasMany::make(...)`. (If `has_one_relationships` is not yet wired in the
+generator, mirror the `has_many_relationships` handling — see the TODO in
+`SKILL.md` Phase 4.)

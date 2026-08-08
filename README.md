@@ -38,15 +38,17 @@ The pipeline has one **setup** step (`init`), three **core harness** phases (`Pl
 Once the MVP is done, **Iterate** is the loop you run from there on — one user story at a time — to polish the MVP into the final product.
 
 ```
-init  →  Plan  →  Generate  →  Review  →  Presentation        →  Iterate
-└ setup └────── core harness flow (MVP) ──────┘  └ MVP done ┘    ↺ polish
+Plan  →  Generate  →  Review  →  Presentation  →  Iterate
+└──── first MVP of the subdomain ────┘  └ demo ┘   ↺ polish
 
-Step 1       (after init): opscale-map — domains → modules → cross-module refs (re-run before each new module)
+Step 1       (before Plan): opscale-map — domains → modules → cross-module refs (re-run before each new module)
 Plan         (in order): opscale-process → opscale-dbml → opscale-bpmn → opscale-sipoc → opscale-ontology
-Generate     (in order): opscale-domain → opscale-ui → opscale-logic
-Review       (flexible, except test → release): opscale-debug, opscale-test, opscale-release
-Presentation (in order): opscale-seed → opscale-menu → opscale-showcase
+Generate     (in order): opscale-init → opscale-domain → opscale-logic → opscale-ui
+Review:      opscale-release
+Presentation: opscale-showcase
 ```
+
+The **ontology** artifact (`docs/plan/ontology.mmd` + `ontology.txt`) is the **single source of truth for generation**: the Generate skills read it as the build manifest (the summary of what to build) and consult `dbml.dbml` / `bpmn.bpmn` / `sipoc/` for detail. The first Generate run produces the **MVP** — the first version of the subdomain, opened by `opscale-init` as the spec-kit feature `.specify/specs/001-mvp/`; later changes go through `opscale-iterate` (features `002-…`, `003-…`). Each Generate skill also produces its own tests (Unit in domain, Feature in logic, Browser in ui) and runs the linters — there is no separate test or debug step (their configuration is set up once by `opscale-init`).
 
 No phase starts until the previous one is validated. Each phase is a group of skills that orchestrate specialized subagents.
 
@@ -68,45 +70,44 @@ The Plan phase is **stack-agnostic and exportable**: every artifact is a plain d
 - **DBML** — DDD-aligned data model built from the spec's normalized names, business-only, with a `note` on every module/table/field, reconciled against an industry modeling standard when one applies. Columns are typed with **business types** from the central language-agnostic registry (`docs/plan/context/business-types.md`) — the slug IS the DBML column type (`contact_email email`, `total money`; never `varchar`/`decimal`): a business type carries storage, validation semantics, and UI intent, so the same concept behaves identically in every module; the stack-specific binding (`business-types.php`) resolves each slug to concrete storage/fields/rules at Generate time. Writes `docs/plan/dbml.dbml` (raw DBML — the ER diagram; every table Note opens with the entity's kebab id, assigned here on the final entities), `dbml.txt` (plain entity list), and `context/external-refs.md` (if any cross-subdomain refs).
 - **BPMN** — flat BPMN 2.0 process map (no `subProcess` containers — each subprocess boundary is its closing wait event (the spec's *Ends with:* line); the grouping travels as embedded metadata). Elicits the atomic CRUD sequence first, then groups rule-driven CRUDs into Logics. Writes `docs/plan/bpmn.bpmn` (raw BPMN 2.0 XML — the diagram, **self-contained**: every task's `<documentation>` JSON carries its step, subprocess, and — for Logics — rules and composed CRUDs/Outputs) and `bpmn.txt` (business step → operations outline per subprocess, composed CRUDs and Outputs indented under their Logic; every Output is composed inside a Logic, never standalone).
 - **SIPOC** — one Suppliers/Inputs/Process/Outputs/Customers document per `businessRuleTask` in the BPMN. Writes `docs/plan/sipoc/{kebab-id}.md` per Action and `sipoc.txt` (plain Logic → composing operations outline). The Process section is imported from the Logic's `"composed"` array in the XML, never re-elaborated. This is the contract that `opscale-logic` later materializes into code — `Inputs` → parameters, `Process` → the Action's executable body, `Outputs` → its returned keys.
-- **Ontology** — the non-interactive Plan closer. Reads only the canonical `docs/plan/` artifacts and renders the whole hierarchy — Software → Domain → Module → Subprocess → Business Step → Operation, each Logic expanded into its composed CRUDs and Outputs, plus the entity name-lineage metadata (kebab id → table → enums) — as `docs/plan/ontology.mmd`, a Mermaid treeView renderable in VS Code or mermaid.live, with `ontology.txt` as the plain-outline mirror. A view, never a source: it asks nothing, invents nothing, and no skill reads it.
+- **Ontology** — the non-interactive Plan closer. Reads only the canonical `docs/plan/` artifacts and renders the whole hierarchy — Software → Domain → Module → Subprocess → Business Step → Operation, each Logic expanded into its composed CRUDs and Outputs, plus the entity name-lineage metadata (kebab id → table → enums) — as `docs/plan/ontology.mmd`, a Mermaid treeView renderable in VS Code or mermaid.live, with `ontology.txt` as the plain-outline mirror. It asks nothing and invents nothing — but it is **not** a dead-end view: it is the **build manifest** the Generate phase reads (`opscale-init`/`domain`/`logic`/`ui` enumerate what to build from it, then consult dbml/bpmn/sipoc for detail). Never hand-edited; regenerated whenever a Plan artifact changes. No Plan skill reads it.
 
 Every artifact is cross-validated: the BPMN references only entities from the DBML, the DBML traces back to the spec, each SIPOC traces back to a BPMN task and the Business Rules it cites exist in the spec, and the ontology view is count-checked against all of them. Nothing is invented.
 
 ### Generate — deterministic code from validated artifacts (strict order)
 
-Skills: `opscale-domain` → `opscale-ui` → `opscale-logic`
+Skills: `opscale-init` → `opscale-domain` → `opscale-logic` → `opscale-ui`
 
-Each Generate skill first drives **spec-kit `/speckit.plan` + `/speckit.tasks`** to record one task per unit, then spawns parallel agents to produce the code. The generators emit the **initial scaffold** only; the LLM then customizes each class (repository methods, Resource fields, Action `handle()` bodies) — a template can't anticipate those. Generation is traceable: every generated file maps back to a tasks.md entry.
+Generate reads the **ontology manifest** to know what to build and consults `dbml.dbml` / `bpmn.bpmn` / `sipoc/` for the detail. `opscale-init` runs first — it opens the MVP feature (`.specify/specs/001-mvp/`) and stands up the dev/test/debug harness once. Each code skill then drives **spec-kit `/speckit.plan` + `/speckit.tasks`** to record one task per unit, spawns parallel agents to produce the code, **authors that layer's tests**, and runs the linters before its gate. The generators emit the **initial scaffold** only; the LLM then customizes each class (repository methods, Resource fields, Action `handle()` bodies) — a template can't anticipate those. Generation is traceable: every generated file maps back to a tasks.md entry.
 
-| Skill | Unit | One task per | Bundle contents |
-|-------|------|--------------|-----------------|
-| **Domain** | Entity bundle | DBML entity | migration + model + repository trait + owned enums + owned VOs |
-| **UI** | Aggregate bundle | Aggregate root | Resource + Repeatable + shared Fields trait |
-| **Logic** | Action | BPMN `businessRuleTask` | one Opscale Action class whose `handle()` materializes the SIPOC Process steps (the SIPOC itself comes from Plan #4 / `opscale-sipoc`) |
+| Skill | Unit | One task per | Bundle contents | Tests produced |
+|-------|------|--------------|-----------------|----------------|
+| **Init** | — | — | dev/test/debug harness + `001-mvp` feature | — (configures the harness) |
+| **Domain** | Entity bundle | DBML entity | migration + model + repository trait + owned enums + owned VOs + factory | **Unit** (per component) |
+| **Logic** | Action | BPMN `businessRuleTask` | one Opscale Action class whose `handle()` materializes the SIPOC Process steps (the SIPOC itself comes from Plan #4 / `opscale-sipoc`) | **Feature** (positive / negative / false-positive / false-negative) |
+| **UI** | Entity Resource | **DBML entity** (one Resource each) | Resource (relations as tabs) + Repeatable + shared Fields trait + registers each Action with `canSee` | **Browser** (one flow per subprocess) |
 
-Every implementation task is preceded by a `Test {X}` task — `opscale-test` later fills the test body. There is no cap on entities/aggregates/Actions; large modules split into sequential batches of ~20 agents.
+There is no cap on entities/aggregates/Actions; large modules split into sequential batches of ~20 agents. There is no separate test or debug step — each code skill owns its own tests, and `opscale-init` configured the harness once.
 
-Package projects enter directly here — the user provides definitions instead of spec artifacts. The same subagents run with the same contracts.
+Package projects enter directly at `opscale-domain` (after a lean `opscale-init`) — the user provides definitions instead of spec artifacts. The same subagents run with the same contracts.
 
-### Review — quality gates before shipping (flexible order, except test → release)
+### Review — quality gates before shipping
 
-Skills: `opscale-debug`, `opscale-test`, `opscale-release`
+Skill: `opscale-release`
 
-Review skills can be invoked at **any point after `opscale-init`** — you don't have to finish Plan or Generate first. The only ordering constraint inside Review is: `release` always runs after `test`.
+Review can be invoked at **any point after Generate has produced the code and its tests** — `opscale-release` refuses to run unless `tests/Unit`, `tests/Feature`, and `tests/Browser` are populated (by domain/logic/ui respectively).
 
-- **Debug** — debug tooling by layer: Nova DevTool (UI), Telescope (domain: jobs/events), Xdebug (logic) — local/staging only, never production
-- **Test** — configures the stack (Pest, Dusk, PHPStan, Duster, Rector) AND **generates the tests**: Unit (domain), Feature (Actions, real DB), Browser (**one flow test per identified process**, driving it end to end). Headless by default. `composer run build` + `composer run serve` mandatory.
-- **Release** — code-quality gates for deployment: Duster (PHP + JS lint), static analysis with Opscale strict rules, Rector, SonarQube, and the GitHub Actions workflows. Refuses to run unless `tests/` is populated. (The commit standard / semantic-release config come from `opscale-init`.)
+- **Release** — code-quality gates for deployment: Duster (PHP + JS lint), static analysis with Opscale strict rules, Rector, SonarQube, and the GitHub Actions workflows. (The commit standard / semantic-release config, and the linter/test/debug harness, all come from `opscale-init`.)
 
-### Presentation — close the MVP (strict order)
+### Presentation — close the MVP
 
-Skills: `opscale-seed` → `opscale-menu` → `opscale-showcase`
+Skill: `opscale-showcase`
 
-Presentation closes the MVP. Review has already confirmed the code is correct, tested, and releasable; Presentation turns that into something a human can sit down and watch end-to-end. It answers *"does this work as a functional demo?"* — coherent data on every screen, a sidebar that reads like an operator's workflow, and a guided walkthrough that exercises the module visually. The three skills run in a deliberate sequence — data first, then navigation, then the walkthrough — each building on the previous one's effect on the workbench. **When Presentation succeeds, the MVP is done.**
+Presentation closes the MVP. Review has already confirmed the code is correct, tested, and releasable; Presentation turns that into something a human can sit down and watch end-to-end. It answers *"does this work as a functional demo?"* — coherent data on every screen, a sidebar that reads like an operator's workflow, and a guided walkthrough that exercises the module visually. `opscale-showcase` runs its three phases in a deliberate sequence — data first, then navigation, then the walkthrough — each building on the previous one's effect on the workbench. **When Presentation succeeds, the MVP is done.**
 
-- **Seed** — generates a coherent workbench `DatabaseSeeder` whose connected records let **each identified process be walked end to end**, so the demo shows the module working, not empty tables. Requires `opscale-domain`.
-- **Menu** — builds a **user-friendly** sidebar organized around the module's processes / the operator's tasks (not a flat list of entities), inside `workbench/app/Providers/NovaServiceProvider.php`. Requires `opscale-ui`.
-- **Showcase** — generates a **non-headless** guided Dusk test that **drives each identified process end to end** through Nova, pausing 3s before the main action on each screen, so a stakeholder watches the module actually work. Requires `opscale-seed`, `opscale-menu`, and the Dusk infrastructure from `opscale-test`.
+- **Showcase** (Phase A — Seed) — generates a coherent workbench `DatabaseSeeder` whose connected records let **each identified process be walked end to end**, so the demo shows the module working, not empty tables.
+- **Showcase** (Phase B — Menu) — builds a **user-friendly** sidebar organized around the module's processes / the operator's tasks (not a flat list of entities), inside `workbench/app/Providers/NovaServiceProvider.php`.
+- **Showcase** (Phase C — Walkthrough) — generates a **non-headless** guided Dusk test that **drives each identified process end to end** through Nova, pausing 3s before the main action on each screen, so a stakeholder watches the module actually work. Uses the Dusk infrastructure from `opscale-init`.
 
 ### Iterate — polish the MVP into the final product
 
@@ -127,7 +128,7 @@ Every iteration is archived as `docs/iterations/YYYY-MM-DD-<slug>.md` inside the
 | `app` | Complete Laravel Nova application with many modules | Full spec-driven (per module) | A multi-module SaaS platform |
 | `module` | Bounded-context package within an app | Full spec-driven | `opscale-co/nova-loan-module` |
 | `package` | Standalone project with specific functionality | Direct (domain/ui/logic without specs) | `nova-api`, `nova-authorization` |
-| `library` | Pure utility/infrastructure code | Test + release only | `opscale-co/strict-rules` |
+| `library` | Pure utility/infrastructure code | init (harness) + release only | `opscale-co/strict-rules` |
 
 ### Development Sequences
 
@@ -159,7 +160,7 @@ Start the Plan phase directly from step 1 (`opscale-map` → `opscale-process` �
 | Business docs but no code | Step 2: `opscale-process` (formalize into spec) |
 | Models + migrations but no spec | Step 2: `opscale-process` (reverse-document what exists) |
 | Spec + DBML + BPMN but no Actions | Step 5: `opscale-sipoc` (then `opscale-logic`) |
-| Full domain + Nova but no tests | Step 11: `opscale-test` |
+| Full domain but no tests | `opscale-domain` (Unit) → `opscale-logic` (Feature) → `opscale-ui` (Browser) |
 | Everything, adopting conventions | Run `constitution-enforcer` to assess |
 
 Generation agents detect existing files at every target path:
@@ -185,7 +186,7 @@ When a consumer installs the package, instead of reading the README they invoke 
 ## Architecture
 
 ```
-skills/        → 18 skills (orchestrators — own workflow and user dialogue)
+skills/        → 14 skills (orchestrators — own workflow and user dialogue)
   └─ opscale-{domain,ui,logic}/
        scripts/   → deterministic Node.js generators (.mjs)
        templates/ → mustache-lite PHP templates (.php.tmpl)
@@ -250,22 +251,18 @@ There are no phase logs: every `docs/plan/` file is canonical and evolves with e
 
 | Skill | Required before it runs | Order |
 |-------|------------------------|:-----:|
-| `opscale-init` | composer.json + Laravel detected | Bootstrap |
 | `opscale-map` | — (docs/plan/ created if missing) | Step 1 (before each module's Plan; re-run before each new module) |
 | `opscale-process` | — (docs/plan/ created if missing) | Plan #1 (strict) |
 | `opscale-dbml` | process | Plan #2 (strict) |
 | `opscale-bpmn` | process + dbml | Plan #3 (strict) |
 | `opscale-sipoc` | process + dbml + bpmn | Plan #4 (strict, app/module only) |
 | `opscale-ontology` | map + process + dbml + bpmn + sipoc | Plan #5 (strict, app/module only, non-interactive Plan closer) |
-| `opscale-domain` | init + process + dbml + bpmn | Generate #1 (strict) |
-| `opscale-ui` | init + Plan-data + domain | Generate #2 (strict) |
-| `opscale-logic` | init + Plan + sipoc + domain + ui | Generate #3 (strict) |
-| `opscale-debug` | init | Review (any order) |
-| `opscale-test` | init | Review (any order) |
-| `opscale-release` | init + opscale-test produced test files | Review (after test) |
-| `opscale-seed` | init + domain + workbench User model | Presentation #1 (strict) |
-| `opscale-menu` | init + ui + workbench NovaServiceProvider | Presentation #2 (strict) |
-| `opscale-showcase` | init + ui + seed + menu + test (Dusk infra) | Presentation #3 (strict) |
+| `opscale-init` | composer.json + Laravel detected | Generate #1 (strict, first) |
+| `opscale-domain` | init + process + dbml + bpmn + ontology | Generate #2 (strict) — also authors Unit tests |
+| `opscale-logic` | init + Plan + sipoc + domain | Generate #3 (strict) — also authors Feature tests |
+| `opscale-ui` | init + Plan-data + domain + logic | Generate #4 (strict, last) — registers Actions, authors Browser tests |
+| `opscale-release` | init + Generate produced tests/Unit + tests/Feature + tests/Browser | Review (after Generate) |
+| `opscale-showcase` | init + domain + logic + ui (+ Dusk infra from init) | Presentation (strict, after Review) |
 | `opscale-iterate` | init + Plan + Generate + **0 pending tasks** + clean git | After full pipeline |
 | `opscale-ai` | init + at least one shipped package | Independent |
 
@@ -283,31 +280,27 @@ Agents use three MCP servers configured by `opscale-init`:
 
 #### Development Sequence
 
-| Step | Skill | Purpose | app | module | package | library |
-|------|-------|---------|:---:|:------:|:-------:|:-------:|
-| 0 | `opscale-init` | Bootstrap scaffold, constitution, MCP servers, **commit standard** (commitlint/Husky/semantic-release), `docs/plan/` intake folder + manifest. Refuses if not inside a Laravel/PHP project | Yes | Yes | Yes | Yes |
-| 1 | `opscale-map` | App-level domain map: business lines (domains) → modules (subdomains) → cross-module ref ownership. Writes `docs/plan/context/system.map.md` (header carries the software name + purpose). Runs before each module's Plan; re-run before each new module so its DBML can target existing modules as external refs | Yes | Yes | -- | -- |
-| 2 | `opscale-process` | Module macro-flow: normalized names + wait-bounded subprocesses with their steps and separating events. Writes `docs/plan/context/names.md` + `docs/plan/process.txt` | Per module | Yes | -- | -- |
-| 3 | `opscale-dbml` | DDD-aligned DBML from the normalized names (business-only, `note` on module/table/field). Writes raw `docs/plan/dbml.dbml` (kebab-id-stamped table Notes; + `external-refs.md` if any cross-subdomain refs) + `dbml.txt` | Per module | Yes | -- | -- |
-| 4 | `opscale-bpmn` | Flat BPMN 2.0 map (subprocess boundaries are wait events; atomic CRUD sequence → Logic grouping). Writes raw self-contained `docs/plan/bpmn.bpmn` + `bpmn.txt` | Per module | Yes | -- | -- |
-| 5 | `opscale-sipoc` | One SIPOC per `businessRuleTask` under `docs/plan/sipoc/{kebab-id}.md` — Suppliers/Inputs/Process/Outputs/Customers per Action, plus `sipoc.txt`. Consumed by `opscale-logic` | Per module | Yes | -- | -- |
-| 6 | `opscale-ontology` | Non-interactive Plan closer: renders Software → Domain → Module → Subprocess → Step → Operation (each Logic with its composed CRUDs) as `docs/plan/ontology.mmd` (Mermaid treeView with ontology ids + lineage metadata) + `ontology.txt` | Per module | Yes | -- | -- |
-| 7 | `opscale-domain` | Spec-kit plan + tasks (one per entity bundle), then models/migrations/enums/VOs/repos. No entity cap | Per module | Yes | Yes | -- |
-| 8 | `opscale-ui` | Spec-kit plan + tasks (one per aggregate bundle), then Resources + Repeatables + Field traits | Per module | Yes | Yes | -- |
-| 9 | `opscale-logic` | Spec-kit plan + tasks (one per Action), then Opscale Actions. Reads `docs/plan/sipoc/*.md` (produced by `opscale-sipoc`) to derive `parameters()` and `handle()` body | Per module | Yes | Yes | -- |
-| 10 | `opscale-debug` | Nova DevTool (UI) + Telescope (domain) + Xdebug (logic), local/staging only | Yes | Yes | Yes | Optional |
-| 11 | `opscale-test` | Stack config (Pest, Dusk, PHPStan, Duster, Rector) + **generates Unit (domain) / Feature (Actions) / Browser (one per identified process) tests**. Headless by default. `composer build`/`serve` | Yes | Yes | Yes | Yes |
-| 12 | `opscale-release` | Code quality for deployment: Duster (PHP+JS), static analysis (strict rules), Rector, SonarQube, GitHub Actions. Refuses without test files | deploy-app | publish-package | publish-package | publish-package |
+| Step | Phase | Skill | Purpose | app | module | package | library |
+|------|-------|-------|---------|:---:|:------:|:-------:|:-------:|
+| 1 | — | `opscale-map` | App-level domain map: business lines (domains) → modules (subdomains) → cross-module ref ownership. Writes `docs/plan/context/system.map.md` (header carries the software name + purpose). Runs before each module's Plan; re-run before each new module so its DBML can target existing modules as external refs | Yes | Yes | -- | -- |
+| 2 | Plan | `opscale-process` | Module macro-flow: normalized names + wait-bounded subprocesses with their steps and separating events. Writes `docs/plan/context/names.md` + `docs/plan/process.txt` | Per module | Yes | -- | -- |
+| 3 | Plan | `opscale-dbml` | DDD-aligned DBML from the normalized names (business-only, `note` on module/table/field). Writes raw `docs/plan/dbml.dbml` (kebab-id-stamped table Notes; + `external-refs.md` if any cross-subdomain refs) + `dbml.txt` | Per module | Yes | -- | -- |
+| 4 | Plan | `opscale-bpmn` | Flat BPMN 2.0 map (subprocess boundaries are wait events; atomic CRUD sequence → Logic grouping). Writes raw self-contained `docs/plan/bpmn.bpmn` + `bpmn.txt` | Per module | Yes | -- | -- |
+| 5 | Plan | `opscale-sipoc` | One SIPOC per `businessRuleTask` under `docs/plan/sipoc/{kebab-id}.md` — Suppliers/Inputs/Process/Outputs/Customers per Action, plus `sipoc.txt`. Consumed by `opscale-logic` | Per module | Yes | -- | -- |
+| 6 | Plan | `opscale-ontology` | Non-interactive Plan closer: renders Software → Domain → Module → Subprocess → Step → Operation (each Logic with its composed CRUDs) as `docs/plan/ontology.mmd` (Mermaid treeView with ontology ids + lineage metadata) + `ontology.txt`. **This is the build manifest the Generate phase reads** | Per module | Yes | -- | -- |
+| 7 | Generate | `opscale-init` | **First step of Generate.** Bootstrap scaffold, constitution, MCP servers, **commit standard** (commitlint/Husky/semantic-release), and the full dev/test/debug harness (Xdebug/Telescope/Debugbar, Pest/Dusk/Testbench/PHPStan/Duster/Rector). Opens the MVP feature `.specify/specs/001-mvp/`. Refuses if not inside a Laravel/PHP project | Yes | Yes | Yes | Yes |
+| 8 | Generate | `opscale-domain` | Spec-kit plan + tasks (one per entity bundle), then models/migrations/enums/VOs/repos + factories, **plus their Unit tests**, then runs linters. No entity cap | Per module | Yes | Yes | -- |
+| 9 | Generate | `opscale-logic` | Spec-kit plan + tasks (one per Action), then Opscale Actions (reads `docs/plan/sipoc/*.md` for `parameters()`/`handle()`), **plus their Feature tests** (positive/negative/false-positive/false-negative), then runs linters | Per module | Yes | Yes | -- |
+| 10 | Generate | `opscale-ui` | Spec-kit plan + tasks (**one Resource per DBML entity**, relations as tabs), registers each Action with `canSee`, **plus the Browser/flow tests** (one per subprocess), then runs linters | Per module | Yes | Yes | -- |
+| 11 | Review | `opscale-release` | Code quality for deployment: Duster (PHP+JS), static analysis (strict rules), Rector, SonarQube, GitHub Actions. Refuses without `tests/Unit` + `tests/Feature` + `tests/Browser` | deploy-app | publish-package | publish-package | publish-package |
 
 #### Presentation
 
-Strict order: seed → menu → showcase. Runs after Review has signed off on quality (see the lifecycle diagram above) and turns the verified module into a functional demo a human can sit down and watch end to end.
+Runs after Review has signed off on quality (see the lifecycle diagram above) and turns the verified module into a functional demo a human can sit down and watch end to end.
 
 | Skill | Purpose | app | module | package | library |
 |-------|---------|:---:|:------:|:-------:|:-------:|
-| `opscale-seed` | Coherent `DatabaseSeeder` that lets each identified process be walked end to end; gives every Nova page data and unblocks Browser tests | Per module | Yes | Yes | -- |
-| `opscale-menu` | User-friendly sidebar organized around the module's processes / operator tasks (not a flat entity list) | Per module | Yes | Yes | -- |
-| `opscale-showcase` | Non-headless guided Dusk test that drives each identified process end to end with a 3s pause before each main action — the stakeholder-ready functional demo | Per module | Yes | Yes | -- |
+| `opscale-showcase` | Presentation phase in three ordered internal phases — **Seed** (coherent `DatabaseSeeder` that lets each process be walked end to end), **Menu** (user-friendly sidebar organized around the module's processes, not a flat entity list), **Walkthrough** (non-headless guided Dusk test driving each process end to end with a 3s pause before each main action) — the stakeholder-ready functional demo | Per module | Yes | Yes | -- |
 
 #### Iterative
 
@@ -419,15 +412,15 @@ opscale-iterate (skill — orchestrates)
   ├─ Archives docs/iterations/YYYY-MM-DD-<slug>.md
   ├─ Drives /speckit.specify → clarify → plan → tasks → analyze
   ├─ Reads tasks.md and invokes ONLY the Opscale skills the diff requires
-  │     (e.g. dbml + domain + ui + test — never the full pipeline)
-  ├─ Runs composer run check (+ test:web if Nova changed)
+  │     (e.g. dbml + domain + ui — each re-runs its own tests; never the full pipeline)
+  ├─ Runs composer run check (+ test:browser if Nova changed)
   └─ Creates one Conventional Commits commit on iter/<slug> branch
 ```
 
-#### library — `opscale-test` with 6 classes
+#### library — `opscale-domain` with 6 classes
 
 ```
-opscale-test (skill — orchestrates)
+opscale-domain (skill — orchestrates)
   ├─ Spawns 6x support-test-generator  (parallel)
   ├─ Spawns 1x support-enforcer        (sequential)
   ├─ Spawns 1x quality-runner          (sequential)
@@ -475,27 +468,23 @@ ls -la ~/.claude/skills
 Each skill is invoked as a Claude Code slash command inside the target project directory:
 
 ```
-/opscale-init          # bootstrap project + commit standard (commitlint/husky/semantic-release)
 /opscale-map           # app-level domain map: business lines → modules → cross-module refs
 /opscale-process       # capture the module macro-flow: names + lifecycle + subprocesses + relations
 /opscale-dbml          # generate raw docs/plan/dbml.dbml + dbml.txt + external-refs.md
 /opscale-bpmn          # generate raw self-contained docs/plan/bpmn.bpmn + bpmn.txt
 /opscale-sipoc         # one SIPOC per Action under docs/plan/sipoc/ (input for opscale-logic)
 /opscale-ontology      # close Plan: docs/plan/ontology.mmd treeView + ontology.txt outline
-/opscale-domain        # plan + tasks per entity, then generate domain layer
-/opscale-ui            # plan + tasks per aggregate, then generate Nova layer
-/opscale-logic         # plan + tasks per Action, consumes SIPOCs to generate Opscale Actions
-/opscale-debug         # Nova DevTool (UI) + Telescope (domain) + Xdebug (logic)
-/opscale-test          # configure stack AND generate Unit/Feature/Browser tests
+/opscale-init          # first Generate step: bootstrap + commit standard + dev/test/debug harness + open 001-mvp
+/opscale-domain        # plan + tasks per entity, generate domain layer + Unit tests + factories
+/opscale-logic         # plan + tasks per Action, consumes SIPOCs to generate Opscale Actions + Feature tests
+/opscale-ui            # plan + tasks per entity (one Resource each), register Actions + Browser tests
 /opscale-release       # code quality (Duster/Rector/SonarQube) + CI/CD
-/opscale-seed          # workbench DatabaseSeeder that walks each process end to end
-/opscale-menu          # user-friendly sidebar organized around the module's processes
-/opscale-showcase      # non-headless Dusk demo driving each process (3s pauses)
+/opscale-showcase      # Presentation: seed + process-driven menu + non-headless Dusk demo (3s pauses)
 /opscale-iterate       # add the next feature via user story → spec-kit → one commit
 /opscale-ai            # generate installer skill for consumers
 ```
 
-Skills validate their prerequisites and refuse to run if missing — `opscale-iterate` requires the initial pipeline complete and zero pending tasks; `opscale-release` requires test files to exist; etc. For package projects, skip the Plan phase (`process`/`dbml`/`bpmn`) and start at `opscale-domain` with direct definitions. For library projects, skip both Plan and Generate — go straight to `opscale-test` and `opscale-release`.
+Skills validate their prerequisites and refuse to run if missing — `opscale-iterate` requires the initial pipeline complete and zero pending tasks; `opscale-release` requires the per-layer test files (Unit/Feature/Browser) to exist; etc. For package projects, skip the Plan phase (`process`/`dbml`/`bpmn`) and start at `opscale-init` then `opscale-domain` with direct definitions. For library projects, skip both Plan and the code layers — run `opscale-init` (harness only) then `opscale-release`.
 
 ## Changelog
 

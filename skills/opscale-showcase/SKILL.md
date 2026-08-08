@@ -1,13 +1,13 @@
 ---
 name: opscale-showcase
 description: >
-  Generates a non-headless guided Dusk walkthrough that drives each of the
-  module's processes end to end through Nova, pausing 3s before the main action
-  on each screen so a stakeholder can watch the whole module work. Step 13 —
-  final Presentation step, runs after opscale-menu. Trigger: "showcase the
-  module", "demo Nova", "guided walkthrough". Use it whenever a guided visual
-  Nova demo of the module is wanted, even loosely phrased. Not for CI smoke
-  tests (opscale-test) or the menu (opscale-menu).
+  The Presentation phase — the module made presentable and demoable after
+  Generate and Review. Seeds a connected demo dataset, builds a process-driven
+  Nova menu, and runs a non-headless guided Dusk walkthrough that drives each
+  process end to end (3s pause before each main action). Trigger: "showcase the
+  module", "demo Nova", "guided walkthrough", "seed demo data", "generate the
+  menu", "fix empty Nova pages", "organize the sidebar". Not for per-layer
+  tests (domain/logic/ui) or production data.
 ---
 
 # opscale-showcase
@@ -16,42 +16,57 @@ description: >
 
 ### Purpose — why this skill exists
 
-The showcase runs on the **Nova DevTool + Testbench Dusk** stack configured by `opscale-test` (Nova DevTool ships the workbench skeleton that Dusk drives, and `DuskTestCase` extends `Orchestra\Testbench\Dusk\TestCase` with `WithWorkbench`). This skill reuses that infrastructure with a non-headless driver override.
+Once a module is generated and reviewed, three things stand between it and a
+stakeholder demo: the Nova pages are empty, the sidebar is an alphabetical wall
+of Resources, and nothing drives the module so a viewer can watch it work. This
+skill — the **single Presentation-phase skill** — closes all three, in order:
 
-Smoke Browser tests (one per Resource, headless, fast) verify that nothing crashes — but they're invisible. A stakeholder watching CI never sees the package. The "showcase" pattern was invented during the Teller flow and proved its value:
+1. **Seed demo data** — a coherent, connected dataset that exemplifies a
+   complete run of each process (not isolated rows). It is the script the
+   walkthrough follows and it also surfaces Resource bugs that empty pages hide.
+2. **Nova menu** — a process-driven sidebar grouped the way an operator works
+   (open the day → run operations → control → close), aggregate roots only.
+3. **Guided walkthrough** — one visible Chrome session that drives each process
+   end to end through Nova, pausing 3s before the main action on every screen so
+   a stakeholder can sit and watch the whole module work.
 
-- One visible Chrome session
-- A human watches the module **work**: each process driven end to end, not a tour of empty tables
-- Pauses 3s before the main action on every screen so the viewer can read it
-- Ends with the module having done something real
+The "showcase" pattern proved its value during the Teller flow: a single
+non-headless reel is the most persuasive artifact for "is this module done".
+Smoke Browser tests (headless, one per Resource) verify nothing crashes — but
+they are invisible; nobody watching CI ever sees the module. This skill produces
+the visible artifact that exercises the seed and the menu together.
 
-It's the single most persuasive artifact for "is this module done".
-
-This skill is **Step 3 (final) of the Presentation phase**. Seed populated the workbench, menu organized navigation, and showcase now produces the single visual artifact that exercises both: a guided non-headless walkthrough that a stakeholder can sit and watch.
+This skill absorbs what were once `opscale-seed` and `opscale-menu`; their
+contracts now live in `references/seeder.md` and `references/menu.md`.
 
 ### Prerequisites
 
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
-| 2 | `opscale-ui` has been run | `src/Nova/*.php` populated | Stop. Run `/opscale-ui` — there's nothing to walk. |
-| 3 | `opscale-seed` has been run (Presentation #1) | The seed lets each process be walked end to end | Run `/opscale-seed` first. |
-| 3b | `docs/plan/process.txt` has subprocess blocks | Read `docs/plan/process.txt` | Run `/opscale-process` — the showcase walks the processes. |
-| 4 | `opscale-menu` has been run (Presentation #2) | `MenuSection` block present in `workbench/app/Providers/NovaServiceProvider.php` | Run `/opscale-menu` first. |
-| 5 | `opscale-test` Dusk infrastructure is set up | `tests/DuskTestCase.php` + `phpunit.dusk.xml` exist | Run `/opscale-test` first. |
-| 6 | ChromeDriver matches local Chrome major version | `vendor/bin/testbench dusk:chrome-driver --detect` | Re-run with explicit version. On macOS arm the binary lives at `vendor/laravel/dusk/bin/chromedriver-mac-arm` (no `-arm64` suffix). |
+| 2 | `opscale-domain` has been run | `src/Models/` populated; `workbench/database/factories/` present | Stop. Run `/opscale-domain` — nothing to seed. |
+| 3 | `opscale-ui` has been run | `src/Nova/*.php` populated; `tests/Browser/*FlowTest.php` present | Stop. Run `/opscale-ui` — there's nothing to walk. |
+| 4 | Dusk harness from `opscale-init` is set up | `tests/DuskTestCase.php` + `phpunit.dusk.xml` exist; `showcase` script in `composer.json` | Re-run `/opscale-init` — it stands up the dev/test/debug environment and registers the `showcase` script. |
+| 5 | `docs/plan/process.txt` has subprocess blocks | Read `docs/plan/process.txt` | Run `/opscale-process` — the seed and walkthrough are organized by process. |
+| 6 | Workbench User model exists | `workbench/app/Models/User.php` | Restore from a sibling module or create the standard testbench User model. |
+| 7 | ChromeDriver matches local Chrome major version | `vendor/bin/testbench dusk:chrome-driver --detect` | Re-run with explicit version. On macOS arm the binary lives at `vendor/laravel/dusk/bin/chromedriver-mac-arm` (no `-arm64` suffix). |
 
 ### Output
 
-Writes **`tests/Browser/{Module}ShowcaseTest.php`** with:
+Three artifacts, one per phase group:
 
-- `final class {Module}ShowcaseTest extends DuskTestCase`
-- Override of `driver()` that **ignores** `DUSK_HEADLESS` — the showcase is always visible
-- One `#[Test]` method `guided_walkthrough_of_full_{module}_flow`
-- A `MAIN_BUTTON_PAUSE_MS` constant defaulting to `3000`
-- Steps: login (3s pause before Log In) → dashboard → then **drive each process in `docs/plan/process.txt` subprocesses end to end** (reuse the per-process flows from `opscale-test`), pausing 3s before the main action on each screen
+| Phase group | Artifact | Contract |
+|-------------|----------|----------|
+| A — Seed | `workbench/database/seeders/DatabaseSeeder.php` (demo block between `opscale-seed` markers) | `references/seeder.md` |
+| B — Menu | `workbench/app/Providers/NovaServiceProvider.php` (`Nova::mainMenu()` between `opscale-menu` markers) | `references/menu.md` |
+| C — Walkthrough | `tests/Browser/{Module}ShowcaseTest.php` + `showcase` composer script | this SKILL body |
 
-### Template
+The seed and menu blocks live between idempotent markers so re-runs replace the
+generated block and preserve custom code around it. The markers keep the
+historical `opscale-seed` / `opscale-menu` prefixes so a re-run replaces the
+block in modules generated before the merge.
+
+### Walkthrough template
 
 ```php
 <?php
@@ -99,7 +114,7 @@ final class {Module}ShowcaseTest extends DuskTestCase
     final public function guided_walkthrough_of_full_{module}_flow(): void
     {
         $this->browse(function (Browser $browser): void {
-            // --- 1. Login screen ---
+            // --- 1. Login screen (3s pause before Log In) ---
             $browser->visit('/nova')
                 ->waitFor('input[name="email"]', 15)
                 ->type('email', 'admin@laravel.com')
@@ -112,14 +127,14 @@ final class {Module}ShowcaseTest extends DuskTestCase
             $browser->visit('/nova/dashboards/main')
                 ->pause(self::MAIN_BUTTON_PAUSE_MS);
 
-            // --- 3. Drive each identified process end to end ---
-            // For each process in docs/plan/process.txt, reuse its
-            // per-process flow from opscale-test and pause 3s before the main
-            // action on each screen.
+            // --- 3. Drive each process in docs/plan/process.txt end to end ---
+            // Reuse each subprocess's flow from tests/Browser/{Process}FlowTest
+            // (authored by opscale-ui); pause 3s before the main action on
+            // every screen.
 
-            // --- 4. Seeded record detail (uses a known seeded reference) ---
+            // --- 4. Seeded record detail (a known seeded reference) ---
 
-            // --- 5. Create form for the headline aggregate ---
+            // --- 5. Create form for the headline aggregate — closing shot ---
             $browser->visit('/nova/resources/{primary-uri}/new')
                 ->pause(self::MAIN_BUTTON_PAUSE_MS)
                 ->assertDontSee('SERVER ERROR')
@@ -133,9 +148,9 @@ final class {Module}ShowcaseTest extends DuskTestCase
 
 ### `composer showcase` command
 
-The showcase is invoked on demand, not as part of `composer run test:browser`. Register a **`showcase`** script in `composer.json` (and mirror it in `package.json`). This is the single command anyone runs to play the guided walkthrough.
-
-**`composer.json`** — add to `scripts`:
+The showcase is invoked on demand, not as part of `composer run test:browser`.
+`opscale-init` registers a `showcase` script in `composer.json` (mirrored in
+`package.json`). This is the single command anyone runs to play the walkthrough:
 
 ```json
 {
@@ -148,100 +163,133 @@ The showcase is invoked on demand, not as part of `composer run test:browser`. R
 }
 ```
 
-**`package.json`** — mirror:
-
-```json
-{
-    "scripts": {
-        "showcase": "composer run showcase"
-    }
-}
-```
-
-**Why chain `@composer build` first:** the showcase runs against the workbench skeleton. If assets, SQLite DB or ChromeDriver drifted, the walkthrough fails on a blank page or 500. `build` rebuilds the workbench from scratch so a clean clone can run `composer run showcase` and watch the module work. Never document or recommend the raw `vendor/bin/pest …` form — it skips `build` and breaks on fresh clones.
+Chaining `@composer build` first rebuilds the Nova DevTool workbench from scratch
+(assets, SQLite DB, ChromeDriver) so a clean clone can run `composer run
+showcase` and watch the module work. If the `showcase` script is absent, add it;
+never recommend the raw `vendor/bin/pest …` form — it skips `build` and breaks on
+fresh clones.
 
 ### Domain Rules
 
-1. **Always non-headless** — the override of `driver()` removes `--headless`. Re-add the flag and the test reverts to a smoke that has no human audience.
-2. **3-second pause as default, configurable** — `MAIN_BUTTON_PAUSE_MS = 3000`. Faster pauses break the "human can read it" guarantee. Slower pauses make the showcase tedious. 3000 was empirically right for the Teller demo (47 assertions in ~94s).
-3. **Walk menu order, not alphabetical** — the showcase mirrors how an operator would navigate. If `opscale-menu` ran, use its order.
-4. **End on a create form** — the showcase's closing shot is "what would the operator do here?". Never end on an index page.
-5. **One test method per module** — don't split the walkthrough into many methods. The whole point is the single uninterrupted reel.
-6. **Invoked via `composer run showcase`** — registered as its own composer script (chained with `@composer build` so it always runs against a fresh workbench). NOT included in the default `composer run test:browser` suite.
-7. **Depends on seeded data** — the detail page step relies on `opscale-seed`. Missing records → blank detail pages → the showcase loses its punch.
-8. **Runs on Nova DevTool + Testbench Dusk** — same workbench skeleton as `opscale-test` Browser suite; only the `driver()` override differs (no `--headless`).
-9. **Validation is mandatory** — the showcase must actually run green before the skill exits. Writing the file without running it defeats the whole purpose.
+1. **Three artifacts, one skill** — the Presentation phase is done only when the
+   seed, the menu, and the walkthrough all exist and cohere. A green walkthrough
+   depends on the seed (empty pages → blank detail → the demo loses its punch)
+   and follows the menu order.
+2. **Walkthrough is always non-headless** — the `driver()` override removes
+   `--headless`. Re-add the flag and the test reverts to a smoke with no human
+   audience.
+3. **3-second pause as default, configurable** — `MAIN_BUTTON_PAUSE_MS = 3000`.
+   Faster breaks the "human can read it" guarantee; slower makes it tedious.
+   3000 was empirically right for the Teller demo (47 assertions in ~94s).
+4. **Walk menu order, not alphabetical** — the walkthrough mirrors how an
+   operator navigates; end on a create form ("what would the operator do here?"),
+   never on an index page.
+5. **One test method per module** — the whole point is a single uninterrupted
+   reel; do not split it into many methods.
+6. **Idempotent generated blocks** — the seed and menu blocks live between their
+   markers; re-runs replace the block and never duplicate. Anything outside the
+   markers survives.
+7. **Validation is mandatory** — the walkthrough must actually run green in
+   visible Chrome before the skill exits. A showcase that "should work but
+   didn't run" is a failed skill.
 
 ## Steps
 
-### Phase 1 — Verify prerequisites
+### Phase group A — Seed demo data
 
-Confirm all 6 prerequisites listed in Context. Inspect:
-- `src/Nova/*.php` (Resources exist)
-- `workbench/database/seeders/DatabaseSeeder.php` (seed runs end-to-end per process)
-- `docs/plan/process.txt` subprocesses (process inventory)
-- `workbench/app/Providers/NovaServiceProvider.php` (menu block present)
-- `tests/DuskTestCase.php` + `phpunit.dusk.xml`
-- ChromeDriver version matches local Chrome
+Full contract, seeding order, template, and rules: **`references/seeder.md`**.
 
-If any prerequisite is missing, stop and direct the user back to the appropriate skill.
+1. **Inventory aggregate roots + flows.** Read `src/Models/` and
+   `src/Models/Enums/`; build the topological FK order. Identify catalog tables
+   (no FKs + `is_active`) and aggregate roots. Cross-reference
+   `docs/plan/process.txt` — each subprocess needs an end-to-end walkable
+   dataset. Present the planned order and the flows covered.
+2. **Propose the connected dataset.** For each flow, list the connected chain of
+   records (trigger → each step's record with its FK back → final resolved
+   outcome) and the catalog defaults. If a stakeholder reviewing the plan can't
+   recognize the business scenario, refine until they can.
+3. **Fill the demo block.** Render the seeder into
+   `workbench/database/seeders/DatabaseSeeder.php` between the
+   `// >>> opscale-seed:start` / `// <<< opscale-seed:end` markers, reusing the
+   skeleton and factories `opscale-domain` left. Real model + enum imports, real
+   catalog defaults, resolved states. Preserve anything outside the markers.
+4. **Verify** per `references/seeder.md` (migrate:fresh --seed against sqlite;
+   confirm ≥1 record per aggregate and each subprocess walkable end to end).
 
 **Wait for user approval before continuing.**
 
-### Phase 2 — Inventory processes from BPMN
+### Phase group B — Nova menu
 
-Read `docs/plan/process.txt` — one walkthrough segment per subprocess, in flow order. For each:
+Full contract, grouping heuristic, template, and rules: **`references/menu.md`**.
 
-- Reuse the steps from its `tests/Browser/{Process}FlowTest` (generated by `opscale-test`) so the showcase drives the same flow, only non-headless and with a 3s pause before each main action.
-- Resolve each Resource `uriKey()` via reflection (kebab-case URI segment, not the class name).
+1. **Inventory aggregate roots** in `src/Nova/`, filtering to
+   `$displayInNavigation !== false` (child aggregates are tabs of their root, not
+   sidebar entries). Read any `MENU_SECTION` / `MENU_ICON` / `MENU_ORDER`
+   constants via reflection.
+2. **Propose the menu structure.** Group the roots by process (from
+   `docs/plan/process.txt`) in operator-work order — or the fallback heuristic
+   when the spec gives no process info. Confirm section order, icons, and
+   per-section item order.
+3. **Generate the menu block** inside `workbench/app/Providers/NovaServiceProvider.php`
+   between `// >>> opscale-menu:start` / `// <<< opscale-menu:end`, after
+   `parent::boot()`. `Nova::mainMenu()` with one `MenuSection` per group, every
+   label through `__()`. Insert `use` statements alphabetically; replace any
+   previous marker block (idempotent).
+4. **Verify** per `references/menu.md` (`php -l`, `dump-autoload`,
+   `package:discover`; boot the workbench and confirm sections render in order,
+   empty sections and children absent).
 
-Identify the **headline aggregate** (the one with the most HasMany children — Teller's is `CashTransaction`, Loans' would be `LoanApplication`). The headline aggregate provides:
-- the "seeded detail" record (look at `DatabaseSeeder.php` for a stable identifier like `reference_number => 'TX-DEMO-0001'`; otherwise pick the first record via `Model::query()->first()`).
-- the "create form" target — the showcase's closing shot.
+**Wait for user approval before continuing.**
 
-Present the planned walkthrough to the user:
+### Phase group C — Guided walkthrough
 
+1. **Inventory processes.** Read `docs/plan/process.txt` — one walkthrough
+   segment per subprocess, in flow order. For each, reuse the steps from its
+   `tests/Browser/{Process}FlowTest` (authored by `opscale-ui`) so the showcase
+   drives the same flow, only non-headless and with a 3s pause before each main
+   action. Resolve each Resource `uriKey()` via reflection (kebab-case URI
+   segment, not the class name). Identify the **headline aggregate** (most
+   HasMany children) — it provides the "seeded detail" record (a stable
+   identifier from `DatabaseSeeder.php`, else the first record) and the "create
+   form" closing shot. Present the outline:
+
+   ```
+   Showcase outline:
+     1. Login (3s pause before Log In)
+     2. Dashboard (3s pause)
+     3. Process [A]: visit /nova/resources/{uri-a} -> pause 3s -> [action] -> …
+     4. Process [B]: …
+     5. Seeded detail: {Model} #{reference}
+     6. Create form: /nova/resources/{primary-uri}/new
+   ```
+
+2. **Generate the ShowcaseTest.** Render the template with `{PackageNamespace}`
+   from `composer.json` PSR-4, `{Module}` from the namespace's last segment,
+   `{module}` lowercase for the method name, one segment per subprocess, the
+   seeded record block, and `{primary-uri}` from the headline aggregate. Write
+   `tests/Browser/{Module}ShowcaseTest.php`. Confirm the `showcase` composer
+   script exists (add it if `opscale-init` didn't).
+
+**Wait for user approval before continuing.**
+
+### Phase group D — Validation loop (walkthrough passes in visible Chrome)
+
+Static pre-check that all three artifacts exist and are wired:
+
+```bash
+node scripts/validate-showcase.mjs
 ```
-Showcase outline:
-  1. Login (3s pause before Log In)
-  2. Dashboard (3s pause)
-  3. Process [A]:
-       - visit /nova/resources/{uri-a} -> pause 3s -> [action]
-       - ...
-  4. Process [B]: ...
-  5. Seeded detail: {Model} #{reference}
-  6. Create form: /nova/resources/{primary-uri}/new
-```
 
-**Wait for user approval before continuing.**
-
-### Phase 3 — Generate ShowcaseTest per process
-
-Render the template with:
-- `{PackageNamespace}` resolved from `composer.json` PSR-4
-- `{Module}` derived from the namespace's last segment (e.g. `Teller`)
-- `{module}` lowercase for the method name (e.g. `teller`)
-- One walkthrough segment per process.txt subprocess
-- Seeded record block populated from Phase 2
-- `{primary-uri}` from the headline aggregate
-
-Write to `tests/Browser/{Module}ShowcaseTest.php`.
-
-Register the `composer showcase` command (and the `package.json` mirror) per Context → `composer showcase` command. The script MUST chain `@composer build` before running pest against `phpunit.dusk.xml`.
-
-**Wait for user approval before continuing.**
-
-### Phase 4 — Validation loop (Dusk passes in visible Chrome)
-
-The showcase is not complete the moment the file is written. It must actually execute end to end against the Nova DevTool workbench. Run this loop until the walkthrough exits green:
+Then run the walkthrough end to end against the Nova DevTool workbench until it
+exits green:
 
 ```
 1. php -l tests/Browser/{Module}ShowcaseTest.php
    on syntax error: fix the template rendering, re-run.
 
 2. composer run showcase
-   chains `composer run build` (rebuilds the Nova DevTool workbench, syncs
-   ChromeDriver, copies assets) and then runs the showcase test.
+   chains `composer run build` (rebuilds the workbench, syncs ChromeDriver,
+   copies assets) then runs the showcase test.
    on failure: inspect tests/Browser/screenshots/ + tests/Browser/console/.
    Typical fixes:
      - selector drift     -> update the visit()/click()/waitFor() target
@@ -253,20 +301,27 @@ The showcase is not complete the moment the file is written. It must actually ex
 
 **Stop conditions:**
 - Exit when `composer run showcase` exits 0 on a clean re-run.
-- Do NOT mark the skill complete with a red or skipped showcase. A showcase that "should work but didn't run" is a failed skill — the whole point is the uninterrupted reel actually running.
+- Do not mark the skill complete with a red or skipped walkthrough — the point
+  is the uninterrupted reel actually running.
 
-The showcase is invoked on demand via `composer run showcase` — it is NOT included in the default `composer run test:browser` suite. CI runs the smoke ResourceTests (headless) for gating; the showcase is for stakeholders.
+The showcase runs on demand; it is NOT in the default `composer run
+test:browser` suite. CI runs the smoke ResourceTests (headless) for gating; the
+showcase is for stakeholders.
 
 **Wait for user approval before continuing.**
 
 ## Sample
 
-`ShowcaseTest` excerpt with 3s pause pattern — see `references/sample-output.md`.
+The three artifacts (seeder demo, menu, showcase test) — see
+`references/sample-output.md`. Per-artifact contracts live in
+`references/seeder.md` and `references/menu.md`.
 
 ## Success condition
 
 ```bash
+node scripts/validate-showcase.mjs
 composer showcase
 ```
 
-Exit code 0 = pass.
+`validate-showcase.mjs` exit 0 = all three artifacts present; `composer
+showcase` exit 0 = the guided walkthrough ran green in visible Chrome.

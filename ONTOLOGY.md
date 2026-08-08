@@ -14,6 +14,9 @@ Software (app)
                     ├── CRUD operation      a single create|read|update|delete on one entity
                     └── Logic operation     CRUDs (and Outputs) grouped by a business rule —
                         ├── CRUD operation    they run together, in order, as one unit
+                        ├── Logic reference   another Action this Logic invokes — composition
+                        │                     is RECURSIVE by reference: the leaf is defined at
+                        │                     its own node (own SIPOC), never re-expanded here
                         └── Output operation  something that leaves the system (a notification,
                                               a document, a webhook) — the effect the Logic
                                               dispatches; ALWAYS composed inside a Logic
@@ -28,9 +31,14 @@ CMS
 └── Content                            (Domain)
     └── Publishing                     (Subdomain / module)
         └── Editorial review           (Subprocess)
+            ├── Draft the article          (Step)
+            │   └── create article              (CRUD operation — the record's
+            │                                    birth with its initial status)
             ├── Send to review             (Step)
-            │   ├── update article status      (CRUD operation)
-            │   └── create review checklist    (CRUD operation)
+            │   └── Submit for review           (Logic operation — a status
+            │       │                            transition, so never a lone CRUD)
+            │       ├── update article status       (CRUD inside the Logic)
+            │       └── create review checklist     (CRUD inside the Logic)
             └── Publish the article        (Step)
                 └── Publish article            (Logic operation)
                     ├── read review checklist      (CRUD inside the Logic)
@@ -40,7 +48,7 @@ CMS
 
 **Step is business; Operation is technical.** The business step is the last level a stakeholder narrates — a subprocess might have 5 business steps. Each business step decomposes into 1..N atomic operations — those 5 business steps might become 20 operations. The business step lives in `docs/plan/process.txt`; the decomposition happens in `opscale-bpmn` and is recorded inside `docs/plan/bpmn.bpmn` (every task's `<documentation>` JSON carries its `step` and `subprocess`) and readably in `docs/plan/bpmn.txt`. The BPMN itself stays at operation level — business steps do not appear as BPMN elements, only as embedded metadata; the human trace lives in `bpmn.txt` and in each SIPOC's `Step:` header. Events (waits) and gateways are flow elements, not operations: a wait closes a subprocess; a gateway branches the sequence.
 
-For each module, `opscale-ontology` closes the Plan phase by rendering this whole hierarchy as `docs/plan/ontology.mmd` (a Mermaid treeView whose node labels carry the ontology ids and whose `%%` metadata carries the entity lineage) plus `docs/plan/ontology.txt` (the same hierarchy as a plain outline) — generated exclusively from the canonical artifacts below, never edited by hand and never read by any skill.
+For each module, `opscale-ontology` closes the Plan phase by rendering this whole hierarchy as `docs/plan/ontology.mmd` (a Mermaid treeView whose node labels carry the ontology ids and whose `%%` metadata carries the entity lineage) plus `docs/plan/ontology.txt` (the same hierarchy as a plain outline) — generated exclusively from the canonical artifacts below and never edited by hand. **It is the Generate phase's single source of truth**: `opscale-init`/`opscale-domain`/`opscale-logic`/`opscale-ui` read `ontology.mmd`/`ontology.txt` as the build manifest (the summary of what to generate) and drill into `dbml.dbml`/`bpmn.bpmn`/`sipoc/` for per-node detail. No Plan skill reads it.
 
 ## Level definitions and their artifacts
 
@@ -60,7 +68,7 @@ For each module, `opscale-ontology` closes the Plan phase by rendering this whol
 From the business description of a module, exactly two technical diagrams emerge:
 
 1. **What information the solution stores** — the domain definition: `docs/plan/dbml.dbml`. Reconciled against an industry **modeling standard** (BIAN, HL7 FHIR, ARTS, …) chosen in `opscale-dbml` Phase 0 and recorded in the DBML Project Note. The standard is what turns an as-is description (possibly with bad practices) into a robust to-be model.
-2. **How information moves through the solution** — the flow definition: `docs/plan/bpmn.bpmn`. A sequence of tasks of exactly three types, separated by events and gateways. Downstream it drives test cases (`opscale-test`), demos (`opscale-showcase`), and menus (`opscale-menu`).
+2. **How information moves through the solution** — the flow definition: `docs/plan/bpmn.bpmn`. A sequence of tasks of exactly three types, separated by events and gateways. Downstream it drives test cases (`opscale-ui` Browser flows), demos and menus (`opscale-showcase`).
 
 ## Operation categories ↔ artifact mapping
 
@@ -92,16 +100,16 @@ dbml.dbml table Note ("invoice-item — …")  →  generated Model class (@enti
     contracts: @entity ref:{slug})
 ```
 
-Grep the kebab id and the whole chain comes back. `names.md` is input only — it carries no ids. `opscale-ontology` renders the chain assembled as the `%% entity:` metadata of `ontology.mmd` (a view, never a source). For cross-module references, ownership lives in `docs/plan/context/system.map.md`.
+Grep the kebab id and the whole chain comes back. `names.md` is input only — it carries no ids; when reconciliation renames an entity away from its `names.md` canonical, the table Note closes with ` (spec: {original canonical})` so the spec→final mapping survives in the artifact. `opscale-ontology` renders the chain assembled as the `%% entity:` metadata of `ontology.mmd` (the Generate manifest, never hand-edited). For cross-module references, ownership lives in `docs/plan/context/system.map.md`.
 
 ## The id standard
 
-Ids exist for exactly six ontology levels (see `artifact-paths.md` for the full table): domain `{xxx}` and subdomain `{xxx/yyy}` (project slugs, opscale-map), subprocess `SP-XX` and step `SP-XX-YY` (opscale-process, local numbering), entity `{kebab}` (opscale-dbml, final entities), operation `SP-XX-YY-[C|L]ZZ` (standalone crud/logic) with nested `…-[C|L|O]AA` for CRUDs and Outputs composed inside a Logic (opscale-bpmn, the `oid`). Logic operations also keep their kebab `logic.id` (the Action slug); `BR-NN` is the rule registry, not an ontology level.
+Ids exist for exactly six ontology levels (see `artifact-paths.md` for the full table): domain `{xxx}` and subdomain `{xxx/yyy}` (project slugs, opscale-map), subprocess `SP-XX` and step `SP-XX-YY` (opscale-process, local numbering), entity `{kebab}` (opscale-dbml, final entities), operation `SP-XX-YY-[C|L]ZZ` (standalone crud/logic) with nested `…-[C|L|O]AA` for the CRUDs, Logic references, and Outputs composed inside a Logic (opscale-bpmn, the `oid`; a composed `L` member is always a reference to an Action defined elsewhere in the flow — never a new unit). Logic operations also keep their kebab `logic.id` (the Action slug); `BR-NN` is the rule registry, not an ontology level.
 
 ## Rules that keep the ontology coherent
 
 1. **Subdomain ≠ subprocess, and business step ≠ operation.** Subdomain is the module; subprocess is a wait-bounded segment inside its flow. Step is a broad business activity (stakeholder language, lives in `process.txt`); operation is its atomic technical decomposition (lives in `bpmn.bpmn`'s embedded metadata and `bpmn.txt`). Never use one for the other — each pair separates a business audience from a technical one.
-2. **A Logic exists only because a business rule forces CRUDs to run together** (e.g. "an article cannot be published until every checklist item is complete" → read checklist + update article, inseparable). A Logic with zero CRUDs is suspicious; a grouping without a rule is not a Logic. **Every Output is composed inside the Logic that produces it** — a notification/document/webhook never stands alone, it is the effect a resolved rule dispatches. A corollary: **every status transition of a lifecycle entity is a Logic** — the lifecycle is a pipeline, so moving a stage always implies verifying the current stage first, and operations gated by a stage (interviewing an unscreened candidate) are Logics too. Only setting the *initial* status at creation is a plain CRUD.
+2. **A Logic exists only because a business rule forces CRUDs to run together** (e.g. "an article cannot be published until every checklist item is complete" → read checklist + update article, inseparable). A Logic with zero CRUDs is suspicious; a grouping without a rule is not a Logic. **Every Output is composed inside the Logic that produces it** — a notification/document/webhook never stands alone, it is the effect a resolved rule dispatches. A corollary: **every status transition of a lifecycle entity is a Logic** — the lifecycle is a pipeline, so moving a stage always implies verifying the current stage first, and operations gated by a stage (interviewing an unscreened candidate) are Logics too. Only setting the *initial* status at creation is a plain CRUD. Composition is **recursive by reference**: a Logic may compose another Logic (the SIPOC's `compose {leaf-action-id}`), but the referenced Action must exist as its own `businessRuleTask` node with its own SIPOC — a composed reference reuses a unit, it never defines one, and it is never re-expanded at the point of reuse.
 3. **Decompose, then group.** Each business step is decomposed into its full flat operation sequence before any grouping into Logics (`opscale-bpmn` Phase 2.2 → 2.3), and both views persist in `docs/plan/bpmn.txt` (composed CRUDs and Outputs indented under their Logic) with every operation labeled by its business step in the XML metadata.
 4. **Everything in `docs/plan/` is canonical and exportable.** Plan skills keep no ephemeral logs; every file they write is a consumable artifact, and no skill may take anything outside `docs/plan/` as a Plan-phase input.
 5. **The spec may start as-is; the artifacts are to-be.** Standards (modeling standard in DBML, process reconciliation in BPMN Phase 1) are the mechanism that robustifies the flow — deviations from a standard are explicit decisions, never silent.

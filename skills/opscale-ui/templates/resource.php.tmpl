@@ -143,6 +143,12 @@ class {{model_name}} extends Resource
                     HasMany::make(__('{{label}}'), '{{name}}', {{related_resource}}::class),
                 ]){{#unless creatable_from_ui}}->canSee(fn () => ($this->resource->{{count_column}} ?? 0) > 0){{/unless}},
 {{/each}}
+{{#each has_one_relationships}}
+
+                Tab::make(__('{{label}}'), [
+                    HasOne::make(__('{{label}}'), '{{name}}', {{related_resource}}::class)->onlyOnDetail(),
+                ]){{#unless creatable_from_ui}}->canSee(fn () => ($this->resource->{{count_column}} ?? 0) > 0){{/unless}},
+{{/each}}
             ]),
         ];
 {{else}}

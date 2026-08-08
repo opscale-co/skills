@@ -3,7 +3,7 @@ name: opscale-ontology
 description: >
   Renders the planned module as a Mermaid treeView — Software → Domain →
   Module → Subprocess → Business Step → Operation, each Logic expanded into
-  its composed CRUDs. Step 5 of Plan — the final Plan step, after
+  its composed CRUDs and Outputs. Step 5 of Plan — the final Plan step, after
   opscale-sipoc, before Generate; non-interactive, reads docs/plan/ only.
   Trigger: "generate the ontology", "show the module hierarchy", "close the
   plan phase". Use it whenever a navigable Plan summary is wanted. Not for
@@ -62,7 +62,7 @@ Read only these files (canonical layout: `references/artifact-paths.md`). The li
 |---|---|---|
 | `context/system.map.md` | software name + purpose; owning domain | `# System map — {Software}` title; `> {purpose}` line; `### {Domain}` headings; the module's table row |
 | `process.txt` | subprocess ids/names/order, triggers/waits, business steps | `SP-XX {name}` block line; `Trigger:` and `Ends with:` lines; local `YY) …` step lines; blank line between blocks |
-| `bpmn.txt` | the whole operation layer: step → operations (with oids), Logic → composed CRUDs and Outputs | one section per subprocess (`SP-XX {name}` first line); top-level `- {oid} crud|logic: …`; each `- {oid} logic: {kebab-id}` with its composed members indented (`  - {oid}-CAA crud:` / `  - {oid}-OAA output:`) |
+| `bpmn.txt` | the whole operation layer: step → operations (with oids), Logic → composed CRUDs, Logic references and Outputs | one section per subprocess (`SP-XX {name}` first line); top-level `- {oid} crud|logic: …`; each `- {oid} logic: {kebab-id}` with its composed members indented (`  - {oid}-CAA crud:` / `  - {oid}-LAA logic:` / `  - {oid}-OAA output:`) |
 | `bpmn.bpmn` | cross-check: oids, unique logic ids, rules, composed arrays | task `<documentation>` JSON (`"type"`, `"oid"`, `"id"`); `<bpmn:process>` documentation (`"module"`) |
 | `sipoc/{kebab-id}.md` | per-Logic enrichment + BR-NN definitions | `**Identifier:**`, the `## Business Rules enforced` section (`BR-NN` ids), the one-sentence description after the header block |
 | `sipoc.txt` | composition cross-check | `{Logic name} ({kebab-id})` block headers |
@@ -98,15 +98,16 @@ treeView-beta
                         "📝 SP-XX-YY-CZZ {action} {entity}"
                         "⚙️ SP-XX-YY-LZZ {kebab-id} [BR-NN, BR-NN]"/
                             "📝 SP-XX-YY-LZZ-CAA {action} {entity}"
+                            "⚙️ SP-XX-YY-LZZ-LAA {leaf-kebab-id}"
                             "📩 SP-XX-YY-LZZ-OAA {brief output content}"
 ```
 
 Rules:
 
 - **Every node label carries its ontology id**: `SP-XX` on subprocesses, `SP-XX-YY` on steps, the operation `oid` (`SP-XX-YY-[C|L]ZZ` standalone, nested `…-[C|L|O]AA` on composed CRUDs/Outputs) on operations — verbatim from `process.txt` and the `oid` keys of `bpmn.bpmn`/`bpmn.txt`. Domain and subdomain ids are the project slugs (`xxx`, `xxx/yyy`) from `context/system.map.md`, carried in the `%% module:` line (top-level labels stay names).
-- One `%% entity:` line per **stamped table** of `dbml.dbml`, in declaration order: the kebab id that opens the table's Note, the business name, the aliases folded in `names.md` (`—` if the entity was born in reconciliation), the table, and the Enum types its columns use (`—` if none). One `%% external:` line per `external-refs.md` slug (omit if the module has none).
+- One `%% entity:` line per **stamped table** of `dbml.dbml`, in declaration order: the kebab id that opens the table's Note, the business name, the aliases folded in `names.md` (`—` if the entity was born in reconciliation), the table, and the Enum types its columns use (`—` if none). Aliases are matched against `names.md` by the entity's business name — or, when the entity was renamed in reconciliation, by the ` (spec: {canonical})` stamp closing its table Note in `dbml.dbml`; a renamed entity without that stamp gets `—` (never guess the mapping). One `%% external:` line per `external-refs.md` slug (omit if the module has none).
 - Node prefixes are the category emojis (same vocabulary as the rest of the family): `⏳` subprocess, `⚙️` Logic, `📝` CRUD, `📩` Output. Business steps and the top three levels carry no emoji.
-- **CRUDs and Outputs absorbed by a Logic appear only INSIDE that Logic node** (one indent deeper) — mirroring `bpmn.txt`. Standalone step-level operations are only `📝` CRUD and `⚙️` Logic; an `📩` Output is **never** a step-level node — it is always a child of the Logic that dispatches it.
+- **CRUDs, Logic references, and Outputs absorbed by a Logic appear only INSIDE that Logic node** (one indent deeper) — mirroring `bpmn.txt`. Standalone step-level operations are only `📝` CRUD and `⚙️` Logic; an `📩` Output is **never** a step-level node — it is always a child of the Logic that dispatches it. A composed `⚙️` reference is a **leaf**: bare `{oid} {leaf-kebab-id}`, no BR badges, no children, no trailing `/` — the leaf Action's expansion (and its BRs) lives at its own standalone node.
 - Labels are **concise** (the detail lives in the SIPOCs): CRUD = `{action} {entity}`; Logic = the bare kebab Action id plus its cited `[BR-NN, …]` (the natural name lives in the BPMN `name=`); Output = the brief content, never a channel.
 - Waits and gateways are flow elements, not operations — they do not appear as tree nodes (the `⏳` on the subprocess node is its wait boundary).
 
@@ -123,6 +124,7 @@ The same hierarchy, markdown-free: 2-space indent per level, category words inst
           SP-XX-YY-CZZ crud: {action} {entity}
           SP-XX-YY-LZZ logic: {kebab-id}
             SP-XX-YY-LZZ-CAA crud: {action} {entity}
+            SP-XX-YY-LZZ-LAA logic: {leaf-kebab-id}
             SP-XX-YY-LZZ-OAA output: {brief output content}
 ```
 
@@ -166,7 +168,7 @@ The gate is mandatory in Claude Code and Claude Desktop alike (both have console
 
 - `ontology.mmd` opens with `treeView-beta` and the `%% module:` chain (project ids `xxx/yyy` + names) matches `context/system.map.md`.
 - Subprocess (`⏳ SP-XX`) and step (`SP-XX-YY`) nodes match `process.txt` — ids, counts, and order.
-- Operation nodes match the op lines of `bpmn.txt` **oid by oid**; each `⚙️` node's inner `📝`/`📩` children match its composed CRUDs and Outputs line for line; no `📩` Output is top-level.
+- Operation nodes match the op lines of `bpmn.txt` **oid by oid**; each `⚙️` node's inner `📝`/`⚙️`/`📩` children match its composed CRUDs, Logic references, and Outputs line for line; no `📩` Output is top-level; every composed `⚙️` reference names a logic id that exists as a `businessRuleTask` in `bpmn.bpmn`.
 - The Logic count is identical across sources: unique ids in `bpmn.bpmn`, `bpmn.txt` logic lines, `sipoc/` files, `sipoc.txt` blocks, and the tree's `⚙️` nodes.
 - Every `[BR-NN]` cited on a `⚙️` node is defined in some `sipoc/{id}.md` (`Business Rules enforced`); every entity in a `📝` node exists in `dbml.txt`.
 - The `%% entity:` lines are exactly one per stamped table of `dbml.dbml` — kebab id and table cell match the stamp, every enum listed is a declared Enum, and every `external-refs.md` slug has its `%% external:` line.
@@ -176,7 +178,7 @@ The Mermaid linter above already guarantees the file renders; an optional final 
 
 ## Sample
 
-`references/sample-output.md` — a filled `ontology.mmd` + `ontology.txt` excerpt for the recruitment module (the same running example as the other Plan skills' samples, so the ids, steps, and entities chain across artifacts).
+`references/sample-output.md` — a filled `ontology.mmd` + `ontology.txt` excerpt for the Proveedores module (supplier master lifecycle — the same running example as the other Plan skills' samples, so the ids, steps, and entities chain across artifacts).
 
 ## Success condition
 

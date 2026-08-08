@@ -34,7 +34,7 @@ The mode depends on whether a writable project folder is available — not on wh
 | 1 | `opscale-process` has been run for this module | `docs/plan/process.txt` and `docs/plan/context/names.md` exist and PASS | Stop. Run `/opscale-process` first. |
 | 2 | `opscale-dbml` has been run for this module | `docs/plan/dbml.dbml` exists and PASS | Stop. Run `/opscale-dbml` first. |
 
-This skill is **Step 3 of the Plan phase**. The Plan phase is `process → dbml → bpmn → sipoc` — strictly ordered, no skipping. After `opscale-sipoc`, the module enters the Generate phase (`domain → ui → logic`).
+This skill is **Step 3 of the Plan phase**. The Plan phase is `process → dbml → bpmn → sipoc → ontology` — strictly ordered, no skipping. After `opscale-ontology` closes the phase, the module enters the Generate phase (`domain → ui → logic`).
 
 ### Allowed BPMN elements
 
@@ -57,7 +57,7 @@ Persistence and query operations on domain entities. No business logic, no condi
 
 #### businessRuleTask — `logic`
 
-Encapsulated business operation — anything **heavier than a single CRUD**. A step is `logic` when it does one or more of: queries an **external source** to proceed, requires an **approval** by an authorized role, **gathers additional data** before it can continue, **calculates / transforms** with formulas, or **coordinates multiple entities**. Maps to exactly one Opscale Action class. Its `composed` array carries the CRUDs it orchestrates **and the Outputs it dispatches**.
+Encapsulated business operation — anything **heavier than a single CRUD**. A step is `logic` when it does one or more of: queries an **external source** to proceed, requires an **approval** by an authorized role, **gathers additional data** before it can continue, **calculates / transforms** with formulas, or **coordinates multiple entities**. Maps to exactly one Opscale Action class. Its `composed` array carries the CRUDs it orchestrates, **the Outputs it dispatches**, and — when it invokes another Action — a **Logic reference** to that Action (which must exist as its own `businessRuleTask` node; composition never defines a new unit).
 
 **Naming — MANDATORY: `verb + noun` in natural language.** Sentence case, spaces between words, no PascalCase, no class-name form, no abbreviations. Examples: `"Calculate interest"`, `"Approve loan"`. The `id` inside `<documentation>` is the kebab-case slug derived from that phrase — downstream skills derive the Action class name from it.
 
@@ -182,7 +182,7 @@ DBML entities available: [comma-separated table list]
 Confirm the subprocess list? Any to add, drop, merge, split, or rename?
 ```
 
-If the user accepts changes that drift from the spec (added / dropped / merged / split / renamed subprocesses), update `docs/plan/process.txt` to reflect the to-be before continuing — the spec must stay in sync with what the BPMN models.
+If the user accepts changes that drift from the spec (added / dropped / merged / split / renamed subprocesses), update `docs/plan/process.txt` **and regenerate `docs/plan/process.mmd` to match** before continuing — the two are views of one confirmed flow and must never disagree. Then re-run the `opscale-process` gate (its bundled `validate-process` validator, invoked with the `process.txt`, names file, and `.mmd`) so the spec gate stays green. The same applies anywhere this skill amends the spec (e.g. Phase 2.2).
 
 **Wait for user approval before continuing.**
 
@@ -234,7 +234,7 @@ Confirm the atomic sequence (and that each business step's decomposition is fait
 ```
 
 Rules during 2.2:
-- Every operation belongs to exactly one business step. If an operation doesn't trace to any business step in `docs/plan/process.txt`, either a business step is missing from the spec (go back and add it with the user, updating `docs/plan/process.txt`) or the operation doesn't belong in the module.
+- Every operation belongs to exactly one business step. If an operation doesn't trace to any business step in `docs/plan/process.txt`, either a business step is missing from the spec (go back and add it with the user, updating `docs/plan/process.txt` and `process.mmd` per the Phase 1c rule) or the operation doesn't belong in the module.
 - **A business step should decompose into several operations** (`opscale-process` writes steps as macro activities). If a step resolves to a single operation — outside the central entity's initial create — that's a sign it arrived too granular from `opscale-process`: surface it and offer to merge it into a neighbouring activity in `docs/plan/process.txt`. This is guidance, not a gate — don't block on it, just flag it.
 - Every line is exactly one of CRUD / Output / Event / Gateway. If a candidate doesn't fit, **stop and ask** — it either belongs inside a Logic (handled in 2.3) or does not belong in the BPMN.
 - Every CRUD's entity MUST exist in `docs/plan/dbml.dbml`. If it doesn't, stop and have the user fix the DBML first.
@@ -362,10 +362,10 @@ Only after the validator exits with `0`, complete the artifact set — exactly t
 
    **Embedded metadata (the source of truth):**
    - `<bpmn:process>`-level `<bpmn:documentation>`: `{"module":"{module-name}","standard":"{modeling standard from dbml Phase 1, or none}"}`.
-   - **Every operation carries its ontology id (`oid`)**: `SP-XX-YY-[C|L|O]ZZ` — subprocess XX and local step YY from `process.txt`, category letter (C crud, L logic, O output), ZZ counting per category within the step. Composed CRUDs and Outputs inside a Logic use the nested form `SP-XX-YY-LZZ-[C|L|O]AA`. Oids are unique across the module.
+   - **Every operation carries its ontology id (`oid`)**: standalone operations are `SP-XX-YY-[C|L]ZZ` — subprocess XX and local step YY from `process.txt`, category letter (C crud, L logic — never O: an Output is never standalone, so O never appears at step level), ZZ counting per category within the step. Composed members inside a Logic use the nested form `SP-XX-YY-LZZ-[C|L|O]AA`. Oids are unique across the module.
    - Every standalone `serviceTask` `<bpmn:documentation>`: `{"type":"crud","oid":"SP-XX-YY-CZZ","entity":"…","action":"…","step":"{business step from process.txt}","subprocess":"{subprocess name}"}`.
    - Every `businessRuleTask` `<bpmn:documentation>`: `{"type":"logic","oid":"SP-XX-YY-LZZ","id":"{kebab-id}","step":"…","subprocess":"…","rules":["{2.1 rule in prose — BR-NN numbering is assigned later by opscale-sipoc}"],"composed":[…]}`. **Key order is fixed** — `type`, `oid`, then `id` — so downstream regex parsers stay valid.
-   - The `composed` array mixes CRUD and Output members: a CRUD is `{"oid":"SP-XX-YY-LZZ-CAA","entity":"…","action":"…"}`; an **Output is `{"oid":"SP-XX-YY-LZZ-OAA","content":"{brief WHAT leaves the system}"}`** (no channel — that is a Generate-phase decision). There are **no `sendTask` nodes**: every Output lives here, inside its Logic.
+   - The `composed` array mixes CRUD, Logic-reference, and Output members: a CRUD is `{"oid":"SP-XX-YY-LZZ-CAA","entity":"…","action":"…"}`; a **Logic reference is `{"oid":"SP-XX-YY-LZZ-LAA","id":"{leaf-kebab-id}"}`** — a reuse of an Action that exists elsewhere in the module as its own `businessRuleTask` node (the leaf keeps its own SIPOC; it is referenced, never re-expanded); an **Output is `{"oid":"SP-XX-YY-LZZ-OAA","content":"{brief WHAT leaves the system}"}`** (no channel — that is a Generate-phase decision). There are **no `sendTask` nodes**: every Output lives here, inside its Logic.
    - A Logic id reused by several nodes (e.g. a shared discard) carries **identical JSON in every node** (same oid included).
    - The prose in `"rules"` and Output `"content"` must not contain raw `<` or `&` (they break XML parsing) — rephrase or escape.
 
@@ -375,9 +375,12 @@ Only after the validator exits with `0`, complete the artifact set — exactly t
    - `- {oid} crud: {action} {entity}` — the CRUD action and the entity, nothing else (no parentheses, no column/status detail).
    - `- {oid} logic: {kebab-id}` — only the Action identifier (the natural verb+noun name lives in the XML `name=`).
 
-   Under each logic line, its composed members are indented two extra spaces with their nested oids — CRUDs **and Outputs**. **Outputs only ever appear here, indented inside a Logic — never as a top-level line**:
+   Under each logic line, its composed members are indented two extra spaces with their nested oids — CRUDs, **Logic references**, and **Outputs**. **Outputs only ever appear here, indented inside a Logic — never as a top-level line**:
    - `  - {oid} crud: {action} {entity}`
+   - `  - {oid} logic: {leaf-kebab-id}` — a reference to an Action defined as its own node elsewhere; only the kebab id, never re-expanded here.
    - `  - {oid} output: {brief content}` — WHAT leaves the system, in a few words; never the channel (email/sms/pdf/…).
+
+   **A Logic reused by several BPMN nodes** (same `logic.id`, identical JSON, same oid — e.g. a shared discard reachable from three gateways) **appears exactly once in `bpmn.txt`**, under its owning business step; the reuse lives only in the XML flow. `opscale-ontology` renders it once too.
 
    This preserves both the atomic view (every CRUD/Output visible) and the grouped view (which Logic owns it) in one file:
 
@@ -421,7 +424,7 @@ Then verify the semantic gate. For the full 26-item checklist (modeling-standard
 
 ## Sample
 
-Excerpt of `docs/plan/bpmn.bpmn` (with embedded metadata) and a full reference `docs/plan/bpmn.txt` (recruitment module, shared across the four Plan skills — its steps match `process.txt`, its logic ids match `sipoc.txt`) — see `references/sample-output.md`.
+Excerpt of `docs/plan/bpmn.bpmn` (with embedded metadata) and a full reference `docs/plan/bpmn.txt` (Proveedores module — supplier master lifecycle, shared across the five Plan skills — its steps match `process.txt`, its logic ids match `sipoc.txt`) — see `references/sample-output.md`.
 
 ## Success condition
 

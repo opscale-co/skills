@@ -133,6 +133,76 @@ function main() {
     errors.push(`lint-staged not detectable → node_modules/.bin/lint-staged or package.json`);
   }
 
+  // Project type (from constitution) — gates the Nova/Dusk-specific checks below.
+  let projectType = null;
+  if (fs.existsSync(constitution)) {
+    const ct = fs.readFileSync(constitution, 'utf8');
+    const m = ct.match(/Project Type:\*{0,2}\s*`?([a-z]+)`?/i) || ct.match(/\bType:\s*([a-z]+)\b/i);
+    if (m) projectType = m[1].toLowerCase();
+  }
+  const isLibrary = projectType === 'library';
+
+  // Test harness config (Phase 4f) — libraries keep a lean stack (no Nova/Dusk).
+  const phpunitXml = path.join(root, 'phpunit.xml');
+  if (!fs.existsSync(phpunitXml)) {
+    errors.push(`test harness: phpunit.xml missing → ${phpunitXml}:1`);
+  } else {
+    passes.push('phpunit.xml exists');
+  }
+  const testCase = path.join(root, 'tests/TestCase.php');
+  if (!fs.existsSync(testCase)) {
+    errors.push(`test harness: tests/TestCase.php missing → ${testCase}:1`);
+  } else {
+    passes.push('tests/TestCase.php exists');
+  }
+  if (!isLibrary) {
+    const testbenchYaml = path.join(root, 'testbench.yaml');
+    if (!fs.existsSync(testbenchYaml)) {
+      errors.push(`test harness: testbench.yaml missing → ${testbenchYaml}:1`);
+    } else {
+      passes.push('testbench.yaml exists');
+    }
+    const duskTestCase = path.join(root, 'tests/DuskTestCase.php');
+    if (!fs.existsSync(duskTestCase)) {
+      errors.push(`test harness: tests/DuskTestCase.php missing → ${duskTestCase}:1`);
+    } else {
+      passes.push('tests/DuskTestCase.php exists');
+    }
+  } else {
+    passes.push('library project — Nova/Dusk test harness skipped');
+  }
+
+  // Debug tooling (Phase 4e) — Telescope config or a provider that registers it.
+  if (!isLibrary) {
+    const telescopeCfg = path.join(root, 'config/telescope.php');
+    const providerCandidates = [
+      'app/Providers/AppServiceProvider.php',
+      'app/Providers/TelescopeServiceProvider.php',
+      'workbench/app/Providers/WorkbenchServiceProvider.php',
+    ].map((p) => path.join(root, p));
+    let telescopeOk = fs.existsSync(telescopeCfg);
+    if (!telescopeOk) {
+      telescopeOk = providerCandidates.some(
+        (p) => fs.existsSync(p) && /Telescope/.test(fs.readFileSync(p, 'utf8')),
+      );
+    }
+    if (!telescopeOk) {
+      errors.push(`debug tooling: no config/telescope.php and no provider registers Telescope → ${telescopeCfg}:1`);
+    } else {
+      passes.push('Telescope debug config detected');
+    }
+  } else {
+    passes.push('library project — debug tooling skipped');
+  }
+
+  // MVP feature (Phase 7) — /speckit.specify opened .specify/specs/001-mvp/
+  const mvpDir = path.join(root, '.specify/specs/001-mvp');
+  if (!fs.existsSync(mvpDir)) {
+    errors.push(`MVP feature missing → ${mvpDir}:1 (run /speckit.specify to open 001-mvp)`);
+  } else {
+    passes.push('.specify/specs/001-mvp/ exists');
+  }
+
   // MCP config (soft)
   const encoded = root.replace(/\//g, '-');
   const mcpPath = path.join(os.homedir(), '.claude', 'projects', encoded, 'settings.json');

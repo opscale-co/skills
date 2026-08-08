@@ -1,7 +1,7 @@
 # Debug Tooling — Verbatim Configs
 
-Full configuration blocks extracted from the opscale-debug body. Read the
-relevant section when you reach that tool during setup.
+Full configuration blocks for the debug tooling `opscale-init` sets up
+(Phase 4e). Read the relevant section when you reach that tool during setup.
 
 Contents: TelescopeServiceProvider · config/debugbar.php · MCP Servers for Debug
 

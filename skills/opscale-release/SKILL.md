@@ -2,12 +2,12 @@
 name: opscale-release
 description: >
   Configures the deployment/release CI — SonarQube, GitHub Actions workflows,
-  and the semantic-release pipeline that versions and publishes. Step 10 —
-  final Review step, after opscale-test. Trigger: "configure release", "set up
-  CI", "wire SonarQube", "set up the deploy pipeline". Use it whenever the
-  release/CI pipeline or quality gates need configuring, even loosely phrased;
-  requires tests first (opscale-test). Not for commit/linter configs
-  (opscale-init) or debug tooling (opscale-debug).
+  and the semantic-release pipeline that versions and publishes. The Review
+  phase — after Generate (domain/logic/ui) has produced the tests. Trigger:
+  "configure release", "set up CI", "wire SonarQube", "set up the deploy
+  pipeline". Use it whenever the release/CI pipeline or quality gates need
+  configuring, even loosely phrased. Not for commit/linter/debug/harness
+  configs — those are opscale-init.
 ---
 
 # opscale-release
@@ -25,7 +25,7 @@ Configure SonarQube and the GitHub Actions workflows so every merge produces a q
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
-| 2 | `opscale-test` has been run | `tests/Unit/`, `tests/Feature/`, and `tests/Browser/` contain at least one test class each (for `app`/`module`/`package`); `tests/` populated for `library` | Stop. Run `/opscale-test` first — semantic-release will not gate a release without a test suite. |
+| 2 | The Generate phase produced tests | `tests/Unit/` (opscale-domain), `tests/Feature/` (opscale-logic), and `tests/Browser/` (opscale-ui) contain at least one test class each (for `app`/`module`/`package`); `tests/` populated for `library` | Stop. Run the Generate phase (`/opscale-domain` → `/opscale-logic` → `/opscale-ui`) — semantic-release will not gate a release without a test suite. |
 | 3 | `composer run check` passes locally | Run it | Fix failures before configuring release pipeline. |
 
 This skill belongs to the **Review phase**. Inside Review the order is fixed: **`release` always runs after `test`**.
@@ -129,7 +129,7 @@ Configure these in GitHub → Settings → Secrets and variables → Actions:
 
 Confirm prerequisites: `.specify/memory/constitution.md` exists; `tests/Unit/`, `tests/Feature/`, and `tests/Browser/` each contain at least one test class for `app`/`module`/`package` projects (or `tests/` populated for `library`). Run `composer run check` locally and fix any failures before proceeding.
 
-If any prerequisite is missing, stop and direct the user back to `opscale-init` or `opscale-test`.
+If any prerequisite is missing, stop and direct the user back to `opscale-init` or the Generate phase (domain/logic/ui).
 
 **Wait for user approval before continuing.**
 

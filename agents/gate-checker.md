@@ -20,7 +20,7 @@ path is not provided or doesn't exist, checks that depend on it are skipped.
 ## Input
 
 You receive:
-- `step` — which step's gate to check: `process`, `dbml`, `bpmn`, `domain`, `nova`, `logic`, `debug`, `test`, `release`
+- `step` — which step's gate to check: `process`, `dbml`, `bpmn`, `init`, `domain`, `logic`, `ui`, `release`, `showcase`
 - `plan_dir` — path to `docs/plan/`. Optional — when not provided, plan-dependent checks are skipped
 - `src_dir` — path to `src/` (for implementation steps)
 - `project_dir` — path to project root (for config steps)
@@ -103,36 +103,16 @@ You receive:
 - [ ] Every handle() returns array with success key
 - [ ] No HTTP context in handle() methods
 
-### opscale-debug Gate
-- [ ] Xdebug configured (php.ini or .env for Sail)
-- [ ] Telescope installed as --dev dependency
-- [ ] TelescopeServiceProvider NOT in providers.php auto-load
-- [ ] Telescope manually registered with env check
-- [ ] Gate restricts access to local + staging only
-- [ ] No debug config references production
-- [ ] MCP servers configured in .claude/settings.json
+### opscale-init Gate (environment: dev + debug + test harness)
+- [ ] Xdebug configured (php.ini or .env for Sail); Telescope installed as --dev, registered with an env-gated Gate (local + staging only), NOT auto-loaded in providers.php; Debugbar local-only; no debug config references production; MCP dev servers in .claude/settings.json
+- [ ] Quality stack installed (Pest + pest-plugin-laravel, phpstan.neon level 9 with strict-rules sets, Duster, rector.php PHP 8.3, composer/package quality scripts)
+- [ ] Test harness configured: Orchestra Testbench, phpunit.xml (Unit/Feature/Browser suites), phpunit.dusk.xml, tests/TestCase.php, tests/DuskTestCase.php, tests/Pest.php
+- [ ] MVP feature opened: `.specify/specs/001-mvp/` (spec + plan + tasks)
 
-### opscale-test Gate
-
-**Always:**
-- [ ] Pest installed with pest-plugin-laravel
-- [ ] phpunit.xml.dist configured
-- [ ] phpstan.neon at level 8 with strict-rules sets
-- [ ] PHPStan passes with zero errors
-- [ ] Duster lint passes clean
-- [ ] rector.php configured targeting PHP 8.3
-- [ ] composer.json quality scripts present
-
-**When plan_dir is available:**
-- [ ] Orchestra Testbench installed and TestCase.php created
-- [ ] phpunit.xml.dist configured with three test suites (Unit, Feature, Web)
-- [ ] Unit test exists for every domain component (models, enums, VOs, repos, schema)
-- [ ] Feature test exists for every Action
-- [ ] Web test exists for every subprocess block in `process.txt` (one flow per block) and each of its paths
-
-**When plan_dir is not available and models don't exist:**
-- [ ] phpunit.xml.dist configured with test suites (Unit, Feature — no Web)
-- [ ] Test exists for every public class in src/
+### Test coverage (produced per Generate layer, not a separate skill)
+- [ ] **Unit** (opscale-domain): a test exists for every domain component (models, enums, VOs, repos, schema); model factories generated; Duster + PHPStan pass
+- [ ] **Feature** (opscale-logic): a test exists for every Action covering positive / negative / false-positive / false-negative; Duster + PHPStan pass
+- [ ] **Browser** (opscale-ui): a flow test exists for every subprocess block in `process.txt` (one flow per block) and each of its paths; Duster + PHPStan pass
 
 ### opscale-release Gate
 - [ ] .releaserc.json present

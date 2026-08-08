@@ -1,117 +1,146 @@
 # Sample output — opscale-dbml
 
-Anonymized excerpt derived from a working Opscale module
-(`Unicoop/membresia`). Shows the SHAPE of what the skill produces,
-not the full output.
+Excerpt of `docs/plan/dbml.dbml` from the **Proveedores** module (supplier
+master lifecycle, `Dominio ERP`, project `compras/proveedores`) — the same
+real module used across the Plan skills so the artifacts chain. The full set
+passes every Plan validator. Shows the SHAPE of what the skill produces, not
+the full output (7 tables, 10 enums in the real file).
 
-For the canonical specification of the format, see this skill's
-`SKILL.md` body. The full original file lives in the source module.
+Things the excerpt demonstrates: the Project Note with the modeling standard
+(UBL/Peppol, chosen in Phase 1) and the bounded context; Enums for every
+closed value set; business types as column types (`name`, `document`, `email`,
+`bankAccount` — extended into the registry for this module — never
+`varchar`); the kebab-id stamp opening every table Note; role-named
+external-ref columns with the structured note; and indexes on status/FK
+columns.
 
 ---
 
 ```dbml
-Project Loans {
+Project proveedores {
   database_type: 'MySQL'
 
   Note: '''
-  # Subdomain: Loans — Application lifecycle (policy-driven)
+  # Subdomain: Proveedores
   Source spec: docs/plan/process.txt
-  Modeling standard: FIBO (Party / Decision concepts) + ACTUS (ANN)
+  Modeling standard: UBL / Peppol (Universal Business Language — Party, SupplierParty, PartyLegalEntity, PartyTaxScheme, FinancialAccount, Contact, PaymentTerms)
+
+  Registro maestro del proveedor en el dominio Compras: gobierna el ciclo de
+  vida completo desde el alta hasta la baja (pending → under_review → active →
+  suspended → inactive). Es prerrequisito de cualquier compra o pago. El módulo
+  enriquece la ficha canónica del party (maestro de negocios); no duplica la
+  identidad, la extiende con el rol proveedor.
 
   ## Bounded Context
-  - Core: applications, policies, members, contract_terms
-  - Per-cycle: verifications, scores, decisions, requirements, documents
-  - Depends on: external Party Reference Data (parties), Auth (users)
-
+  - Core entities: Supplier, LegalDocument, Contact, FinancialAccount, Verification, PerformanceAssessment, PaymentTerm
+  - Main aggregates: Supplier → (LegalDocument, Contact, FinancialAccount, Verification, PerformanceAssessment, PaymentTerm)
+  - Depends on: organizacion/negocios (party), cumplimiento/kyc (subject), recursos-humanos/expediente (employee)
+  - Notifies: compras-recurrentes, compras-temporales, caja-chica, finanzas/flujo-de-caja
   '''
 }
 
-Enum ApplicationStatus {
-  Pending       [note: 'Just created']
-  KycReady      [note: 'KYC acknowledged']
-  Qualified     [note: 'Ready for decision']
-  Approved      [note: 'Decision recorded; awaiting activation']
-  Active        [note: 'Terminal — Member created']
-  Rejected      [note: 'Terminal']
+Enum supplier_status {
+  pending       [note: 'Registrado con datos básicos, en sala de espera; sin habilitar compras ni pagos']
+  under_review  [note: 'Expediente completo, en verificación oficial y revisión de cumplimiento']
+  active        [note: 'Homologado; se le pueden registrar contratos, recibir facturas y autorizar pagos']
+  suspended     [note: 'Bloqueado para compras y pagos nuevos; los contratos vigentes se honran']
+  inactive      [note: 'Baja definitiva; ficha cerrada, histórico conservado']
 }
 
-Table applications {
-  id              identifier         [pk, note: 'ULID']
-  code            document           [not null, unique, note: 'Human-readable application number']
-  status          ApplicationStatus  [not null, default: 'Pending', note: 'Lifecycle state']
-  current_cycle   quantity           [not null, default: 1, note: 'Evaluation cycle, 1-based']
+Enum financial_account_status {
+  pending_verification  [note: 'Registrada, en doble verificación']
+  active                [note: 'Verificada y vigente para pagos']
+  rejected              [note: 'Rechazada en la verificación']
+  superseded            [note: 'Reemplazada por un cambio de cuenta']
+}
 
-  policy_id       identifier         [ref: > policies.id, not null, note: 'Active policy applied']
-  applicant_id    identifier         [not null, note: '// external_ref:parties | organization.parties — Counterparty that applies (role-named: the external entity name is uncertain)']
-  assigned_to     identifier         [null,     note: '// external_ref:users | auth.users — assigned operator']
+Table supplier {
+  id                  identifier          [pk, note: 'ULID generated at application layer before insert']
 
-  created_at      timestamp          [not null]
-  updated_at      timestamp          [not null]
+  // --- Cross-subdomain logical references (role-named, no FK constraint) ---
+  party_profile       identifier          [not null, note: '// external_ref:parties | negocios.party — ficha canónica que este rol enriquece']
+  kyc_profile         identifier          [null, note: '// external_ref:subjects | kyc.subject — perfil de debida diligencia; se asigna al enviar el caso a cumplimiento']
+
+  // --- Business attributes (business types as column types) ---
+  name                name                [not null, note: 'Nombre comercial con el que se conoce al proveedor']
+  legal_name          name                [not null, note: 'Razón social o nombre legal']
+  tax_id              document            [not null, note: 'Identificación tributaria; exigida desde el registro básico']
+  email               email               [null, note: 'Correo general de contacto']
+  status              supplier_status     [not null, default: 'pending', note: 'Estado actual del ciclo de vida']
+  criticality         criticality_level   [null, note: 'Criticidad ITIL; se clasifica al armar el expediente']
+
+  created_at          timestamp           [not null]
+  updated_at          timestamp           [not null]
 
   indexes {
-    status [name: 'idx_applications_status']
+    party_profile   [unique, name: 'idx_supplier_party_profile']
+    status          [name: 'idx_supplier_status']
+    tax_id          [name: 'idx_supplier_tax_id']
   }
 
   Note: '''
-  applications — A member's request for a loan, evaluated in cycles against
-  the active policy until a terminal decision. The opening kebab id is this
-  table's name with dashes; every table Note opens with its id.
+  supplier — El proveedor como rol de compras que enriquece la ficha canónica
+  del party (maestro de negocios) sin duplicar su identidad. Es la raíz del
+  agregado del módulo: gobierna el ciclo de vida completo (pending →
+  under_review → active → suspended → inactive) y es prerrequisito de toda
+  compra o pago.
   '''
 }
 
-Table verifications {
-  id              identifier    [pk, note: 'ULID']
-  application_id  identifier    [ref: > applications.id, not null, note: 'Evaluated application']
-  cycle_number    quantity      [not null, default: 1, note: 'Cycle this verification belongs to']
-  rule_id         identifier    [ref: > rules.id, not null, note: 'Rule verified']
-  score           rating        [null, note: 'Weighted score for the chosen option']
+Table financial_account {
+  id              identifier                [pk, note: 'ULID generated at application layer before insert']
+  supplier_id     identifier                [ref: > supplier.id, not null, note: 'Proveedor dueño de la cuenta']
 
-  created_at      timestamp     [not null]
-  updated_at      timestamp     [not null]
+  status          financial_account_status  [not null, default: 'pending_verification', note: 'Estado de la cuenta; un cambio marca la anterior como superseded']
+  bank_name       name                      [not null, note: 'Nombre del banco']
+  account_number  bankAccount               [not null, note: 'Número de cuenta bancaria']
+  account_type    financial_account_type    [not null, note: 'Tipo de cuenta: corriente o ahorro']
+  holder_name     name                      [not null, note: 'Titular a cuyo nombre está la cuenta']
+
+  created_at      timestamp                 [not null]
+  updated_at      timestamp                 [not null]
 
   indexes {
-    (application_id, cycle_number, rule_id) [unique, name: 'uq_verifications_cycle_rule']
+    supplier_id [name: 'idx_financial_account_supplier_id']
+    status      [name: 'idx_financial_account_status']
   }
 
   Note: '''
-  verifications — One rule check inside an evaluation cycle of an application.
+  financial-account — Cuenta bancaria del proveedor para los pagos. El cambio
+  de cuenta es un punto sensible al fraude: no se pisa la cuenta previa, se
+  crea un registro nuevo que pasa por doble verificación y la anterior queda
+  como superseded, preservando el historial.
   '''
 }
-
-Table members {
-  id              identifier   [pk, note: 'ULID']
-  application_id  identifier   [ref: > applications.id, not null, unique, note: 'Origin application']
-  person_id       identifier   [not null, note: '// external_ref:parties | organization.parties — the member as a person']
-  code            document     [not null, unique, note: 'Member number']
-  joined_at       moment       [not null, note: 'Activation moment']
-
-  Note: '''
-  members — The approved applicant once activated as a member of the cooperative.
-  '''
-}
-
-// Intra-subdomain relation
-Ref: verifications.application_id > applications.id
 
 // External references NEVER get a Ref line — the target table is not declared
 // in this file, so @dbml/core would reject it. They live ONLY as column notes
-// ('// external_ref:parties' above).
+// ('// external_ref:parties' above) and in context/external-refs.md.
 ```
 
+## Sample docs/plan/context/external-refs.md
+
+````markdown
+# External references — Proveedores
+
+```external-refs
+parties:   party_profile
+subjects:  kyc_profile
+employees: verified_by, assessed_by
+```
+````
 
 ## Sample docs/plan/dbml.txt
 
-Reference example — a **recruitment** module (candidate lifecycle inside an approved position requisition). The same example is used for the `.txt` sample of all four Plan skills, so the lists chain: every step here appears in `docs/plan/bpmn.txt` with its operations, every logic id there has a block in `sipoc.txt`, and every entity operated on exists in `dbml.txt`.
+One entity per line, exactly the `Table` blocks of `dbml.dbml`, same order —
+the cheap diff surface for entity coverage across the Plan artifacts.
 
 ```
-requisition
-approval
-posting
-candidate
-assessment
-interview
-reference
-background_check
-offer
-decision
+supplier
+legal_document
+contact
+financial_account
+verification
+performance_assessment
+payment_term
 ```

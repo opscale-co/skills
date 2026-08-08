@@ -15,6 +15,7 @@ Validation semantics are written in neutral terms; UI intent describes the contr
 | `address` | Physical or mailing address for contact, shipping, or billing | `varchar(500)` | text, max 500 | single-line text |
 | `area` | Circular coverage area: center point + radius in meters | `json` | optional; valid geo-JSON | map circle editor (default radius 500 m) |
 | `audio` | Audio files: podcasts, voice recordings, sound assets | `varchar(2048)` | file of audio format (mp3/wav/ogg/m4a), max 20 MB | audio upload/player |
+| `bankAccount` | Bank account number for payments and disbursements (CLABE, IBAN, local formats) | `varchar(34)` | alphanumeric, max 34; format per scheme (e.g. CLABE 18 digits, IBAN up to 34) | masked account input |
 | `bpmn` | BPMN 2.0 process diagram | `varchar(2048)` | file, max 5 MB | interactive BPMN viewer |
 | `city` | City name for location data and geographic segmentation | `varchar(100)` | text, max 100; value from options source | searchable select |
 | `color` | Color value for branding, UI customization, product attributes | `varchar(7)` | hex color (`#RGB` or `#RRGGBB`) | color picker |

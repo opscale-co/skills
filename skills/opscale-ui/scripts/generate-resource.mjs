@@ -30,6 +30,16 @@
 //         "count_column":      "items_count"    // optional; defaults to "{name}_count"
 //       }
 //     ],
+//     "has_one_relationships": [                 // optional — rendered as HasOne tabs, same shape
+//       {                                        //   as has_many but the field is HasOne(...)->onlyOnDetail()
+//         "name":              "contractTerms",
+//         "label_en":          "Contract Terms",
+//         "label_es":          "Términos del contrato",
+//         "related_resource":  "ContractTerms",
+//         "creatable_from_ui": true,
+//         "count_column":      "contract_terms_count"
+//       }
+//     ],
 //     "count_strategy":     "with",              // "with" → public static $with; "index" → indexQuery withCount
 //
 //     "child_of": {                              // optional — when set, redirectAfterCreate is emitted
@@ -99,23 +109,26 @@ function main() {
   if (!input.label_es)           throw new Error('Missing required field: label_es (Spanish plural label)');
   if (!input.singular_label_es)  throw new Error('Missing required field: singular_label_es (Spanish singular label)');
 
-  const rawHasMany = input.has_many_relationships || [];
-  const has_many = rawHasMany.map(r => ({
+  const normalizeRelation = (r) => ({
     name:              r.name,
     label:             r.label_en || r.label || r.name,
     label_es:          r.label_es || r.label_en || r.label || r.name,
     related_resource:  r.related_resource,
     creatable_from_ui: r.creatable_from_ui !== false, // default: creatable, always visible
     count_column:      r.count_column || `${r.name}_count`,
-  }));
-  const has_tabs = has_many.length > 0;
+  });
+
+  const has_many = (input.has_many_relationships || []).map(normalizeRelation);
+  const has_one  = (input.has_one_relationships  || []).map(normalizeRelation);
+  const has_tabs = has_many.length > 0 || has_one.length > 0;
 
   // Eager loads: by default, every child relation is added to $with so the
   // _count column is available for the canSee guard. Callers can switch to
   // indexQuery-based loading via count_strategy: "index".
   const count_strategy = input.count_strategy === 'index' ? 'index' : 'with';
-  const with_relations    = count_strategy === 'with'  ? has_many.map(r => r.name) : [];
-  const index_with_count  = count_strategy === 'index' ? has_many.map(r => r.name) : [];
+  const all_relation_names = [...has_many, ...has_one].map(r => r.name);
+  const with_relations    = count_strategy === 'with'  ? all_relation_names : [];
+  const index_with_count  = count_strategy === 'index' ? all_relation_names : [];
 
   const virtualRels = (input.virtual_relations || []).map(v => ({
     label:          v.label_en || v.label,
@@ -130,11 +143,12 @@ function main() {
   ]);
   if (input.has_status)     fieldImports.add('Laravel\\Nova\\Fields\\Badge');
   if (has_many.length)      fieldImports.add('Laravel\\Nova\\Fields\\HasMany');
+  if (has_one.length)       fieldImports.add('Laravel\\Nova\\Fields\\HasOne');
   if (virtualRels.length)   fieldImports.add('Laravel\\Nova\\Fields\\Select');
 
   const field_imports = [...fieldImports].sort();
 
-  const related_resource_imports = has_many
+  const related_resource_imports = [...has_many, ...has_one]
     .map(r => `${input.package_namespace}\\Nova\\${r.related_resource}`)
     .filter((v, i, a) => a.indexOf(v) === i)
     .sort();
@@ -184,6 +198,7 @@ function main() {
     status_enum:              input.status_enum || '',
     status_badge:             status_badge_normalized,
     has_many_relationships:   has_many,
+    has_one_relationships:    has_one,
     has_tabs,
     field_imports,
     related_resource_imports,
@@ -223,6 +238,7 @@ function main() {
 
   for (const entry of status_badge_es_labels) add(entry.en, entry.es);
   for (const rel of has_many)                 add(rel.label, rel.label_es);
+  for (const rel of has_one)                  add(rel.label, rel.label_es);
   for (const v of virtualRels)                add(v.label, v.label_es);
 
   const langDir = resolveLangDir(input);
@@ -234,8 +250,9 @@ function main() {
   if (result.preview) console.log(resultLine('PREVIEW', result.preview));
   console.log(resultLine('RESOURCE', input.model_name));
   console.log(resultLine('MODEL', `${input.package_namespace}\\Models\\${input.model_name}`));
-  console.log(resultLine('TABS', has_tabs ? 1 + has_many.length : 0));
+  console.log(resultLine('TABS', has_tabs ? 1 + has_many.length + has_one.length : 0));
   console.log(resultLine('HAS_MANY', has_many.length));
+  console.log(resultLine('HAS_ONE', has_one.length));
   console.log(resultLine('VIRTUAL_RELATIONS', virtualRels.length));
   console.log(resultLine('USES_TRAIT', context.uses_field_trait ? 'yes' : 'no'));
   console.log(resultLine('STATUS_BADGE', input.has_status ? 'yes' : 'no'));

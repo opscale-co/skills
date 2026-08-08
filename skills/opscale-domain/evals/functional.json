@@ -4,12 +4,17 @@
     {
       "id": "billing-domain-generation",
       "fixture": "billing-module",
-      "prompt": "The Plan phase for this module is complete: the validated data model is at docs/plan/dbml.dbml and the constitution at .specify/memory/constitution.md. Generate the PHP domain layer for this module now: one migration per table, one Eloquent model per table with casts/fillable/relationships, the status enum, and a repository trait per model. Work non-interactively; make reasonable decisions yourself instead of asking questions.",
+      "prompt": "The Plan phase for this module is complete: the ontology manifest is at docs/plan/ontology.mmd (the index of which entities to build), the validated data model at docs/plan/dbml.dbml (the detail), and the constitution at .specify/memory/constitution.md. Generate the PHP domain layer for this module now: one migration per table, one Eloquent model per table with casts/fillable/relationships, the status enum, a repository trait per model, plus a Unit test per component (tests/Unit/) and a factory per model (database/factories/). Work non-interactively; make reasonable decisions yourself instead of asking questions.",
       "assertions": [
         {
           "id": "structure",
           "type": "script",
           "cmd": "python3 tools/graders/files_exist.py {output_dir} 'database/migrations/*create_billing_*.php' 'src/Models/*.php' 'src/Models/Enums/*.php' 'src/Models/Repositories/*Repository.php'"
+        },
+        {
+          "id": "unit-tests-and-factories",
+          "type": "script",
+          "cmd": "python3 tools/graders/files_exist.py {output_dir} 'tests/Unit/**/*Test.php' 'database/factories/*Factory.php'"
         },
         {
           "id": "generated-php-compiles",

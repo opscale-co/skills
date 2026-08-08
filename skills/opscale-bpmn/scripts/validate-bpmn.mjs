@@ -185,6 +185,9 @@ serviceTasks.forEach(match => {
 
 // ── Validate businessRuleTask (logic) ─────────────────────────────────────
 const logicJsonById = new Map();
+// composed Logic references ({oid,id}) — resolved after all tasks are parsed:
+// each must point at a Logic that exists as its own businessRuleTask node.
+const composedLogicRefs = [];
 businessRuleTasks.forEach(match => {
   const id = match[1];
   const body = match[2];
@@ -210,7 +213,7 @@ businessRuleTasks.forEach(match => {
     warnings.push(`[${id}] businessRuleTask missing "rules" — a Logic exists because a rule forces its CRUDs to run together; state it in prose`);
   checkOid(id, meta, 'logic');
   if (!Array.isArray(meta.composed) || meta.composed.length === 0) {
-    warnings.push(`[${id}] businessRuleTask missing "composed" — a zero-CRUD Logic is suspicious; list its composed CRUDs/Outputs [{oid,entity,action}|{oid,content},…]`);
+    warnings.push(`[${id}] businessRuleTask missing "composed" — a zero-CRUD Logic is suspicious; list its composed members [{oid,entity,action}|{oid,content}|{oid,id},…]`);
   } else {
     const hasCrud = meta.composed.some(c => c.entity && VALID_ACTIONS.has(c.action));
     if (!hasCrud)
@@ -218,16 +221,23 @@ businessRuleTasks.forEach(match => {
     meta.composed.forEach((c, i) => {
       const isOutput = c.content !== undefined && c.entity === undefined && c.action === undefined;
       const isCrud = c.entity !== undefined || c.action !== undefined;
+      const isLogicRef = c.id !== undefined && !isCrud && c.content === undefined;
       if (isOutput) {
         if (!c.content)
           warnings.push(`[${id}] composed[${i}] output missing "content" — a brief phrase for WHAT leaves the system (no channel)`);
         if (c.channel)
           warnings.push(`[${id}] composed[${i}] output carries "channel" — record only the content (channel is a Generate-phase decision)`);
+      } else if (isLogicRef) {
+        if (!KEBAB_RE.test(c.id))
+          warnings.push(`[${id}] composed[${i}] logic reference id "${c.id}" is not kebab-case`);
+        else composedLogicRefs.push({ taskId: id, index: i, refId: c.id });
+        if (c.id === meta.id)
+          warnings.push(`[${id}] composed[${i}] logic reference points at its own Logic — composition is a reference to ANOTHER Action`);
       } else if (isCrud) {
         if (!c.entity || !VALID_ACTIONS.has(c.action))
           warnings.push(`[${id}] composed[${i}] crud invalid — needs "entity" and a create|read|update|delete "action"`);
       } else {
-        warnings.push(`[${id}] composed[${i}] is neither a CRUD ({oid,entity,action}) nor an Output ({oid,content})`);
+        warnings.push(`[${id}] composed[${i}] is not a CRUD ({oid,entity,action}), an Output ({oid,content}), or a Logic reference ({oid,id})`);
       }
       if (!c.oid)
         warnings.push(`[${id}] composed[${i}] missing "oid" — nested form SP-XX-YY-LZZ-[C|L|O]AA`);
@@ -241,6 +251,14 @@ businessRuleTasks.forEach(match => {
       warnings.push(`[${id}] logic id "${meta.id}" reused with DIFFERENT metadata — reused ids must carry identical JSON in every node`);
     logicJsonById.set(meta.id, canon);
   }
+});
+
+// Composed Logic references must resolve to an Action that exists as its own
+// businessRuleTask node — composition never defines a new unit (recursion is
+// by reference; the leaf keeps its own node and its own SIPOC).
+composedLogicRefs.forEach(({ taskId, index, refId }) => {
+  if (!logicJsonById.has(refId))
+    warnings.push(`[${taskId}] composed[${index}] references logic "${refId}" — no businessRuleTask in this module carries that logic id`);
 });
 
 // sendTask nodes are forbidden (handled in the forbidden-elements check above);
@@ -344,9 +362,11 @@ if (flags.txt) {
         else
           warnings.push(`bpmn.txt: "${l.trim().slice(0, 60)}" — top-level op lines are "- {oid} crud|logic: …" (oid SP-XX-YY-[C|L]ZZ)`);
       }
-      // Composed (indented) lines: crud or output, with a nested oid.
-      if (/^  - /.test(l) && !/^  - SP-\d{2,}-\d{2,}-[CLO]\d{2,}-[CLO]\d{2,} (crud|output):/.test(l))
-        warnings.push(`bpmn.txt: "${l.trim().slice(0, 60)}" — composed lines are "  - {parent-oid}-[C|L|O]AA crud|output: …"`);
+      // Composed (indented) lines: crud, logic reference, or output, with a nested oid.
+      if (/^  - /.test(l) && !/^  - SP-\d{2,}-\d{2,}-[CLO]\d{2,}-[CLO]\d{2,} (crud|logic|output):/.test(l))
+        warnings.push(`bpmn.txt: "${l.trim().slice(0, 60)}" — composed lines are "  - {parent-oid}-[C|L|O]AA crud|logic|output: …"`);
+      if (/^  - \S+ logic:/.test(l) && !/logic:\s+[a-z][a-z0-9]*(-[a-z0-9]+)*\s*$/.test(l))
+        warnings.push(`bpmn.txt: "${l.trim().slice(0, 60)}" — composed logic references carry ONLY the leaf Action's kebab id`);
       if (/^  - \S+ crud:/.test(l) && !CRUD_LINE.test(l))
         warnings.push(`bpmn.txt: "${l.trim().slice(0, 60)}" — crud lines are "{action} {entity}" only (no parentheses, no column/status detail; that lives in the SIPOC)`);
       if (/^  - \S+ output:/.test(l) && /output:.*\b(email|sms|whatsapp|push|webhook|pdf|dashboard|correo)\b/i.test(l))

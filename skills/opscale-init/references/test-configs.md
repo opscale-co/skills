@@ -1,7 +1,7 @@
-# opscale-test — Config Files & Nova/Dusk Reference
+# Test Harness — Config Files & Nova/Dusk Reference
 
-Verbatim config files and reference tables extracted from the skill body.
-Read the relevant block when the body points you here.
+Verbatim config files and reference tables for the test harness `opscale-init`
+configures (Phase 4f). Read the relevant block when the body points you here.
 
 ## Table of contents
 
@@ -817,7 +817,7 @@ Each package maps to a script: `pestphp/pest` + `pest-plugin-laravel` → `test*
 `orchestra/testbench-dusk` → `build` / `serve` / `test:browser`; `tightenco/duster` →
 `lint` / `fix`; `rector/rector` (+ `rector-laravel`) → `refactor`; `larastan/larastan` +
 `opscale-co/strict-rules` → `analyse`; `laravel/telescope` + `barryvdh/laravel-debugbar` +
-`laravel/nova-devtool` → the `opscale-debug` tooling; `mockery/mockery` → Unit/Feature
+`laravel/nova-devtool` → the debug tooling (Phase 4e); `mockery/mockery` → Unit/Feature
 doubles. `allow-plugins.pestphp/pest-plugin` is mandatory — without it Composer blocks Pest.
 
 ### package.json — npm mirror (optional, for contributors who run npm)

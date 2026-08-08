@@ -29,7 +29,7 @@ Persistence and query operations on domain entities. No business logic, no condi
 
 Encapsulated business operation. Name MUST be `verb + noun` in natural language (sentence case). The `id` inside `<documentation>` is the kebab-case slug.
 
-The `composed` array mixes CRUD members `{"oid","entity","action"}` and **Output members `{"oid","content"}`** (no channel). An Output only ever appears here, inside the Logic that dispatches it — never as its own node.
+The `composed` array mixes CRUD members `{"oid","entity","action"}`, **Logic-reference members `{"oid","id"}`** (a reuse of an Action defined elsewhere in the module as its own `businessRuleTask` node — nested oid `SP-XX-YY-LZZ-LAA`; never a new unit, never re-expanded), and **Output members `{"oid","content"}`** (no channel). An Output only ever appears here, inside the Logic that dispatches it — never as its own node.
 
 ```xml
 <bpmn:businessRuleTask id="rule_[id]" name="[Verb noun in natural language]">

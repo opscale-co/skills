@@ -1,13 +1,32 @@
 # Repeatables
 
-### Repeatables
+## Reconciliation — Repeatable AND Resource (one Resource per entity)
 
-Use `Repeatable` classes when an aggregate root contains a typed nested collection
+Since every DBML entity now gets its **own navigable Resource**, a Repeatable
+is no longer a substitute for a child's Resource — it is an *inline-editing
+convenience on the parent*. The child entity still has its own Resource (with
+its own relation tabs, filters, deep-links). Use a Repeatable **in addition**
+when the child is a strongly-composed value collection edited together in the
+parent's form.
+
+| | Repeatable (on parent form) | Resource (always exists) |
+|---|---|---|
+| Purpose | edit the collection inline while editing the parent | navigate/filter/link the child on its own page |
+| When | strongly-composed value rows (line items, channels, contact methods) | every entity, no exception |
+| Replaces the Resource? | **No** — both coexist | — |
+
+If a child is NOT a strongly-composed value collection (it has its own
+lifecycle, is created by Actions, or is referenced across the module), emit
+**only** its Resource — no Repeatable.
+
+## When to also create a Repeatable
+
+Use `Repeatable` classes when a parent contains a typed nested collection
 (e.g. channels, line items, contact methods) that is always managed through the parent.
 
-**When to create a Repeatable:**
-- The aggregate has a one-to-many relationship to a value-like child entity
-- The child is never shown standalone in the Nova sidebar
+**When to add a Repeatable (on top of the child's Resource):**
+- The parent has a one-to-many relationship to a value-like child entity
+- The child rows are meaningless outside the parent and always edited together
 - The data is best captured as a structured list in the parent's form
 
 **Rules:**

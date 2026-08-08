@@ -2,7 +2,7 @@
 name: quality-runner
 description: >
   Runs the full quality suite (PHPStan, Duster, Pest tests) and returns structured
-  results. Spawned by opscale-test or as a standalone check after code generation.
+  results. Spawned by opscale-domain/opscale-logic/opscale-ui as their lint/analyse gate, or as a standalone check after code generation.
   Never modifies code — only reports violations.
 tools: Read, Bash, Grep, Glob, sqlite, memory
 model: sonnet

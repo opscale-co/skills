@@ -16,10 +16,6 @@
     "should_trigger": true
   },
   {
-    "query": "prepare the stakeholder demo: browser opens, walks invoicing then settlement",
-    "should_trigger": true
-  },
-  {
     "query": "non-headless walkthrough so the client can watch the module work",
     "should_trigger": true
   },
@@ -28,27 +24,35 @@
     "should_trigger": true
   },
   {
-    "query": "the menu and seed data are ready — create the visual demo",
-    "should_trigger": true
-  },
-  {
     "query": "make a self-driving demo of the publishing module in nova",
     "should_trigger": true
   },
   {
-    "query": "walkthrough that creates an invoice, issues it and records payment while we watch",
+    "query": "seed demo data that walks the whole invoicing flow",
+    "should_trigger": true
+  },
+  {
+    "query": "fix the empty nova pages — every index is blank",
+    "should_trigger": true
+  },
+  {
+    "query": "populate the workbench seeder with a complete run of the process",
+    "should_trigger": true
+  },
+  {
+    "query": "generate the menu for the module, grouped by process not alphabetical",
+    "should_trigger": true
+  },
+  {
+    "query": "organize the nova sidebar around the operator's tasks",
+    "should_trigger": true
+  },
+  {
+    "query": "make the module presentable and demoable for the client",
     "should_trigger": true
   },
   {
     "query": "write headless dusk tests for ci",
-    "should_trigger": false
-  },
-  {
-    "query": "seed the demo data the walkthrough needs",
-    "should_trigger": false
-  },
-  {
-    "query": "organize the menu the demo will navigate",
     "should_trigger": false
   },
   {
@@ -76,7 +80,11 @@
     "should_trigger": false
   },
   {
-    "query": "configure the ci smoke tests",
+    "query": "generate the domain models the seeder instantiates",
+    "should_trigger": false
+  },
+  {
+    "query": "create test fixtures for the phpunit suite",
     "should_trigger": false
   }
 ]

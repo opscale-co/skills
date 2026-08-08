@@ -1,8 +1,7 @@
 ---
 name: feature-test-generator
 description: >
-  Generates a Pest feature test file for a single Opscale Action. Spawned by
-  opscale-test in parallel — one instance per Action class. Feature tests
+  Generates a Pest feature test file for a single Opscale Action. Spawned by opscale-logic in parallel — one instance per Action class (Feature tests). Feature tests
   exercise the Action with real database, queues, and events to verify it
   produces the correct state changes, side effects, and return values.
 tools: Read, Write, Glob, sqlite, memory

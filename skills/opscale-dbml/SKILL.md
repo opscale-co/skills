@@ -123,7 +123,7 @@ If an element from the spec is ambiguous — could be technical or business — 
 
 ### Domain Rules
 
-1. **Metadata everywhere** — the `Project` block, every `Table`, and every field carry a `Note` describing its business meaning. A table or column with no note fails review. Every table `Note` **opens with the entity id**: `{kebab} — {business meaning}`, where the kebab id is exactly the table name with dashes (`cash_session` → `cash-session`). One table per id, one id per table — the validator enforces the format and the id ↔ table match. Junction tables born in Phase 4 get their id the same way (their table name in kebab) — `names.md` is not touched (it carries no ids).
+1. **Metadata everywhere** — the `Project` block, every `Table`, and every field carry a `Note` describing its business meaning. A table or column with no note fails review. Every table `Note` **opens with the entity id**: `{kebab} — {business meaning}`, where the kebab id is exactly the table name with dashes (`cash_session` → `cash-session`). One table per id, one id per table — the validator enforces the format and the id ↔ table match. **When the final entity name differs from its `names.md` canonical** (renamed/merged in the Phase 2 reconciliation), close the Note with ` (spec: {original canonical})` — otherwise the spec→final mapping evaporates with the run, and `opscale-ontology` cannot assemble the alias lineage for renamed entities. Junction tables born in Phase 4 get their id the same way (their table name in kebab) — `names.md` is not touched (it carries no ids).
 
 2. **Domain only** — every table must trace to a business entity in `docs/plan/process.txt`. If it cannot be traced, it does not belong here.
 
@@ -459,7 +459,7 @@ mkdir -p docs/plan
    decision
    ```
 
-All three files are replaced if they exist. `dbml.txt` must list exactly the `Table` blocks in `dbml.dbml` — no more, no fewer. If Phase 4 added entities to `context/names.md` (junction tables), those appended rows stay — `names.md` is append-only. The validation script stays in the skill bundle — never copied to the project.
+All three files are replaced if they exist. `dbml.txt` must list exactly the `Table` blocks in `dbml.dbml` — no more, no fewer. Junction tables born in Phase 4 exist only in the DBML; `context/names.md` is never touched by this skill (it carries no ids and remains the spec-side input — Domain Rule 1). The validation script stays in the skill bundle — never copied to the project.
 
 Then verify the full semantic gate (things the script cannot check automatically). For the full checklist (modeling-standard recorded, external-refs declared, script exit `0`, all three files written, every spec entity reconciled, every table stamped with its kebab id, no `tenant_id`, etc.), see `references/validator.md`. The skill must walk it item-by-item before declaring PASS — `opscale-bpmn` only proceeds on PASS.
 
@@ -467,7 +467,7 @@ Then verify the full semantic gate (things the script cannot check automatically
 
 ## Sample
 
-Excerpt of `docs/plan/dbml.dbml` and a full reference `docs/plan/dbml.txt` (recruitment module, shared across the four Plan skills so the lists chain) — see `references/sample-output.md`.
+Excerpt of `docs/plan/dbml.dbml` and a full reference `docs/plan/dbml.txt` (Proveedores module — supplier master lifecycle, shared across the five Plan skills so the lists chain) — see `references/sample-output.md`.
 
 ## Success condition
 

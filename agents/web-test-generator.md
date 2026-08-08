@@ -2,7 +2,7 @@
 name: web-test-generator
 description: >
   Generates a Laravel Dusk browser test file for a complete user flow through
-  the Nova UI. Spawned by opscale-test — one instance per subprocess block in
+  the Nova UI. Spawned by opscale-ui — one instance per subprocess block in
   docs/plan/process.txt (one subprocess = one flow, its operations detailed in
   docs/plan/bpmn.txt). The generated test drives the real user
   journey: log in, navigate, fill forms, submit, open Actions, fill Action
