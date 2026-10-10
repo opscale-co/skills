@@ -85,11 +85,11 @@ You receive:
 - [ ] Resource exists for every aggregate root in DBML
 
 **Always (structural checks):**
-- [ ] Shared fields trait exists for every aggregate
-- [ ] Repeatable exists for every aggregate
+- [ ] Repeatable exists only for strongly-composed value collections (NOT one per aggregate)
 - [ ] No business logic in Nova files
 - [ ] All strings use __() for translation
 - [ ] Status fields use Badge, not Select/Text
+- [ ] Every Action is registered on exactly one Resource's `actions()`
 
 ### opscale-logic Gate
 
@@ -110,9 +110,10 @@ You receive:
 - [ ] MVP feature opened: `.specify/specs/001-mvp/` (spec + plan + tasks)
 
 ### Test coverage (produced per Generate layer, not a separate skill)
-- [ ] **Unit** (opscale-domain): a test exists for every domain component (models, enums, VOs, repos, schema); model factories generated; Duster + PHPStan pass
-- [ ] **Feature** (opscale-logic): a test exists for every Action covering positive / negative / false-positive / false-negative; Duster + PHPStan pass
-- [ ] **Browser** (opscale-ui): a flow test exists for every subprocess block in `process.txt` (one flow per block) and each of its paths; Duster + PHPStan pass
+Verify test *content*, not just file presence — grep the bodies for the behavioral markers below.
+- [ ] **Unit** (opscale-domain): a test file for every domain component (model, enum, VO, repo) plus a `tests/Unit/Database/{Table}SchemaTest.php` per table. Behavioral markers present: schema tests use `getForeignKeys` + a `QueryException` negative-integrity insert; enum tests assert the full `canTransitionTo` matrix + `label()`; model tests call `->validate()` explicitly (positive + negative); guarded repositories test the `HttpException` transition guard. Model factories generated; Duster + PHPStan pass
+- [ ] **Feature** (opscale-logic): a test for every Action naming all four cases (`it('positive:…')` / `negative` / `false-positive` / `false-negative`), invoked via `executeAction()` against the real DB, asserting `->fresh()` state + `Event::assert*`; Duster + PHPStan pass
+- [ ] **Browser** (opscale-ui): a flow test for every subprocess block in `process.txt` (one flow per block); each EXECUTES the subprocess — runs Actions from the detail toolbar (`data-action-id` / `runAction(`), asserts the transition (`waitForAnywhere(`) and a DB post-condition (`->fresh()`), not just a visible button; Duster + PHPStan pass
 
 ### opscale-release Gate
 - [ ] .releaserc.json present

@@ -378,10 +378,11 @@ Every Action generated in Phase 3 ships its own Feature test. This is the layer 
 | **False-negative** | Inputs *look* invalid on the surface but the rule must let them through | seed an edge case that resembles a rejection but is legitimately allowed (e.g. boundary-equal amount, re-run that is genuinely idempotent), assert `success: true` — proves the rule is not over-strict |
 
 Generation contract:
+- **Name the four cases explicitly** so both a reader and the gate can find them: `it('positive: …')`, `it('negative: …')`, `it('false-positive: …')`, `it('false-negative: …')`.
 - **Seed via factories** produced by `opscale-domain` (`{Model}::factory()->create([...])`) — never hand-build models.
-- Call **`Action::run([...])` against the real DB** (in-memory SQLite from the test harness) — **no DB mocks**, no `handle()` calls directly.
-- Assert **business state** (`->fresh()` field/status) and **events** (`Event::fake([...])` + `assertDispatched`/`assertNotDispatched`) — not just the return envelope.
-- One business concern per `it()`; at least one `it()` per Business Rule (BR-NN) the Action enforces, split across the positive/negative/false-positive/false-negative cases as applicable.
+- Invoke the Action through the **`executeAction($class, [...])` helper** (from `tests/Helpers.php`, a thin wrapper over `::run()`) against the real DB (in-memory SQLite from the test harness) — **no DB mocks**, never call `handle()` directly.
+- Assert **persisted business state** (`->fresh()` field/status) **and events** (`Event::fake([...])` + `assertDispatched('{identifier}')` / `assertNotDispatched('{identifier}')`, matching the string identifier the `EmitsEvent` pipeline emits) — not just the return envelope.
+- One business concern per `it()`; add an extra `it()` per Business Rule (BR-NN) the Action enforces, beyond the four canonical cases, as applicable.
 - Spawn the generator with `action_class`, `action_path`, `parameters`, `logic_rules` (the BR-NN set), `models_involved`, `composed_actions`, `events_expected`, `package_namespace`, and `output_dir=tests/Feature`.
 
 Append to `.specify/specs/001-mvp/plan.md`:
@@ -403,15 +404,26 @@ The `Task ID` column ties each generated file back to its `tasks.md` entry in `.
 Action templates fail at parse time when apostrophes leak into PHP string literals, and at runtime when `identifier()` / `parameters()` return non-string values. A Feature test that never ran proves nothing. Run every check:
 
 ```bash
-# 0. (BPMN-driven mode) Every generated Action has a matching SIPOC + Feature test
-if [ -f docs/plan/bpmn.bpmn ]; then
-  for f in src/Services/Actions/*.php; do
-    id=$(grep -oP "return '\\K[a-z][a-z0-9-]*" "$f" | head -1)
-    cls=$(basename "$f" .php)
-    [ -f "docs/plan/sipoc/$id.md" ]      || { echo "Missing SIPOC for $id"; exit 1; }
-    [ -f "tests/Feature/${cls}Test.php" ] || { echo "Missing Feature test for $cls"; exit 1; }
+# 0. Every generated Action has a matching Feature test (ALWAYS — standalone too);
+#    the SIPOC check applies only in BPMN-driven mode.
+for f in src/Services/Actions/*.php; do
+  [ -e "$f" ] || continue
+  cls=$(basename "$f" .php)
+  t="tests/Feature/${cls}Test.php"
+  [ -f "$t" ] || { echo "Missing Feature test for $cls"; exit 1; }
+  # the four canonical cases must be present by name
+  for case in "positive" "negative" "false-positive" "false-negative"; do
+    grep -q "it('${case}:" "$t" || { echo "$t: missing '${case}' case"; exit 1; }
   done
-fi
+  # real-DB state + events, not just the return envelope
+  grep -q -- '->fresh()'  "$t" || { echo "$t: no persisted-state assertion"; exit 1; }
+  grep -q 'Event::assert' "$t" || { echo "$t: no event assertion"; exit 1; }
+  # SIPOC only exists in BPMN-driven mode
+  if [ -f docs/plan/bpmn.bpmn ]; then
+    id=$(grep -oP "return '\\K[a-z][a-z0-9-]*" "$f" | head -1)
+    [ -f "docs/plan/sipoc/$id.md" ] || { echo "Missing SIPOC for $id"; exit 1; }
+  fi
+done
 
 # 1. Every Action file parses
 find src/Services/Actions -name '*.php' -print0 \

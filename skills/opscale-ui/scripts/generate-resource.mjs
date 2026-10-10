@@ -6,14 +6,38 @@
 //     "model_name":           "Order",
 //     "package_namespace":    "Opscale\\LoanModule",
 //     "output_dir":           "src/Nova",
-//     "title_column":         "code",
+//     "title_column":         "code",                // descriptive column — NEVER "id"
 //     "search_columns":       ["code"],
 //     "uri_key":              "orders",
 //     "label":                "Orders",                 // EN plural — contextual
 //     "singular_label":       "Order",                  // EN singular — contextual
 //     "label_es":             "Pedidos",                // ES plural — contextual
 //     "singular_label_es":    "Pedido",                 // ES singular — contextual
-//     "uses_field_trait":     true,
+//
+//     // Business fields — rendered inline in fields() (full set). Flag the
+//     // most-relevant, cheap-to-render ones with `on_index: true` to place
+//     // them in fieldsForIndex() (relationship fields are rejected there —
+//     // they cause N+1 on the index).
+//     "fields": [
+//       {
+//         "field":     "Text",                 // Nova field class
+//         "label":     "Code",                 // EN — required
+//         "label_es":  "Código",               // ES — required
+//         "attribute": "code",
+//         "on_index":  true,                   // optional — include in fieldsForIndex()
+//         "modifiers": [ "sortable", { "rules": "code" } ]
+//       },
+//       { "field": "Select", "label": "Type", "label_es": "Tipo", "attribute": "type",
+//         "enum_class": "OrderType", "modifiers": ["filterable", "displayUsingLabels"] },
+//       { "field": "BelongsTo", "label": "Customer", "label_es": "Cliente", "attribute": "customer",
+//         "related_resource": "Customer", "modifiers": ["searchable"] },
+//       { "field": "VirtualSelect", "label": "Counterparty", "label_es": "Contraparte",
+//         "attribute": "counterparty_id", "contract_class": "CounterpartyContract",
+//         "modifiers": ["searchable", "filterable", "displayUsingLabels"] },
+//       { "field": "Textarea", "label": "Notes", "label_es": "Notas", "attribute": "notes",
+//         "modifiers": ["hideFromIndex"] }
+//     ],
+//
 //     "has_status":           true,
 //     "status_enum":          "OrderStatus",
 //     "status_badge": {
@@ -47,15 +71,6 @@
 //       "foreign_key": "application_id"          // column on this aggregate that points to the parent
 //     },
 //
-//     "virtual_relations": [                     // optional — cross-subdomain logical refs
-//       {
-//         "label_en":       "Counterparty",
-//         "label_es":       "Contraparte",
-//         "attribute":      "counterparty_id",
-//         "contract_class": "CounterpartyContract"
-//       }
-//     ],
-//
 //     "can_create": true,     // optional — default true; when false, emit authorizedToCreate
 //     "can_update": true,     // optional — default true; when false, emit authorizedToUpdate
 //     "can_delete": true,     // optional — default true; when false, emit authorizedToDelete
@@ -63,15 +78,19 @@
 //     "lang_dir": "lang"      // optional — defaults to <project_root>/lang (derived from output_dir)
 //   }
 //
-// Tab structure is applied automatically when has_many_relationships is
+// Tab structure is applied automatically when has_many/has_one_relationships is
 // non-empty. Each tab gets a `->canSee(...)` guard when its relation is NOT
 // creatable_from_ui (per references/aggregate-tabs.md).
+//
+// Cross-subdomain logical refs are declared as `VirtualSelect` business fields
+// (never a separate top-level array). See references/virtual-relations.md.
 //
 // Translation seeding: appends to BOTH `{lang_dir}/en.json` AND
 // `{lang_dir}/es.json`:
 //   - the resource label and singular label (per locale)
+//   - each business field label (per locale) + each `{ help }` modifier
 //   - each status badge label (per locale, when has_status)
-//   - each HasMany tab label (per locale)
+//   - each HasMany/HasOne tab label (per locale)
 //   - fixed UI strings ("Details", "Created At", "Updated At", "Status")
 //     resolved from the built-in EN/ES dictionary
 // Existing keys are never overwritten. ES-only or EN-only seeding is NOT
@@ -79,12 +98,15 @@
 
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readJsonInput, render, writeOrConflict, loadTemplate, resultLine, seedTranslations } from './_lib.mjs';
+import {
+  readJsonInput, render, writeOrConflict, loadTemplate, resultLine, seedTranslations,
+  FIELD_NAMESPACE, RELATION_FIELDS, renderFieldBlock,
+} from './_lib.mjs';
 
 // EN → ES dictionary for fixed UI strings. The dictionary is intentionally
 // small — it only covers labels the generator emits literally. Domain labels
 // (resource names, tab names tied to entities, status badge labels, enum
-// option labels) are always user-supplied per locale.
+// option labels, business field labels) are always user-supplied per locale.
 const FIXED_STRINGS = {
   'Details':     { en: 'Details',      es: 'Detalles' },
   'Status':      { en: 'Status',       es: 'Estado' },
@@ -102,12 +124,36 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function main() {
   const input = readJsonInput();
-  for (const k of ['model_name', 'package_namespace', 'output_dir', 'title_column', 'uri_key', 'label', 'singular_label']) {
-    if (!input[k]) throw new Error(`Missing required field: ${k}`);
+  for (const k of ['model_name', 'package_namespace', 'output_dir', 'title_column', 'uri_key', 'label', 'singular_label', 'fields']) {
+    if (input[k] === undefined || input[k] === null) throw new Error(`Missing required field: ${k}`);
+  }
+  // $title MUST be a descriptive business column — never the primary id.
+  if (input.title_column === 'id') {
+    throw new Error("title_column must be a descriptive business column, never 'id'.");
   }
   // ES labels are required — EN-only is no longer accepted.
   if (!input.label_es)           throw new Error('Missing required field: label_es (Spanish plural label)');
   if (!input.singular_label_es)  throw new Error('Missing required field: singular_label_es (Spanish singular label)');
+  if (!Array.isArray(input.fields)) throw new Error('fields must be an array (may be empty).');
+
+  const modelName = input.model_name;
+
+  // --- Business fields -----------------------------------------------------
+  const businessFields = input.fields;
+  for (const f of businessFields) {
+    if (!FIELD_NAMESPACE[f.field]) throw new Error(`Unsupported Nova field: ${f.field} (attribute '${f.attribute}')`);
+    if (!f.label)    throw new Error(`Field for attribute '${f.attribute}' is missing label`);
+    if (!f.label_es) throw new Error(`Field for attribute '${f.attribute}' is missing label_es (Spanish label)`);
+    if (f.field === 'Select' && !f.enum_class) {
+      throw new Error(`Select field for attribute '${f.attribute}' is missing enum_class`);
+    }
+    if (f.field === 'VirtualSelect' && !f.contract_class) {
+      throw new Error(`VirtualSelect field for attribute '${f.attribute}' is missing contract_class`);
+    }
+    if ((f.field === 'BelongsTo' || f.field === 'MorphTo') && !f.related_resource) {
+      throw new Error(`${f.field} field for attribute '${f.attribute}' is missing related_resource`);
+    }
+  }
 
   const normalizeRelation = (r) => ({
     name:              r.name,
@@ -122,6 +168,27 @@ function main() {
   const has_one  = (input.has_one_relationships  || []).map(normalizeRelation);
   const has_tabs = has_many.length > 0 || has_one.length > 0;
 
+  // Continuation indent for chained modifiers: 4 spaces deeper than the head.
+  // Head sits at 20 spaces inside a Details tab, 12 spaces in a flat array.
+  const fieldsContIndent = has_tabs ? ' '.repeat(24) : ' '.repeat(16);
+  const indexContIndent  = ' '.repeat(16); // fieldsForIndex head is at 12 spaces
+
+  const field_blocks = businessFields.map(f => renderFieldBlock(f, modelName, fieldsContIndent));
+
+  // fieldsForIndex — only fields flagged on_index; relationship fields rejected
+  // (they resolve per-row and cause N+1 on the index).
+  let indexFields = businessFields.filter(f => f.on_index);
+  if (indexFields.length === 0) {
+    // Default: the title column, when it is one of the declared fields.
+    indexFields = businessFields.filter(f => f.attribute === input.title_column);
+  }
+  for (const f of indexFields) {
+    if (RELATION_FIELDS.has(f.field)) {
+      throw new Error(`Field '${f.attribute}' is a ${f.field} relationship and cannot appear on the index (N+1). Remove on_index.`);
+    }
+  }
+  const index_field_blocks = indexFields.map(f => renderFieldBlock(f, modelName, indexContIndent));
+
   // Eager loads: by default, every child relation is added to $with so the
   // _count column is available for the canSee guard. Callers can switch to
   // indexQuery-based loading via count_strategy: "index".
@@ -130,32 +197,32 @@ function main() {
   const with_relations    = count_strategy === 'with'  ? all_relation_names : [];
   const index_with_count  = count_strategy === 'index' ? all_relation_names : [];
 
-  const virtualRels = (input.virtual_relations || []).map(v => ({
-    label:          v.label_en || v.label,
-    label_es:       v.label_es || v.label_en || v.label,
-    attribute:      v.attribute,
-    contract_class: v.contract_class,
-  }));
-
-  // Field imports — always include the basics; add HasMany / Select only when needed.
+  // --- Imports -------------------------------------------------------------
   const fieldImports = new Set([
-    'Laravel\\Nova\\Fields\\DateTime',
+    'Laravel\\Nova\\Fields\\DateTime', // timestamps always emitted
   ]);
-  if (input.has_status)     fieldImports.add('Laravel\\Nova\\Fields\\Badge');
-  if (has_many.length)      fieldImports.add('Laravel\\Nova\\Fields\\HasMany');
-  if (has_one.length)       fieldImports.add('Laravel\\Nova\\Fields\\HasOne');
-  if (virtualRels.length)   fieldImports.add('Laravel\\Nova\\Fields\\Select');
-
+  if (input.has_status) fieldImports.add('Laravel\\Nova\\Fields\\Badge');
+  if (has_many.length)  fieldImports.add('Laravel\\Nova\\Fields\\HasMany');
+  if (has_one.length)   fieldImports.add('Laravel\\Nova\\Fields\\HasOne');
+  for (const f of businessFields) fieldImports.add(FIELD_NAMESPACE[f.field]);
   const field_imports = [...fieldImports].sort();
 
-  const related_resource_imports = [...has_many, ...has_one]
-    .map(r => `${input.package_namespace}\\Nova\\${r.related_resource}`)
-    .filter((v, i, a) => a.indexOf(v) === i)
-    .sort();
+  const enumSet = new Set();
+  for (const f of businessFields) if (f.field === 'Select' && f.enum_class) enumSet.add(f.enum_class);
+  const enum_imports = [...enumSet].sort().map(e => `${input.package_namespace}\\Models\\Enums\\${e}`);
 
-  const contract_imports = Array.from(new Set(
-    virtualRels.map(v => `${input.package_namespace}\\Contracts\\${v.contract_class}`)
-  )).sort();
+  const relResSet = new Set();
+  for (const f of businessFields) {
+    if ((f.field === 'BelongsTo' || f.field === 'MorphTo') && f.related_resource) relResSet.add(f.related_resource);
+  }
+  for (const r of [...has_many, ...has_one]) relResSet.add(r.related_resource);
+  const related_resource_imports = [...relResSet].sort()
+    .map(r => `${input.package_namespace}\\Nova\\${r}`);
+
+  const contractSet = new Set();
+  for (const f of businessFields) if (f.field === 'VirtualSelect' && f.contract_class) contractSet.add(f.contract_class);
+  const contract_imports = [...contractSet].sort()
+    .map(c => `${input.package_namespace}\\Contracts\\${c}`);
 
   const can_create = input.can_create !== false; // default true
   const can_update = input.can_update !== false;
@@ -184,7 +251,7 @@ function main() {
 
   const context = {
     package_namespace:        input.package_namespace,
-    model_name:               input.model_name,
+    model_name:               modelName,
     title_column:             input.title_column,
     search_columns:           input.search_columns || [input.title_column],
     uri_key:                  input.uri_key,
@@ -193,7 +260,8 @@ function main() {
     can_create,
     can_update,
     can_delete,
-    uses_field_trait:         input.uses_field_trait !== false, // default true
+    field_blocks,
+    index_field_blocks,
     has_status:               !!input.has_status,
     status_enum:              input.status_enum || '',
     status_badge:             status_badge_normalized,
@@ -201,6 +269,7 @@ function main() {
     has_one_relationships:    has_one,
     has_tabs,
     field_imports,
+    enum_imports,
     related_resource_imports,
     contract_imports,
     has_with:                 with_relations.length > 0,
@@ -212,7 +281,7 @@ function main() {
 
   const template = loadTemplate(join(__dirname, '..', 'templates', 'resource.php.tmpl'));
   const rendered = render(template, context);
-  const outPath = resolve(input.output_dir, `${input.model_name}.php`);
+  const outPath = resolve(input.output_dir, `${modelName}.php`);
   const result = writeOrConflict(outPath, rendered);
 
   // Build per-locale translation maps. The key is the English string the
@@ -230,6 +299,14 @@ function main() {
   add(input.label,          input.label_es);
   add(input.singular_label, input.singular_label_es);
 
+  // Business field labels + help strings.
+  for (const f of businessFields) {
+    add(f.label, f.label_es);
+    for (const m of (f.modifiers || [])) {
+      if (typeof m === 'object' && m && m.help) add(m.help, m.help_es || m.help);
+    }
+  }
+
   // Fixed UI strings emitted by the template.
   for (const key of ['Details', 'Created At', 'Updated At']) {
     add(key, FIXED_STRINGS[key].es);
@@ -239,7 +316,6 @@ function main() {
   for (const entry of status_badge_es_labels) add(entry.en, entry.es);
   for (const rel of has_many)                 add(rel.label, rel.label_es);
   for (const rel of has_one)                  add(rel.label, rel.label_es);
-  for (const v of virtualRels)                add(v.label, v.label_es);
 
   const langDir = resolveLangDir(input);
   const enResult = seedTranslations(langDir, 'en', enEntries);
@@ -248,13 +324,13 @@ function main() {
   console.log(resultLine('STATUS', result.status));
   console.log(resultLine('GENERATED', result.path));
   if (result.preview) console.log(resultLine('PREVIEW', result.preview));
-  console.log(resultLine('RESOURCE', input.model_name));
-  console.log(resultLine('MODEL', `${input.package_namespace}\\Models\\${input.model_name}`));
+  console.log(resultLine('RESOURCE', modelName));
+  console.log(resultLine('MODEL', `${input.package_namespace}\\Models\\${modelName}`));
+  console.log(resultLine('FIELDS', businessFields.length));
+  console.log(resultLine('INDEX_FIELDS', index_field_blocks.length));
   console.log(resultLine('TABS', has_tabs ? 1 + has_many.length + has_one.length : 0));
   console.log(resultLine('HAS_MANY', has_many.length));
   console.log(resultLine('HAS_ONE', has_one.length));
-  console.log(resultLine('VIRTUAL_RELATIONS', virtualRels.length));
-  console.log(resultLine('USES_TRAIT', context.uses_field_trait ? 'yes' : 'no'));
   console.log(resultLine('STATUS_BADGE', input.has_status ? 'yes' : 'no'));
   console.log(resultLine('CAN_CREATE', can_create ? 'yes' : 'no'));
   console.log(resultLine('CAN_UPDATE', can_update ? 'yes' : 'no'));

@@ -1,9 +1,11 @@
 ---
 name: feature-test-generator
 description: >
-  Generates a Pest feature test file for a single Opscale Action. Spawned by opscale-logic in parallel — one instance per Action class (Feature tests). Feature tests
-  exercise the Action with real database, queues, and events to verify it
-  produces the correct state changes, side effects, and return values.
+  Generates a Pest feature test file for a single Opscale Action. Spawned by
+  opscale-logic in parallel — one instance per Action class. Feature tests exercise
+  the Action against a real database and cover the FOUR canonical cases (positive /
+  negative / false-positive / false-negative), asserting persisted state and events,
+  not just the return envelope.
 tools: Read, Write, Glob, sqlite, memory
 model: sonnet
 maxTurns: 6
@@ -11,53 +13,47 @@ maxTurns: 6
 
 # Feature Test Generator
 
-You generate one Pest PHP feature test file that thoroughly tests a single
-Opscale Action in an integrated environment with a real database.
+You generate one Pest PHP feature test file that proves a single Opscale Action
+in an integrated environment with a real database.
 
 Use **sqlite** to record the generated test inventory (action, test file,
-scenarios covered, rules tested) for coverage tracking across runs.
+cases covered, rules tested) for coverage tracking across runs.
 
 ## Input
 
 You receive:
 - `action_class` — full class name of the Action
-- `action_path` — path to the Action file (read for parameters, handle logic, business rules)
-- `action_name` — PascalCase Action name
-- `identifier` — kebab-case action identifier
-- `logic_rules` — rules or behaviors this action implements
+- `action_path` — path to the Action file (read for parameters, handle logic, business rules, emitted events)
+- `logic_rules` — the BR-NN rules this Action enforces
 - `parameters` — typed input declarations from the Action
 - `models_involved` — models the action reads or writes
 - `composed_actions` — other Actions this action calls via `::run()`
-- `events_expected` — events that should be dispatched
+- `events_expected` — events dispatched (the string identifier the `EmitsEvent` pipeline emits)
 - `package_namespace` — PHP namespace
-- `output_dir` — target directory (e.g. `tests/Feature/Actions/`)
+- `output_dir` — target directory: `tests/Feature/`
 
-## Feature Test Philosophy
+## Philosophy — the four cases against a real DB
 
-Feature tests for Actions are **integration tests**:
-- Real database — `::factory()->create()` with actual DB operations
-- Test `::run()` contract — inputs in, array with `success` key out
-- Verify database state after execution — records created, updated, status changed
-- Verify side effects — events dispatched, jobs queued, related records affected
-- Test logic rule enforcement — each rule gets at least one test
-- Test composition — when the action calls other actions via `::run()`
+Feature tests are integration tests: real DB via `::factory()->create()`, no
+mocks. You invoke the Action through the **`executeAction()`** helper (from
+`tests/Helpers.php`, a thin wrapper over `::run()`) — never call `handle()`
+directly. Every Action gets the **four canonical cases**, each asserting the
+**persisted state** (`->fresh()`) and **events**, not merely the `success` flag:
 
-## Test Scenarios to Generate
+| Case | Meaning | Assert |
+|------|---------|--------|
+| **positive** | preconditions valid → the effect happens | `success: true`, the `->fresh()` state change, `Event::assertDispatched('{identifier}')` |
+| **negative** | a precondition is invalid → rejected / soft-fail | `success: false` with the `canRun()`/`fail()` reason, **no** state change, `Event::assertNotDispatched('{identifier}')` |
+| **false-positive** | inputs *look* valid but a BR must still reject | seed data that passes shape validation yet violates a BR (duplicate, out-of-window, over-limit) → rejected, no state change |
+| **false-negative** | inputs *look* invalid but the BR must allow | a boundary-equal / genuinely-idempotent edge that resembles a rejection → `success: true`, effect happens |
 
-For every Action, generate tests for:
-
-1. **Happy path** — valid inputs, `success: true`, correct DB state after
-2. **Each logic rule** — one `it()` per rule proving it's enforced
-3. **Validation rejection** — missing required params throw `ValidationException`
-4. **State preconditions** — action on entity in wrong state returns `success: false` or throws
-5. **Database state changes** — verify the exact records created/updated/deleted
-6. **Related record effects** — parent/child records updated correctly
-7. **Event dispatch** — correct events fired with correct payloads
-8. **Composition** — when this action composes others, verify the full chain produces correct state
-9. **Idempotency** — running the same action twice doesn't corrupt state (when applicable)
-10. **Tenant isolation** — action respects tenant_id boundaries (when tenant_aware)
+Beyond the four, add one `it()` per Business Rule (BR-NN) not already covered.
 
 ## Code Template
+
+Name the four cases exactly `it('positive: …')`, `it('negative: …')`,
+`it('false-positive: …')`, `it('false-negative: …')` — the opscale-logic gate
+greps for them.
 
 ```php
 <?php
@@ -69,137 +65,70 @@ use {package_namespace}\Services\Actions\{ActionName};
 
 describe('{ActionName}', function () {
 
-    // --- Happy path ---
+    it('positive: {what the action does when preconditions hold}', function () {
+        Event::fake(['{event-identifier}']);
+        $entity = {ModelName}::factory()->create(['status' => {StatusEnum}::Pending]);
 
-    it('{describes what the action does in plain English}', function () {
+        $result = executeAction({ActionName}::class, ['{entity_param}' => $entity]);
+
+        expect($result['success'])->toBeTrue();
+        expect($entity->fresh()->status)->toBe({StatusEnum}::Approved);   // persisted effect
+        Event::assertDispatched('{event-identifier}');
+    });
+
+    it('negative: rejects when {precondition} is invalid', function () {
+        Event::fake(['{event-identifier}']);
+        $entity = {ModelName}::factory()->create(['status' => {StatusEnum}::Approved]);  // wrong state
+
+        $result = executeAction({ActionName}::class, ['{entity_param}' => $entity]);
+
+        expect($result['success'])->toBeFalse();
+        expect($entity->fresh()->status)->toBe({StatusEnum}::Approved);   // unchanged
+        Event::assertNotDispatched('{event-identifier}');
+    });
+
+    it('false-positive: rejects data that passes shape validation but violates {BR-NN}', function () {
         $entity = {ModelName}::factory()->create([
             'status' => {StatusEnum}::Pending,
+            '{field}' => '{value that violates the business rule, e.g. expired window}',
         ]);
 
-        $result = {ActionName}::run([
-            '{entity_param}' => $entity,
-            '{scalar_param}' => '{value}',
-        ]);
-
-        expect($result['success'])->toBeTrue();
-        expect($entity->fresh()->status)->toBe({StatusEnum}::Active);
-        expect($entity->fresh()->{updated_field})->toBe('{expected_value}');
-    });
-
-    // --- Logic rule enforcement ---
-
-    it('enforces {rule_id}: {rule description}', function () {
-        $entity = {ModelName}::factory()->create([
-            '{field}' => '{value_that_triggers_rule}',
-        ]);
-
-        $result = {ActionName}::run([
-            '{entity_param}' => $entity,
-        ]);
+        $result = executeAction({ActionName}::class, ['{entity_param}' => $entity]);
 
         expect($result['success'])->toBeFalse();
-        expect($result['message'])->toContain('{expected message}');
-        // DB state unchanged
-        expect($entity->fresh()->{field})->toBe('{original_value}');
+        expect($entity->fresh()->status)->toBe({StatusEnum}::Pending);
     });
 
-    // --- Validation ---
+    it('false-negative: allows the boundary case {BR-NN} must not reject', function () {
+        $entity = {ModelName}::factory()->create([
+            'status' => {StatusEnum}::Pending,
+            '{field}' => '{boundary-equal / idempotent-legit value}',
+        ]);
+
+        $result = executeAction({ActionName}::class, ['{entity_param}' => $entity]);
+
+        expect($result['success'])->toBeTrue();
+        expect($entity->fresh()->status)->toBe({StatusEnum}::Approved);
+    });
+
+    // --- Validation (shape) ---
 
     it('rejects missing required parameters', function () {
-        {ActionName}::run([]);
+        executeAction({ActionName}::class, []);
     })->throws(\Illuminate\Validation\ValidationException::class);
 
-    it('rejects invalid {param_name}', function () {
+    // --- One it() per remaining Business Rule (BR-NN) ---
+
+    it('enforces {BR-NN}: {rule}', function () {
+        // seed the state the rule guards, run, assert the rule's persisted outcome
+    });
+
+    // --- Composition (only when composed_actions is non-empty) ---
+
+    it('delegates to {ComposedAction} and its effect is visible', function () {
         $entity = {ModelName}::factory()->create();
-
-        {ActionName}::run([
-            '{entity_param}' => $entity,
-            '{param}' => '{invalid_value}',
-        ]);
-    })->throws(\Illuminate\Validation\ValidationException::class);
-
-    // --- State preconditions ---
-
-    it('fails when entity is in terminal state', function () {
-        $entity = {ModelName}::factory()->create([
-            'status' => {StatusEnum}::Closed,
-        ]);
-
-        $result = {ActionName}::run(['{entity_param}' => $entity]);
-
-        expect($result['success'])->toBeFalse();
-    });
-
-    // --- Database state verification ---
-
-    it('creates {related_record} in the database', function () {
-        $parent = {ParentModel}::factory()->create();
-
-        $result = {ActionName}::run([
-            '{parent_param}' => $parent,
-            '{field}' => '{value}',
-        ]);
-
-        expect($result['success'])->toBeTrue();
-        expect({ChildModel}::where('{parent_id}', $parent->id)->exists())->toBeTrue();
-    });
-
-    it('updates {field} to {expected_value}', function () {
-        $entity = {ModelName}::factory()->create(['{field}' => '{old_value}']);
-
-        {ActionName}::run([
-            '{entity_param}' => $entity,
-            '{field}' => '{new_value}',
-        ]);
-
-        expect($entity->fresh()->{field})->toBe('{new_value}');
-    });
-
-    // --- Events ---
-
-    it('dispatches {EventName} on success', function () {
-        Event::fake([{EventClass}::class]);
-        $entity = {ModelName}::factory()->create();
-
-        {ActionName}::run(['{entity_param}' => $entity]);
-
-        Event::assertDispatched({EventClass}::class, function ($event) use ($entity) {
-            return $event->{entity}->id === $entity->id;
-        });
-    });
-
-    it('does not dispatch events on failure', function () {
-        Event::fake([{EventClass}::class]);
-        $entity = {ModelName}::factory()->create([
-            'status' => {StatusEnum}::Closed,
-        ]);
-
-        {ActionName}::run(['{entity_param}' => $entity]);
-
-        Event::assertNotDispatched({EventClass}::class);
-    });
-
-    // --- Composition ---
-
-    it('delegates to {ComposedAction} and uses its result', function () {
-        $entity = {ModelName}::factory()->create();
-
-        $result = {ActionName}::run(['{entity_param}' => $entity]);
-
-        expect($result['success'])->toBeTrue();
-        // Verify state changes from the composed action are visible
+        executeAction({ActionName}::class, ['{entity_param}' => $entity]);
         expect($entity->fresh()->{composed_field})->not->toBeNull();
-    });
-
-    // --- Tenant isolation (when tenant_aware) ---
-
-    it('only affects records within the same tenant', function () {
-        $tenant1Entity = {ModelName}::factory()->create(['tenant_id' => 'tenant-1']);
-        $tenant2Entity = {ModelName}::factory()->create(['tenant_id' => 'tenant-2']);
-
-        {ActionName}::run(['{entity_param}' => $tenant1Entity]);
-
-        expect($tenant2Entity->fresh()->{field})->toBe('{unchanged_value}');
     });
 });
 ```
@@ -207,20 +136,19 @@ describe('{ActionName}', function () {
 ## Naming Conventions
 
 - File: `{ActionName}Test.php`
-- Location: `tests/Feature/Actions/`
-- Test descriptions start with lowercase, read as English sentences
-- Group all tests for one Action in a `describe()` block
+- Location: `tests/Feature/` (NOT `tests/Feature/Actions/` — the SKILL gate looks in `tests/Feature/`).
+- Group all tests for one Action in a `describe('{ActionName}', …)` block.
+- The four canonical `it()` descriptions start with `positive:` / `negative:` / `false-positive:` / `false-negative:`.
 
 ## Rules
 
-1. Every test calls `{ActionName}::run()` — never instantiate or call `handle()` directly
-2. Use `expect()` — never `$this->assert*()`
-3. Always verify DB state with `->fresh()` after action runs
-4. Use `Event::fake()` only in event-specific tests — not globally
-5. One business concern per `it()` block
-6. Factory states must explicitly set the precondition being tested
-7. Cover every logic rule referenced in the Action — at minimum one test per rule
-8. Test both success and failure paths for each business rule
+1. Invoke via `executeAction({ActionName}::class, [...])` — never `handle()` directly.
+2. Use `expect()` — never `$this->assert*()`.
+3. Every case asserts persisted state with `->fresh()` AND (for state-changing actions) an event — not just `success`.
+4. Events assert on the **string identifier** (`Event::assertDispatched('{identifier}')`), matching `EmitsEvent`.
+5. `Event::fake([...])` only in the tests that assert events.
+6. One business concern per `it()`; seed the exact precondition each case needs via factories.
+7. All four canonical cases are present and named; add one `it()` per uncovered BR-NN.
 
 ## Output
 
@@ -232,6 +160,6 @@ GENERATED: {file_path}
 ACTION_TESTED: {ActionName}
 IDENTIFIER: {identifier}
 TEST_CASES: {count}
-LOGIC_RULES_COVERED: {list of rules}
-SCENARIOS: happy_path, logic_rules, validation, state_preconditions, db_state, events, composition, tenant_isolation
+LOGIC_RULES_COVERED: {list of BR-NN}
+CASES: positive, negative, false-positive, false-negative{, + extra BR / composition it()s}
 ```

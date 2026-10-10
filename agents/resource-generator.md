@@ -19,22 +19,32 @@ generator script and report its output.
 JSON payload from the parent skill, schema at the top of
 `~/.claude/skills/opscale-ui/scripts/generate-resource.mjs`.
 
-Required: `model_name`, `package_namespace`, `output_dir`, `title_column`,
-`uri_key`, `label`, `singular_label`.
-Optional: `search_columns`, `uses_field_trait` (default true), `has_status`,
-`status_enum`, `status_badge`, `has_many_relationships`.
+Required: `model_name`, `package_namespace`, `output_dir`, `title_column`
+(a descriptive column — **never `id`**), `uri_key`, `label`, `singular_label`,
+`label_es`, `singular_label_es`, `fields`.
+Optional: `search_columns`, `has_status`, `status_enum`, `status_badge`,
+`has_many_relationships`, `has_one_relationships`, `child_of`, `can_create` /
+`can_update` / `can_delete`, `count_strategy`.
+
+`fields` is the inline business-field list. Each entry declares `field` (Nova
+class), `label`, `label_es`, `attribute`, optional `modifiers`, and optional
+`on_index: true` to place it in `fieldsForIndex()`. `Select` needs `enum_class`;
+`BelongsTo`/`MorphTo` need `related_resource`; `VirtualSelect` (cross-subdomain
+logical ref) needs `contract_class`.
 
 The script:
-- Picks Tab grouping automatically when `has_many_relationships` is non-empty
-  (per Opscale UI convention — flat array allowed only when no HasMany exists).
-- Resolves field imports (`Badge` only when status, `HasMany` only when HasMany
-  relations exist).
-- Wraps every user-visible string in `__()`.
-- Always emits `created_at` / `updated_at` DateTime fields with `diffForHumans`.
-
-The business "core" fields (Text, Select, BelongsTo, etc.) come from the
-`{ModelName}Fields` trait that field-trait-generator produces — they are NOT
-listed in this JSON.
+- Emits BOTH `fields()` (full set, inline) and `fieldsForIndex()` (curated
+  subset). There is no `fieldsForCreate()` and no shared field trait.
+- **Rejects `title_column: "id"`** and **rejects any relationship field flagged
+  `on_index`** (N+1 guard).
+- Picks Tab grouping automatically when `has_many_relationships` /
+  `has_one_relationships` is non-empty (flat array only when neither exists).
+- Resolves all field imports from the `fields` array (+ `Badge` when status,
+  `HasMany`/`HasOne` when those relations exist).
+- Wraps every user-visible string in `__()` and seeds `lang/en.json` +
+  `lang/es.json`.
+- Always emits `created_at` / `updated_at` DateTime fields with `diffForHumans`,
+  and a private `statusBadge()` helper when `has_status`.
 
 ## Procedure
 
@@ -61,4 +71,4 @@ On non-zero exit, return stderr prefixed with `ERROR:`.
 - Do not edit the template or script.
 - Do not write PHP directly.
 - Do not retry on `CONFLICT`.
-- Do not duplicate the business fields from the field trait into the resource.
+- Do not add fields beyond those in the JSON `fields` array.

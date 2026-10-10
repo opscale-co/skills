@@ -15,25 +15,21 @@ use {{package_namespace}}\Models\{{model_name}} as {{model_name}}Model;
 {{#if has_status}}
 use {{package_namespace}}\Models\Enums\{{status_enum}};
 {{/if}}
+{{#each enum_imports}}
+use {{.}};
+{{/each}}
 {{#each related_resource_imports}}
 use {{.}};
 {{/each}}
 {{#each contract_imports}}
 use {{.}};
 {{/each}}
-{{#if uses_field_trait}}
-use {{package_namespace}}\Nova\Concerns\{{model_name}}Fields;
-{{/if}}
 
 /**
  * @extends Resource<{{model_name}}Model>
  */
 class {{model_name}} extends Resource
 {
-{{#if uses_field_trait}}
-    use {{model_name}}Fields;
-
-{{/if}}
     public static $model = {{model_name}}Model::class;
 
     public static $title = '{{title_column}}';
@@ -103,31 +99,42 @@ class {{model_name}} extends Resource
     }
 {{/if}}
 
+    /**
+     * Curated, N+1-free subset shown on the index. Only the most relevant,
+     * cheap-to-render columns — never relationship fields.
+     */
+    public function fieldsForIndex(NovaRequest $request): array
+    {
+        return [
+{{#each index_field_blocks}}
+            {{.}},
+{{/each}}
+{{#if has_status}}
+            $this->statusBadge()->sortable(),
+{{/if}}
+            DateTime::make(__('Created At'), 'created_at')
+                ->displayUsing(fn ($value) => $value?->diffForHumans())
+                ->sortable(),
+        ];
+    }
+
+    /**
+     * Full field set (detail + create + update). View differences are handled
+     * per field via hide/show modifiers (->onlyOnForms(), ->hideWhenCreating(),
+     * ->exceptOnForms(), ->hideFromIndex(), …) — never a separate method.
+     */
     public function fields(NovaRequest $request): array
     {
 {{#if has_tabs}}
         return [
             Tab::group(__('{{model_name}}'), [
                 Tab::make(__('Details'), [
-{{#if uses_field_trait}}
-                    ...$this->coreFields($request),
-{{/if}}
+{{#each field_blocks}}
+                    {{.}},
+{{/each}}
 {{#if has_status}}
-
-                    Badge::make(__('Status'), 'status')
-                        ->map([
-{{#each status_badge.map}}
-                            {{status_enum}}::{{case}}->value => '{{color}}',
-{{/each}}
-                        ])
-                        ->labels([
-{{#each status_badge.labels}}
-                            {{status_enum}}::{{case}}->value => __('{{label}}'),
-{{/each}}
-                        ])
-                        ->sortable(),
+                    $this->statusBadge()->sortable(),
 {{/if}}
-
                     DateTime::make(__('Created At'), 'created_at')
                         ->displayUsing(fn ($value) => $value?->diffForHumans())
                         ->exceptOnForms()
@@ -153,25 +160,12 @@ class {{model_name}} extends Resource
         ];
 {{else}}
         return [
-{{#if uses_field_trait}}
-            ...$this->coreFields($request),
-{{/if}}
+{{#each field_blocks}}
+            {{.}},
+{{/each}}
 {{#if has_status}}
-
-            Badge::make(__('Status'), 'status')
-                ->map([
-{{#each status_badge.map}}
-                    {{status_enum}}::{{case}}->value => '{{color}}',
-{{/each}}
-                ])
-                ->labels([
-{{#each status_badge.labels}}
-                    {{status_enum}}::{{case}}->value => __('{{label}}'),
-{{/each}}
-                ])
-                ->sortable(),
+            $this->statusBadge()->sortable(),
 {{/if}}
-
             DateTime::make(__('Created At'), 'created_at')
                 ->displayUsing(fn ($value) => $value?->diffForHumans())
                 ->exceptOnForms()
@@ -183,13 +177,21 @@ class {{model_name}} extends Resource
         ];
 {{/if}}
     }
+{{#if has_status}}
 
-    public function fieldsForCreate(): array
+    private function statusBadge(): Badge
     {
-        return [
-{{#if uses_field_trait}}
-            ...$this->coreFields(app(NovaRequest::class)),
-{{/if}}
-        ];
+        return Badge::make(__('Status'), 'status')
+            ->map([
+{{#each status_badge.map}}
+                {{status_enum}}::{{case}}->value => '{{color}}',
+{{/each}}
+            ])
+            ->labels([
+{{#each status_badge.labels}}
+                {{status_enum}}::{{case}}->value => __('{{label}}'),
+{{/each}}
+            ]);
     }
+{{/if}}
 }

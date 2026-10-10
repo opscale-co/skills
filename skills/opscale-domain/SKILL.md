@@ -353,7 +353,15 @@ Spawn the `unit-test-generator` agent in parallel — one instance per domain co
 
 If the layer produced any **support** components (traits, services, helpers, PHPStan rules, casts, exceptions) that are not covered above, spawn `support-test-generator` (`test_level = unit`) for each → `tests/Unit/{Type}/{Name}Test.php`.
 
-These tests verify domain correctness only — immutability, casts, enum cases/transitions, fillable, `$validationRules`, repository scopes, and schema consistency (including that each column resolved to the binding's storage type). Feature tests (Actions) belong to `opscale-logic`; Browser tests belong to `opscale-ui`. Do **not** generate cross-suite tests here.
+These tests must **prove behavior, not existence** — a positive and a negative case wherever one applies. `hasTable` + `hasColumns` + a single cast is not enough. Per component type (full worked examples in `references/sample-output.md`, agent template in `agents/unit-test-generator.md`):
+
+- **Enums** — assert the **exact** DBML case values; a **non-empty `label()`** for *every* case; the **complete `canTransitionTo` matrix** (iterate **all** `(from, to)` pairs against the allowed-transition map, asserting the expected `true`/`false` per pair — never a single sample) plus a terminal-states test (terminal cases transition to nothing).
+- **Schema** (`tests/Unit/Database/{Table}SchemaTest.php`, a suite **separate** from the Model tests) — via `Schema::getColumns()` / `getIndexes()` / `getForeignKeys()`: columns present, **type and nullability per column**, schema **defaults**, PK + **named indexes**, FKs with **`on delete cascade`**, and a **negative integrity** test (`DB::table()->insert()` omitting a required column → `QueryException`).
+- **Models** — casts per column with real semantics (enum→instance, `money`→string `"0.00"`, date→`Carbon`; skip nullable columns the factory helper leaves `null`); `$attributes` defaults via `new Model()`; `$fillable` equals the expected set with `id`/timestamps not assignable; **Validatable** positive **and** negative by calling `$model->validate()` **explicitly** (models do not run `validateOnSaving`, so `save()` does not auto-validate) — negatives are a missing required attribute and a business-type rule violation (`min:0`, `ulid`, `max`); relations **resolved with connected data** (not just `instanceof`), and `belongsToContract` wired via `bindFakeContracts()`.
+- **Repositories** — one positive **and** one negative per method: each `scope*` (includes what qualifies / excludes what does not), helpers like `selectOptions`, and the boot transition guard (valid transition persists; invalid throws `HttpException` **and** does not persist; terminal blocked). A repository **without** a guard must prove a normal update is not blocked.
+- **Value Objects** — immutability + cast round-trip. **Every** domain element (each enum, migration, model, VO, repository, and each repository method) gets a test; if the module has **no** VOs, the agent states that explicitly.
+
+Cross-subdomain relations are exercised via `bindFakeContracts()` in `tests/Helpers.php` (scaffolded by `opscale-init`). This phase **fills that function's body** with one binding per contract this module generated (anonymous class implementing the contract, `query()` over the workbench `User`) — see `references/cross-subdomain-contracts.md`. Feature tests (Actions) belong to `opscale-logic`; Browser tests belong to `opscale-ui`. Do **not** generate cross-suite tests here.
 
 **Wait for user approval before continuing.**
 
@@ -382,10 +390,35 @@ The auto-reported checkboxes are not enough. Run every check below in order; any
 
 1. **Smoke** — (a) `php -l` on every generated file, (b) composer autoload resolves every model class, (c) `testbench migrate:fresh` applies every migration. Verbatim commands in `references/smoke-gate.md`.
 2. **Business types** — assert every business-typed column resolved through `.specify/memory/business-types.php`: no `varchar`/`text`/raw `decimal(8,2)` guesses in migrations for columns whose DBML slug maps elsewhere, and every model's `$validationRules` key set matches its `$fillable` with rules taken from the binding. A column whose slug is absent from the binding is a hard fail.
-3. **Linters** — `composer lint` and `composer analyse` (config installed by `opscale-init`) both exit 0.
-4. **Unit tests green** — `composer test --testsuite=Unit` exits 0. Every generated Unit test runs and passes.
+3. **Test coverage — HARD, blocking.** A green suite proves nothing if the tests were never written (an empty `Unit` suite exits 0). Enumerate the expected test file for **every** generated component and fail on any missing file **or** missing behavioral marker. Run verbatim:
 
-Only when all four are green is the gate `PASS`.
+   ```bash
+   set -e
+   # 1. A test file per component.
+   for f in src/Models/Enums/*.php; do [ -e "$f" ] || continue; c=$(basename "$f" .php)
+     [ -f "tests/Unit/Enums/${c}Test.php" ] || { echo "Missing enum test: $c"; exit 1; }; done
+   for f in src/Models/Repositories/*.php; do [ -e "$f" ] || continue; c=$(basename "$f" .php)
+     [ -f "tests/Unit/Repositories/${c}Test.php" ] || { echo "Missing repository test: $c"; exit 1; }; done
+   for f in src/Models/ValueObjects/*.php; do [ -e "$f" ] || continue; c=$(basename "$f" .php)
+     [ -f "tests/Unit/ValueObjects/${c}Test.php" ] || { echo "Missing VO test: $c"; exit 1; }; done
+   for f in src/Models/*.php; do [ -f "$f" ] || continue; c=$(basename "$f" .php)
+     [ -f "tests/Unit/Models/${c}Test.php" ] || { echo "Missing model test: $c"; exit 1; }; done
+   ls tests/Unit/Database/*SchemaTest.php >/dev/null 2>&1 || { echo "Missing schema test suite"; exit 1; }
+   # 2. Behavioral markers — the tests assert behavior, not just existence.
+   grep -rlq 'getForeignKeys'                tests/Unit/Database/ || { echo "Schema tests: no getForeignKeys"; exit 1; }
+   grep -rlq 'QueryException'                 tests/Unit/Database/ || { echo "Schema tests: no negative-integrity test"; exit 1; }
+   grep -rlq 'canTransitionTo'                tests/Unit/Enums/    || { echo "Enum tests: no transition matrix"; exit 1; }
+   grep -rlq 'label()'                        tests/Unit/Enums/    || { echo "Enum tests: no label() assertion"; exit 1; }
+   grep -rlq -e '->validate()'                tests/Unit/Models/   || { echo "Model tests: no explicit validate()"; exit 1; }
+   grep -rlq 'HttpException'                  tests/Unit/Repositories/ || echo "NOTE: no guarded-transition repository test found — confirm no repository has a boot guard"
+   echo "Test-coverage gate OK"
+   ```
+
+   Adjust the guarded-repository check to a hard `exit 1` for any module whose repositories declare a boot transition guard.
+4. **Linters** — `composer lint` and `composer analyse` (config installed by `opscale-init`) both exit 0.
+5. **Unit tests green** — `composer test --testsuite=Unit` exits 0. Every generated Unit test runs and passes.
+
+Only when all five are green is the gate `PASS`.
 
 **Wait for user approval before continuing.**
 

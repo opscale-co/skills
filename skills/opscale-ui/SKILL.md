@@ -57,22 +57,23 @@ Menu placement (which Resources appear in the sidebar vs. only via tabs/deep-lin
 src/
 └── Nova/
     ├── {ModelName}.php             (Resource — one per DBML entity)
-    ├── Concerns/
-    │   └── {ModelName}Fields.php    (shared fields trait)
     └── Repeatables/
         └── {ModelName}.php          (Repeatable — only for strongly-composed value collections)
 ```
 
-One Resource per DBML entity. Repeatables are emitted only for the strongly-composed collections described above; every entity — parent or child — still gets its own Resource.
+One Resource per DBML entity, with its business fields declared **inline** (no
+shared fields trait). Repeatables are emitted only for the strongly-composed
+collections described above and likewise declare their fields inline; every
+entity — parent or child — still gets its own Resource.
 
 ### Resource anatomy
 
-Every Resource follows a fixed structure: static properties → URI + labels → authorization overrides → `fields()` → optional `fieldsForCreate()` / `cards()` / `actions()`. For the verbatim class skeleton (with placeholder method signatures in canonical order), see `references/resource-anatomy.md` — it also documents `redirectAfterCreate()` for child entities, the `actions()` + `canSee` registration block, and the authorization-override patterns (read-only and state-locked).
+Every Resource follows a fixed structure: static properties → URI + labels → authorization overrides → `fieldsForIndex()` → `fields()` → optional `cards()` / `actions()` → private `statusBadge()`. For the verbatim class skeleton (with placeholder method signatures in canonical order), see `references/resource-anatomy.md` — it also documents `redirectAfterCreate()` for child entities, the `actions()` + `canSee` registration block, and the authorization-override patterns (read-only and state-locked).
 
 ### Static properties
 
 - `$model` — always the full class-string of the Eloquent model
-- `$title` — the column that identifies the record in Nova UI (typically `name`, `subject`, `title`, or `id`)
+- `$title` — a **descriptive** business column that identifies the record in Nova UI (typically `name`, `subject`, `title`, `code`). **Never `id`** — the generator rejects it.
 - `$search` — only text columns meaningful for lookup. Never include `id`.
 
 ### URI + Labels — contextual translation, MANDATORY on every Resource
@@ -106,11 +107,16 @@ The two rules the skill enforces every time:
 
 Logical refs across subdomains (no foreign-key constraint, resolved through a `*Contract` per `opscale-domain`) are NOT rendered as `Text::make(...)->help('Logical reference…')`. They are rendered as a real `Select::make(...)->options(fn () => app({Repo}::class)->forSelect())->searchable()->filterable()->displayUsingLabels()`. The foreign repository contract must expose `forSelect(): array` returning `[id => label]`. See `references/virtual-relations.md` for the full Select pattern and contract extension.
 
-### Fields
+### Fields — two methods only (`fields()` + `fieldsForIndex()`)
 
-Layout rule: if the model has any `HasOne` or `HasMany` relationship, fields must be wrapped in `Tab::group()` with `Tab::make(__('Details'), [...])` for own fields plus one tab per relationship — see `references/aggregate-tabs.md` for the visibility-guard pattern. Flat `fields()` is only allowed when the model has zero HasOne/HasMany. Never expose `id` as a Nova field.
+Every Resource defines exactly two field methods. There is **no** `fieldsForCreate()`, **no** `coreFields()`, and **no** shared `{ModelName}Fields` trait — business fields are declared **inline** in `fields()`.
 
-For the full per-column-type field selection table, standard modifiers, the canonical `created_at`/`updated_at` and `Badge` status patterns, the color convention, and when to extract `fieldsForCreate()`, see `references/fields-catalog.md`.
+- **`fields()`** — the full set (detail + create + update): all business fields inline, plus the status `Badge` and `created_at`/`updated_at`. View differences are handled **per field** with hide/show modifiers (`->onlyOnForms()`, `->hideWhenCreating()`, `->hideWhenUpdating()`, `->exceptOnForms()`, `->hideFromIndex()`, `->onlyOnDetail()`) — never by splitting into another method.
+- **`fieldsForIndex()`** — a curated, **N+1-free** subset: only the most-relevant, cheap-to-render columns (title/identifier + status badge + usually `created_at`), each `->sortable()`. **Never** a relationship field (`BelongsTo`/`HasMany`/`HasOne`/`MorphTo`/virtual `Select`) — those resolve per row and cause N+1 on the index.
+
+The generator emits both methods and a private `statusBadge(): Badge` helper (when the entity has a status enum) called from each. Layout rule for `fields()`: if the model has any `HasOne`/`HasMany`, wrap fields in `Tab::group()` with `Tab::make(__('Details'), [...])` for own fields plus one tab per relationship — see `references/aggregate-tabs.md`. Flat `fields()` is only allowed when the model has zero HasOne/HasMany. Never expose `id` as a Nova field.
+
+For the full per-column-type field selection table, standard modifiers, the canonical `created_at`/`updated_at` and `Badge` status patterns, the color convention, and the `fields()`/`fieldsForIndex()` curation rules, see `references/fields-catalog.md`.
 
 ### Register Actions on Resources (moved here from opscale-logic)
 
@@ -132,46 +138,45 @@ public function actions(NovaRequest $request): array
 
 The full pattern catalogue is copied from logic into `references/canSee-patterns.md`. This registration happens in its own phase (see Steps → "Register Actions on Resources").
 
-### Cards, Repeatables, Shared Fields
+### Cards, Repeatables
 
 - **Cards (Metrics)** — only add a `cards()` method when metrics are defined. Always use `->onlyOnDetail()` unless the metric belongs on the index. Metric classes live in `src/Nova/Metrics/`.
-- **Repeatables** — for strongly-composed value collections edited inline in the parent form, use Nova Repeatables. The child still gets its own Resource. Full pattern + reconciliation in `references/repeatables.md`.
-- **Shared Fields** — when a Resource and its Repeatables share a field set, extract a `{ModelName}Fields` trait instead of redeclaring. Full pattern in `references/shared-fields.md`.
+- **Repeatables** — for strongly-composed value collections edited inline in the parent form, use Nova Repeatables. The child still gets its own Resource, and the Repeatable declares its fields **inline** (no shared trait). Full pattern + reconciliation in `references/repeatables.md`.
 
 ### Code templates
 
 The authoritative templates live on disk:
 
-- `templates/resource.php.tmpl` — Nova Resource
-- `templates/field-trait.php.tmpl` — shared `{ModelName}Fields` trait
-- `templates/repeatable.php.tmpl` — Nova Repeatable
+- `templates/resource.php.tmpl` — Nova Resource (fields inline, `fields()` + `fieldsForIndex()`)
+- `templates/repeatable.php.tmpl` — Nova Repeatable (fields inline)
 
 The JSON contract for each is documented at the top of the matching `scripts/generate-*.mjs` file. The skill never hand-writes Resource PHP — normalize the inputs into the JSON contract and let the script render the `.tmpl`.
 
 ### Domain Rules
 
-1. **One entity = one bundle task in `tasks.md`** — Resource (+ Fields trait, + Repeatable only for strongly-composed collections) ships as a single tracked task. Each Nova bundle task `depends_on` its corresponding `opscale-domain` bundle task.
+1. **One entity = one bundle task in `tasks.md`** — Resource (+ Repeatable only for strongly-composed collections) ships as a single tracked task. Each Nova bundle task `depends_on` its corresponding `opscale-domain` bundle task.
 2. **One Resource per DBML entity** — every table in `docs/plan/dbml.txt` gets its own navigable Resource, parent or child. Each Resource renders its own has-many/has-one relations as tabs. Repeatables are an inline-editing convenience on the parent, never a replacement for the child's Resource.
 3. **No business logic** — Nova Resources are pure UI. No calculations, no service calls, no Eloquent queries inline.
 4. **All strings translatable — zero exceptions** — every user-visible string must be wrapped in `__()`. Only technical identifiers stay untranslated.
-5. **Never expose `id` as a Nova field** — no `ID::make()`, no `Text::make('ID', 'id')`. Human-meaningful business identifiers live in their own column.
+5. **Never expose `id` as a Nova field, and `$title` is never `id`** — no `ID::make()`, no `Text::make('ID', 'id')`; `$title` is a descriptive business column (the generator rejects `title_column: "id"`). Human-meaningful business identifiers live in their own column.
 6. **Foreign keys must use relationship fields** — any column ending in `_id` or marked as `ref:` in the DBML must be exposed via `BelongsTo::make()` (or `MorphTo::make()` for polymorphic). Always add `->searchable()`.
 7. **Tabs MANDATORY for HasOne/HasMany on every Resource** — wrap fields in `Tab::group()` with `Tab::make(__('Details'), [...])` for own fields plus one `Tab::make` per relationship. Applies to every entity's Resource, not just aggregate roots.
 8. **Badge for status** — status columns always use `Badge`. Color convention: success/warning/danger/info.
 9. **DateTime always diffForHumans** — `->displayUsing(fn ($v) => $v?->diffForHumans())->exceptOnForms()`.
 10. **Authorization confirmed per resource** — for every aggregate the skill must ask `can create? / can update? / can delete?` and pass answers to `generate-resource.mjs`.
-11. **`fieldsForCreate()` when needed** — extract create/edit fields when they differ from the display view.
+11. **Two field methods — `fields()` + `fieldsForIndex()`** — every Resource defines both. `fields()` is the full set (detail + create + update) with per-field hide/show for view differences; `fieldsForIndex()` is a curated, N+1-free subset (most-relevant scalar columns + status badge, `->sortable()`), **never** a relationship field. No `fieldsForCreate()`, no `coreFields()`.
 12. **Every Action is registered on exactly one Resource** — each Action in `src/Services/Actions/` is added to the `actions()` of the Resource for the entity it operates on, wrapped in the `canSee` guard matching its SIPOC precondition (`references/canSee-patterns.md`). No Action is left unwired; no Action is registered on two Resources.
 13. **`@extends Resource<Model>`** — always add the generic docblock for IDE type inference.
-14. **Every entity = Resource + shared trait (+ Repeatable when strongly composed)** — the Fields trait always ships; the Repeatable only for value collections edited inline in a parent.
-15. **Shared fields trait** — `Nova/Concerns/{ModelName}Fields.php` holds `coreFields()`. Both the Resource and Repeatable use it via `use {ModelName}Fields`.
+14. **Every entity = Resource (+ Repeatable when strongly composed)** — the Repeatable ships only for value collections edited inline in a parent.
+15. **No shared field traits** — business fields are declared **inline** in the Resource's `fields()` and, for Repeatables, inline in the Repeatable's `fields()`. There is no `Nova/Concerns/{ModelName}Fields.php` and no `coreFields()`.
 16. **Rules via `Model::$validationRules`** — never duplicate rules inline. Use spread: `->rules(...Model::$validationRules['col'])`.
 17. **`uriKey()`, `label()`, `singularLabel()` MANDATORY — labels are CONTEXTUAL translations.** `uri_key`, `label`, `singular_label`, `label_es`, `singular_label_es` are required JSON inputs.
-18. **Lang seeded for BOTH `en` and `es` automatically** — `generate-resource.mjs` and `generate-field-trait.mjs` append every user-visible string to BOTH `lang/en.json` AND `lang/es.json` in a single run. Existing keys are never overwritten. EN-only seeding is forbidden.
+18. **Lang seeded for BOTH `en` and `es` automatically** — `generate-resource.mjs` and `generate-repeatable.mjs` append every user-visible string (labels, field labels, help, badge labels, tab labels) to BOTH `lang/en.json` AND `lang/es.json` in a single run. Existing keys are never overwritten. EN-only seeding is forbidden.
 19. **Every Resource renders its own relations as tabs.** Tab visibility follows the creatable-from-UI rule. Counts are loaded via Nova `$with` / `indexQuery()` withCount on the **Resource**, never on the Eloquent model.
 20. **Child-entity Resources must emit `redirectAfterCreate()`.** The generator emits this method automatically when the JSON contract carries `child_of: { parent_uri, foreign_key }`, landing the operator on the parent's detail page.
-21. **Cross-subdomain logical refs render as Select, never Text** — `Select::make(...)->options(fn () => app({Repo}::class)->forSelect())->searchable()->filterable()->displayUsingLabels()`. Text + `->help('Logical reference…')` is no longer accepted.
-22. **Browser/flow tests are part of this skill's output** — one `tests/Browser/{Flow}FlowTest.php` per subprocess of `docs/plan/process.txt`, driving the flow through Nova. Asserts are user-visible only (toast / redirect / row) — never DB. Generated by the `web-test-generator` agent.
+21. **Cross-subdomain logical refs render as Select, never Text** — `Select::make(...)->options(fn () => app({Repo}::class)->forSelect())->searchable()->filterable()->displayUsingLabels()`. Text + `->help('Logical reference…')` is no longer accepted. **Drivability caveat:** `->searchable()` renders a custom typeahead a Dusk `select()` cannot set. Any column a Browser flow test must set on the **create form** must be a **native `Select`** (no `->searchable()` on that field) — or the flow seeds the record and selects a seeded option (see Rule 23).
+22. **Browser/flow tests EXECUTE the subprocess** — one `tests/Browser/{Flow}FlowTest.php` per subprocess of `docs/plan/process.txt`. Each drives the real flow (create via form → run each Action from the detail toolbar) and asserts **both** the user-visible transition (`->refresh()->waitForAnywhere('<new state>')`, plus no error toast after every submit) **and** the persisted DB post-condition (`->fresh()->status`, counts — reads the shared workbench SQLite). Generated by the `web-test-generator` agent.
+23. **Flow-test drivability gotchas (confirmed).** (a) Only native Nova `Select`/Text inputs are Dusk-drivable; `->searchable()` and `BelongsTo` render custom components `select()` can't set, and two `BelongsTo` to the same resource share a `dusk` id (ambiguous) → use a `Select` per column for anything the test drives. (b) Standalone actions on the **index** toolbar are not drivable (`NovaActionDecorator` doesn't propagate `$standalone`) → register every driven Action on the **detail** toolbar. (c) Fake external-ref IDs typed into forms must be valid ULIDs (Crockford — no `i/l/o/u`) or the `ulid` rule rejects them. Details in `references/flow-test-gotchas.md`.
 
 ## Steps
 
@@ -185,8 +190,8 @@ Build the inventory with **one Resource per entity** — every line of `dbml.txt
 Nova UI inventory for [Module Name]:
 
 Entities ([N] — one Resource each):
-  1. [EntityA]  →  Resource + {EntityA}Fields trait          relations: [rel→tab, …]   actions: [ActionX, …]
-  2. [EntityB]  →  Resource + {EntityB}Fields trait (+ Repeatable, strongly composed in [EntityA])
+  1. [EntityA]  →  Resource          relations: [rel→tab, …]   actions: [ActionX, …]
+  2. [EntityB]  →  Resource (+ Repeatable, strongly composed in [EntityA])
   ...
 
 Flows (from process.txt subprocesses — one Browser test each):
@@ -199,15 +204,14 @@ Flows (from process.txt subprocesses — one Browser test each):
 
 ### Phase 2 — Propose Resource layout via spec-kit
 
-Like `opscale-domain`, the UI layer formalizes its plan through spec-kit so each entity becomes a tracked task inside the MVP feature (`.specify/specs/001-mvp/`). The atomic unit is **the Nova bundle per entity**: Resource + shared Fields trait (+ Repeatable when the entity is a strongly-composed value collection), plus any field customizations (`Concerns/`). Two extra task kinds cover the new responsibilities: **Action registration** and **Browser flow tests**.
+Like `opscale-domain`, the UI layer formalizes its plan through spec-kit so each entity becomes a tracked task inside the MVP feature (`.specify/specs/001-mvp/`). The atomic unit is **the Nova bundle per entity**: Resource (+ Repeatable when the entity is a strongly-composed value collection). Two extra task kinds cover the new responsibilities: **Action registration** and **Browser flow tests**.
 
 **2a. Run `/speckit.plan`** with the entity + flow list:
 
 ```
 /speckit.plan "Nova UI layer for {module-name}: [N] entities from docs/plan/dbml.txt.
 Generate one task per entity, each covering its full Nova bundle:
-  - 1 Resource at src/Nova/{ModelName}.php
-  - 1 shared Fields trait at src/Nova/Concerns/{ModelName}Fields.php
+  - 1 Resource at src/Nova/{ModelName}.php (fields inline, fields() + fieldsForIndex())
   - 1 Repeatable at src/Nova/Repeatables/{ModelName}.php (only for strongly-composed value collections)
 
 Plus:
@@ -224,8 +228,8 @@ Confirm `plan.md` with the user.
 |------------|-------|
 | Title | `Implement {EntityName} Nova bundle` |
 | Description | "Expose {EntityName} in the Nova admin panel" |
-| Outputs | `src/Nova/{Name}.php` + `src/Nova/Concerns/{Name}Fields.php` (+ `src/Nova/Repeatables/{Name}.php` when applicable) |
-| Acceptance | Resource registered, no `ID` field exposed, FKs use BelongsTo/MorphTo, all labels via `__()`, Tabs used if model has HasOne/HasMany |
+| Outputs | `src/Nova/{Name}.php` (+ `src/Nova/Repeatables/{Name}.php` when applicable) |
+| Acceptance | Resource registered, `fields()` + `fieldsForIndex()` present, `$title` not `id`, no `ID` field exposed, FKs use BelongsTo/MorphTo, all labels via `__()`, Tabs used if model has HasOne/HasMany |
 | Depends on | The domain task for the same entity (must be complete) |
 
 Plus the two cross-cutting tasks:
@@ -239,11 +243,11 @@ Plus the two cross-cutting tasks:
 
 ```
 [ ] One bundle task per entity — count matches dbml.txt line count
-[ ] Each task lists Resource + Fields trait (+ Repeatable when applicable) in Outputs
+[ ] Each task lists Resource (+ Repeatable when applicable) in Outputs
 [ ] One 'Register Actions on Resources' task
 [ ] One 'Browser flow test' task per process.txt subprocess
 [ ] Each task depends_on its domain bundle counterpart
-[ ] Resource/Fields trait/Repeatable never split across tasks
+[ ] Resource/Repeatable never split across tasks
 ```
 
 If any check fails, regenerate `tasks.md` before continuing.
@@ -287,17 +291,16 @@ For the verbatim prompt template, the JSON contract mapping, and the EN/ES seedi
 
 ### Phase 4 — Generate Nova bundles (one per entity)
 
-Generation is **always deterministic**. The skill normalizes each entity into the JSON contract for each script, then spawns the wrapper agents in parallel — one Resource + one Fields trait per DBML entity, plus a Repeatable only for strongly-composed collections.
+Generation is **always deterministic**. The skill normalizes each entity into the JSON contract for each script, then spawns the wrapper agents in parallel — one Resource per DBML entity, plus a Repeatable only for strongly-composed collections.
 
 | Script | Template | Agent |
 |--------|----------|-------|
-| `scripts/generate-field-trait.mjs` | `templates/field-trait.php.tmpl` | field-trait-generator |
 | `scripts/generate-resource.mjs` | `templates/resource.php.tmpl` | resource-generator |
 | `scripts/generate-repeatable.mjs` | `templates/repeatable.php.tmpl` | repeatable-generator (only for strongly-composed collections) |
 
-Ordering inside an entity's bundle: field-trait first (so the Resource and any Repeatable can consume it), then the Resource (and Repeatable) in parallel. Entity bundles themselves run fully in parallel — there are no cross-entity dependencies in this phase.
+The Resource and any Repeatable for an entity render in parallel; there is no field-trait to sequence first. Entity bundles themselves run fully in parallel — there are no cross-entity dependencies in this phase.
 
-The JSON contract for each script lives in its header comment. The skill is responsible for picking the right Nova field per column (`Text` / `Select` / `BelongsTo` / `Boolean` / `Number` / `DateTime` …) and emitting the `status_badge` map, `has_many_relationships`, and `has_one_relationships` lists — the script does not look at the Eloquent model. Every entity's has-many/has-one relations become tabs on **its own** Resource (`child_of` is set on child entities so `redirectAfterCreate()` is emitted).
+The JSON contract for each script lives in its header comment. The skill is responsible for picking the right Nova field per column (`Text` / `Select` / `BelongsTo` / `Boolean` / `Number` / `DateTime` …) and building the `fields` array (each entry flagged `on_index` when it belongs on the index), plus the `status_badge` map, `has_many_relationships`, and `has_one_relationships` lists — the script does not look at the Eloquent model. Every entity's has-many/has-one relations become tabs on **its own** Resource (`child_of` is set on child entities so `redirectAfterCreate()` is emitted). The generator rejects `title_column: "id"` and rejects any relationship field flagged `on_index`.
 
 > **Generator contract — one Resource per entity + relation tabs.** `generate-resource.mjs` renders one Resource per invocation; producing one-per-entity is a matter of invoking it once per `dbml.txt` line. It already emits `has_many_relationships` as tabs and `child_of` → `redirectAfterCreate()`. `has_one_relationships` renders as `HasOne` tabs the same way as `has_many` (mirror the `has_many` handling). **TODO (acotado):** if `has_one_relationships` is not yet wired in `scripts/generate-resource.mjs` + `templates/resource.php.tmpl`, add it mirroring `has_many_relationships` (import `HasOne`, one `Tab::make` per relation, `->onlyOnDetail()` on the `HasOne` field). Do NOT hand-write Resource PHP — extend the template/script.
 
@@ -306,7 +309,7 @@ The JSON contract for each script lives in its header comment. The skill is resp
 **Three invariants the JSON normalization must enforce** (the scripts assume they hold):
 
 - Every label the user sees is provided in human form — the script wraps every label, `Tab::make`, `Badge::labels` entry, `Select::options` value label, and `->help()` text in `__()` automatically.
-- Foreign keys with real Eloquent relationships are emitted as `BelongsTo::make` fields. Logical cross-subdomain refs become `Select::make(...)` (see `references/virtual-relations.md`).
+- Foreign keys with real Eloquent relationships are `BelongsTo` field entries in the `fields` array. Logical cross-subdomain refs are `VirtualSelect` field entries (rendered as `Select::make(...)` with a contract resolver — see `references/virtual-relations.md`).
 - Resources with HasMany/HasOne **must** have `has_many_relationships` / `has_one_relationships` populated — the script applies `Tab::group(...)` automatically when either list is non-empty.
 
 After generation, append the Nova layer table to `.specify/specs/001-mvp/plan.md` with the `Task ID` column tying each file back to its `tasks.md` entry.
@@ -344,9 +347,9 @@ For each subprocess block in `process.txt`, spawn the `web-test-generator` agent
 - `actions_triggered` — the Action identifiers invoked in the flow
 - `package_namespace`, `output_dir: tests/Browser/`
 
-The agent writes `tests/Browser/{Flow}FlowTest.php` — one `#[Test]` per path (happy + each gateway branch + each UI-visible failure). **Assertions are user-visible only** — success/error toast (`assertNoErrorToast()` after every `submitForm()`), redirect, list row, persisted field value — **never DB state** (that is the Feature suite's job, owned by `opscale-logic`). Login via `$this->loginToNova($browser)` using the Dusk harness `opscale-init` stood up.
+The agent writes `tests/Browser/{Flow}FlowTest.php` — one `#[Test]` per path (happy + each gateway branch + each UI-visible failure). Each method **executes** the subprocess, it does not merely visit it: create the `crud:create` entities through the real Nova form (`/resources/{uri}/new` → fill native Selects/Text → `@create-button`), then run each Action from the **detail toolbar** via the `runAction($browser, '{id}', [...])` helper (`[data-action-id="{id}"]` → fill `form [dusk="{col}"]` with `select`/`type`, dates in `mdY` → `@confirm-action-button`). Assert **both** layers: the visible transition (`->refresh()->waitForAnywhere('<new state>')`, and `assertNoErrorToast()` after every submit — `runAction()` does this) **and** the persisted DB post-condition (`->fresh()->status`, row counts). A test that only does `visit` + `waitForText` + `assertSee('<a button>')` has not exercised the flow and fails the gate. Login via `$this->loginToNova($browser)`; `openAction`/`runAction`/`waitForAnywhere` come from the `opscale-init` Dusk harness.
 
-**Seed data:** flows start from real pages, so records must exist. Reuse the domain factories/seeder — either drive the create path through the Nova form itself, or seed via `workbench/database/seeders/DatabaseSeeder` before the flow.
+**Seed data:** flows start from real pages, so records must exist. Reuse the domain factories/seeder — either drive the create path through the Nova form itself, or seed via `workbench/database/seeders/DatabaseSeeder` before the flow. Respect the drivability gotchas (Rule 23, `references/flow-test-gotchas.md`): drive only native Selects, run Actions from the detail toolbar, and type only valid-ULID fake ids.
 
 Add one `Browser flow test — {Subprocess}` task per subprocess to `.specify/specs/001-mvp/tasks.md`.
 
@@ -357,8 +360,24 @@ Add one `Browser flow test — {Subprocess}` task per subprocess to `.specify/sp
 The module is feature-complete only when the UI compiles, boots, and the flows pass end-to-end. Run, in order:
 
 1. **Resource smoke checks** — `php -l` on every file, reflection-load every Resource class, `testbench workbench:build` boots with Nova mounted. Verbatim commands in `references/smoke-gate.md`.
-2. **Linters** — `composer run lint` (Pint / PHPStan per `opscale-init`) clean.
-3. **Browser tests** — `composer run test:browser` green (chains `build`, runs the Dusk suite headless against the Nova DevTool workbench).
+2. **Flow-test coverage — HARD, blocking.** One flow test per subprocess, and each must EXECUTE (not visualize) the flow. Run verbatim:
+
+   ```bash
+   set -e
+   # A flow test file per subprocess block in process.txt (blocks separated by a blank line).
+   count=$(awk 'BEGIN{RS="";} NF{c++} END{print c}' docs/plan/process.txt)
+   files=$(ls tests/Browser/*FlowTest.php 2>/dev/null | wc -l | tr -d ' ')
+   [ "$files" -ge "$count" ] || { echo "Flow tests ($files) < subprocess blocks ($count)"; exit 1; }
+   # Each flow test executes the subprocess and asserts the effect (UI + DB).
+   for t in tests/Browser/*FlowTest.php; do
+     grep -q 'data-action-id\|runAction('     "$t" || { echo "$t: does not run any Action from the detail toolbar"; exit 1; }
+     grep -q 'waitForAnywhere('               "$t" || { echo "$t: no post-Action transition assertion"; exit 1; }
+     grep -q -- '->fresh()'                   "$t" || { echo "$t: no DB post-condition assertion"; exit 1; }
+   done
+   echo "Flow-test coverage gate OK"
+   ```
+3. **Linters** — `composer run lint` (Pint / PHPStan per `opscale-init`) clean.
+4. **Browser tests** — `composer run test:browser` green (chains `build`, runs the Dusk suite headless against the Nova DevTool workbench).
 
 Any failure means the skill is NOT done. Do NOT mark the gate `PASS` on file count — reflection-load and a green Browser run are what catch the bugs behind syntactically valid PHP. On Browser failure, inspect `tests/Browser/screenshots/` + `tests/Browser/console/` and fix selectors / waits / seed data / Resource code, then re-run. Mark the matching `001-mvp` tasks complete only after this gate passes.
 

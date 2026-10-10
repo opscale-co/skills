@@ -60,10 +60,13 @@ Report: missing models, missing repository traits
 
 ### Chain 5: Model → Nova Resource (when Nova layer exists)
 
-For every aggregate root model:
-1. A Nova Resource MUST exist in `src/Nova/`
-2. A shared fields trait MUST exist in `src/Nova/Concerns/`
-3. A Repeatable MUST exist in `src/Nova/Repeatables/`
+For every entity model:
+1. A Nova Resource MUST exist in `src/Nova/` (one per DBML entity), defining
+   both `fields()` and `fieldsForIndex()`, with `$title` a descriptive column
+   (never `id`). Business fields are inline — there is no `src/Nova/Concerns/`
+   fields trait.
+2. A Repeatable in `src/Nova/Repeatables/` exists ONLY for strongly-composed
+   value collections — its absence is not a defect.
 
 Report: missing Nova files
 
