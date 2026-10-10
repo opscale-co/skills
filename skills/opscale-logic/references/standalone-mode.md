@@ -75,18 +75,22 @@ is `opscale-ui`'s job.
 
 Exactly as BPMN-driven Phase 4: spawn `feature-test-generator` once per Action →
 `tests/Feature/{ActionName}Test.php`. Each test seeds via the domain factories,
-calls `Action::run()` against the real DB (no mocks), asserts business state +
-events, and covers the four cases — positive, negative, false-positive,
-false-negative (definitions in the SKILL body). Standalone Actions derive the
-false-positive / false-negative cases from the business rules the user described
-rather than from a SIPOC.
+invokes the Action via the `executeAction()` helper against the real DB (no mocks),
+asserts persisted state (`->fresh()`) + events (string identifier), and names the
+four cases `it('positive: …')` / `it('negative: …')` / `it('false-positive: …')` /
+`it('false-negative: …')` (definitions in the SKILL body). Standalone Actions
+derive the false-positive / false-negative cases from the business rules the user
+described rather than from a SIPOC.
 
 #### Phase 6 — Update plan.md + gate (if specs exist)
 
 If `.specify/specs/` exists, append the same Logic Layer table as in BPMN-driven
 Phase 4 (Action file, Test file, Class, id, Task ID, Rules) to
-`.specify/specs/001-mvp/plan.md`. Then run the Phase 5 gate: linters +
-`composer test --testsuite=Feature` green. Otherwise skip the plan append and
-just run the gate.
+`.specify/specs/001-mvp/plan.md`. Then run the Phase 5 gate — including the
+always-on Check #0 (every Action has a Feature test present, with all four named
+cases + `->fresh()` + `Event::assert`) followed by linters +
+`composer test --testsuite=Feature` green. The Check #0 test-presence loop is NOT
+gated on `bpmn.bpmn`, so it runs for standalone modules too; only the SIPOC check
+inside it is skipped. Otherwise skip the plan append and just run the gate.
 
 ---

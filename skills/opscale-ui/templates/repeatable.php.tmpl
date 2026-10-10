@@ -2,21 +2,36 @@
 
 namespace {{package_namespace}}\Nova\Repeatables;
 
+{{#each field_imports}}
+use {{.}};
+{{/each}}
 use Laravel\Nova\Fields\Repeater\Repeatable;
 use Laravel\Nova\Http\Requests\NovaRequest;
-use {{package_namespace}}\Nova\Concerns\{{model_name}}Fields;
+use {{package_namespace}}\Models\{{parent_model}} as {{parent_model}}Model;
+{{#each enum_imports}}
+use {{.}};
+{{/each}}
+{{#each related_resource_imports}}
+use {{.}};
+{{/each}}
+{{#each contract_imports}}
+use {{.}};
+{{/each}}
 
 class {{model_name}} extends Repeatable
 {
-    use {{model_name}}Fields;
-
     /**
-     * Get the fields displayed by the repeatable.
+     * Get the fields displayed by the repeatable. Declared inline — there is
+     * no shared field trait; rules reference the parent model's rule set.
      *
      * @return array<mixed>
      */
     public function fields(NovaRequest $request): array
     {
-        return $this->coreFields($request);
+        return [
+{{#each field_blocks}}
+            {{.}},
+{{/each}}
+        ];
     }
 }

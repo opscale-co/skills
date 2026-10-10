@@ -68,11 +68,41 @@ Badge::make(__('Status'), 'status')
 Badge color convention: `success` = completed/active, `warning` = pending/draft,
 `danger` = failed/error/cancelled, `info` = in-progress/neutral.
 
-## `fieldsForCreate()` helper — extract when
+## Two field methods — `fields()` + `fieldsForIndex()`
 
-- Create/edit form needs different fields than the detail/index view
-- Advanced settings panel is collapsible
-- Template fields or dynamic sections need separation
+Every Resource defines exactly two field methods. There is **no**
+`fieldsForCreate()`, **no** `coreFields()`, and **no** shared field trait.
+
+### `fields()` — the full set (detail + create + update)
+
+All business fields declared inline, plus the status `Badge` and
+`created_at`/`updated_at`. When the model has any `HasOne`/`HasMany`, wrap in
+`Tab::group()` (see Layout rules). View differences are handled **per field**
+with hide/show modifiers — never by splitting into another method:
+
+| Modifier | Effect |
+|----------|--------|
+| `->onlyOnForms()` | create + update only |
+| `->hideWhenCreating()` | hidden on the create form |
+| `->hideWhenUpdating()` | hidden on the update form |
+| `->showOnCreating()` / `->showOnUpdating()` | force-show on that form |
+| `->exceptOnForms()` | detail + index, never on forms (timestamps, computed) |
+| `->hideFromIndex()` | present everywhere except the index (verbose text) |
+| `->onlyOnDetail()` | detail page only |
+
+### `fieldsForIndex()` — curated, N+1-free subset
+
+Only the **most-relevant, cheap-to-render** columns — enough to identify and
+scan a row, nothing more. Curation rules:
+
+- Include the title/business-identifier column, the status `Badge`, and usually
+  `created_at`. Add at most a couple of other scalar columns operators scan by.
+- Mark index fields `->sortable()`.
+- **Never** include a relationship field (`BelongsTo`, `HasMany`, `HasOne`,
+  `MorphTo`, virtual `Select`) — Nova resolves each row's relation and the
+  index degrades to N+1. Relationship fields belong in `fields()` only.
+- Do not restate every field from `fields()`. A small amount of duplication
+  between the two methods is expected and preferred over a shared helper.
 
 ## Virtual relations — Select with options/searchable/filterable
 

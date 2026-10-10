@@ -33,6 +33,7 @@ Use `Repeatable` classes when a parent contains a typed nested collection
 - Lives in `src/Nova/Repeatables/`
 - Extends `Laravel\Nova\Fields\Repeater\Repeatable`
 - Only a `fields(NovaRequest $request): array` method — no authorization overrides
+- Fields are declared **inline** — there is no shared `{ModelName}Fields` trait
 - Rules use `[ParentModel]::$validationRules['column']` via spread operator
 - All strings wrapped in `__()`
 
@@ -92,7 +93,7 @@ class [RepeatableName] extends Repeatable
 use Laravel\Nova\Fields\Repeater;
 use [PackageNamespace]\Nova\Repeatables\[RepeatableName];
 
-// Inside fields() or fieldsForCreate():
+// Inside the parent Resource's fields():
 Repeater::make(__('[Collection Label]'), '[column_or_relation]')
     ->repeatables([
         [RepeatableName]::make(),

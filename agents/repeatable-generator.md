@@ -3,8 +3,8 @@ name: repeatable-generator
 description: >
   Generates exactly one Laravel Nova Repeatable class by invoking the
   deterministic generator script in opscale-ui. Spawned by opscale-ui in
-  parallel — one instance per nested collection. Consumes the shared
-  {ModelName}Fields trait.
+  parallel — one instance per nested collection. Declares its fields inline
+  (no shared trait); rules reference the parent model.
 tools: Bash, Read, Write
 model: haiku
 maxTurns: 3
@@ -20,10 +20,13 @@ generator script and report its output.
 JSON payload from the parent skill, schema at the top of
 `~/.claude/skills/opscale-ui/scripts/generate-repeatable.mjs`.
 
-Required: `model_name`, `parent_model`, `package_namespace`, `output_dir`.
+Required: `model_name`, `parent_model`, `package_namespace`, `output_dir`,
+`fields`.
 
-Make sure field-trait-generator has produced the `{ModelName}Fields` trait
-before this runs — the Repeatable consumes it.
+`fields` is the inline field list (same shape as generate-resource.mjs). Each
+entry declares `field`, `label`, `label_es`, `attribute`, and optional
+`modifiers`; a `{ "rules": "col" }` modifier resolves against the **parent**
+model's `$validationRules`. There is no shared field trait.
 
 ## Procedure
 
@@ -50,4 +53,4 @@ On non-zero exit, return stderr prefixed with `ERROR:`.
 - Do not edit the template or script.
 - Do not write PHP directly.
 - Do not retry on `CONFLICT`.
-- Do not add fields directly — they belong in the shared field trait.
+- Do not add fields beyond those in the JSON `fields` array.

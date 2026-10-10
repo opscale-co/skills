@@ -9,6 +9,7 @@ configures (Phase 4f). Read the relevant block when the body points you here.
 - [phpunit.dusk.xml (Browser — separate config)](#phpunitduskxml-browser--separate-config)
 - [tests/TestCase.php (Unit + Feature)](#teststestcasephp-unit--feature)
 - [tests/Pest.php](#testspestphp) — incl. full testbench.yaml, DuskTestCase, Browser example, Nova selectors, seeders, phpstan.neon, duster.json, pint.json
+- [tests/Helpers.php](#testshelpersphp) — executeAction() + bindFakeContracts(), autoloaded via composer autoload-dev
 - [composer.json — scripts block](#composerjson--scripts-block-the-replicable-test-commands) — build/serve/test/test:browser/check + package.json mirror
 - [Troubleshooting](#troubleshooting) — Dusk 500s, port conflicts, ChromeDriver mismatch, session persistence
 
@@ -153,6 +154,70 @@ uses(TestCase::class)->in('Unit', 'Feature');
 
 **NOTE**: Browser tests are NOT bootstrapped in Pest.php — they use `DuskTestCase` directly
 via class inheritance and run with a separate phpunit config (`phpunit.dusk.xml`).
+
+## tests/Helpers.php
+
+Shared test helpers for the Unit + Feature suites. Autoloaded via the composer
+`autoload-dev` `files` entry (below) so every test — and Pest's own bootstrap —
+sees these functions. `executeAction()` is the four-case entry point for Feature
+tests; `bindFakeContracts()` is populated per module by `opscale-domain` (it knows
+which cross-subdomain contracts it generated).
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Eloquent\Builder;
+use Workbench\App\Models\User;
+
+/**
+ * Run an Opscale Action against the real test DB and return its envelope.
+ * The single entry point Feature tests use for all four cases (positive /
+ * negative / false-positive / false-negative) — never call handle() directly.
+ *
+ * @param  class-string  $action
+ * @param  array<string, mixed>  $params
+ * @return array<string, mixed>
+ */
+function executeAction(string $action, array $params = []): array
+{
+    return $action::run($params);
+}
+
+/**
+ * Bind anonymous fake implementations of the module's cross-subdomain contracts
+ * so Unit tests can resolve belongsToContract() relations without the host app.
+ * Each fake's query() targets the workbench User (the stand-in aggregate).
+ *
+ * opscale-domain fills the body with one binding per generated contract, e.g.:
+ *
+ *   app()->bind(\[PackageNamespace]\Contracts\AgencyContract::class, fn () =>
+ *       new class implements \[PackageNamespace]\Contracts\AgencyContract {
+ *           public function query(): Builder { return User::query(); }
+ *       });
+ *
+ * If the module has NO cross-subdomain contracts, keep this a documented no-op.
+ */
+function bindFakeContracts(): void
+{
+    // Generated per module by opscale-domain — see references/cross-subdomain-contracts.md.
+}
+```
+
+Register it in `composer.json` (owned by `opscale-init` / `opscale-domain`):
+
+```json
+"autoload-dev": {
+    "psr-4": {
+        "[PackageNamespace]\\Tests\\": "tests/",
+        "Workbench\\": "workbench/"
+    },
+    "files": [
+        "tests/Helpers.php"
+    ]
+}
+```
 
 ---
 
@@ -344,6 +409,60 @@ abstract class DuskTestCase extends BaseTestCase
                 ->assertMissing('[role="alert"].error')
                 ->assertMissing('.notification--error');
         });
+
+        // Wait for text ANYWHERE on the page (badge, table cell, header, toast).
+        // Used after ->refresh() to assert a status transition surfaced by the UI,
+        // regardless of which component renders it: ->refresh()->waitForAnywhere('Approved').
+        Browser::macro('waitForAnywhere', function (string $text, ?int $seconds = null) {
+            /** @var Browser $this */
+            return $this->waitForTextIn('body', $text, $seconds);
+        });
+    }
+
+    /**
+     * Open a detail-toolbar Action modal and wait for its confirm button.
+     *
+     * Actions are driven from the DETAIL toolbar via `[data-action-id="{id}"]`,
+     * NOT the index toolbar: standalone actions on the index are not Dusk-drivable
+     * because NovaActionDecorator does not propagate `$standalone` to the DOM.
+     * Register every driven Action on the detail toolbar.
+     */
+    final protected function openAction(Browser $browser, string $actionId): Browser
+    {
+        return $browser
+            ->waitFor('[data-action-id="'.$actionId.'"]')
+            ->click('[data-action-id="'.$actionId.'"]')
+            ->waitFor('@confirm-action-button');
+    }
+
+    /**
+     * Open an Action, fill its modal, confirm, and assert no error toast.
+     *
+     * $fields is an ordered list of [kind, dusk, value] triples so field order is
+     * preserved and both native Selects and Text inputs are supported:
+     *   $this->runAction($browser, 'approve-application', [
+     *       ['select', 'committee_id', $committeeUlid],
+     *       ['type', 'decided_on', '01-15-2026'],   // dates in mdY
+     *   ]);
+     *
+     * Modal fields are addressed as `form [dusk="{column}"]` (scoped to the modal
+     * form). Only native Nova Selects and Text inputs are drivable this way —
+     * ->searchable() / BelongsTo render custom components that select() cannot set.
+     */
+    final protected function runAction(Browser $browser, string $actionId, array $fields = []): Browser
+    {
+        $this->openAction($browser, $actionId);
+
+        foreach ($fields as [$kind, $dusk, $value]) {
+            $selector = 'form [dusk="'.$dusk.'"]';
+            $kind === 'select'
+                ? $browser->select($selector, $value)
+                : $browser->type($selector, $value);
+        }
+
+        return $browser
+            ->submitForm('@confirm-action-button')
+            ->assertNoErrorToast();
     }
 
     /**
@@ -436,25 +555,45 @@ abstract class DuskTestCase extends BaseTestCase
 
 ### Browser Test Example — Full Flow
 
-Browser tests drive the **real user flow end to end** — log in, navigate, fill
-forms, submit, open Actions, fill Action modals, submit, assert no error toast
-appears at any step. One file per flow in `docs/plan/process.txt`;
+Browser tests **execute the subprocess end to end** — log in, create the trigger
+record through the real Nova form, run each Action of the subprocess from the
+detail toolbar, then assert both the **user-visible transition** and the
+**persisted DB post-condition**. One file per subprocess in `docs/plan/process.txt`;
 one test method per flow path (happy path + each gateway branch + each failure
 path that is observable in the UI).
 
-**Layer split — what belongs where:**
-- **Browser test** asserts the **user-visible** outcome: success toast appears,
-  the redirect / list row happens, no error toast at any step.
-- **Feature test** asserts the **business state**: event dispatched, row mutated,
-  side effect persisted, side queue dispatched.
+**A flow test must exercise the subprocess, not visualize it.** `visit` +
+`waitForText` + `assertSee('<a button>')` proves nothing ran. Drive the create
+form, drive each Action, and assert the effect.
 
-A Browser test that only navigates without filling and submitting is incomplete
-— the flow has not been exercised.
+**Layer split — what belongs where:**
+- **Browser test** drives the real UI and asserts the **user-visible transition**
+  (`->refresh()->waitForAnywhere('<new state>')`) **and** the resulting **DB
+  post-condition** (`->fresh()->status`, row counts). Both matter: the UI proves
+  the operator can do it, the DB proves it actually happened.
+- **Feature test** asserts the Action's **business contract** in isolation —
+  events dispatched, envelope, the four cases (positive / negative /
+  false-positive / false-negative). It does not drive the browser.
+
+**DB assertions read the shared workbench SQLite.** They work because the Dusk
+server and the test process both open the *file* SQLite built by the
+`testbench.yaml` `workbench:` sequence — that is why `phpunit.dusk.xml` must NOT
+set `DB_DATABASE` (an `:memory:` override would give the test process a private,
+empty DB and every `->fresh()` would return null).
 
 **Submit + toast convention** — every form / Action submit MUST go through
 `$browser->submitForm()` (centralizes the headless-vs-visual pause) and MUST be
-immediately followed by `$browser->assertNoErrorToast()`. Do NOT add raw
-`->pause()` calls; the pause is keyed off `DUSK_HEADLESS` / `DUSK_PAUSE_MS`.
+immediately followed by `$browser->assertNoErrorToast()`; the `runAction()` helper
+does both for you. Do NOT add raw `->pause()` calls; the pause is keyed off
+`DUSK_HEADLESS` / `DUSK_PAUSE_MS`.
+
+**Create-form field gotchas (confirmed):**
+- Only native Nova `Select` and Text inputs are Dusk-drivable. `->searchable()`
+  and `BelongsTo` render custom components that `select()` cannot set, and two
+  `BelongsTo` to the same resource share a `dusk` id (ambiguous). Use a `Select`
+  per column on the create form for anything a flow test must set.
+- Fake external-reference IDs typed into the form must be **valid ULIDs**
+  (Crockford base32 — no `i`, `l`, `o`, `u`) or the field's `ulid` rule rejects them.
 
 ```php
 <?php
@@ -469,43 +608,50 @@ use [PackageNamespace]\Tests\DuskTestCase;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * One file per flow in docs/plan/process.txt.
+ * One file per subprocess in docs/plan/process.txt.
  * Inside: one test method per path (happy + branches + visible failures).
+ * Each method CREATES via the form, RUNS the subprocess Actions, and asserts
+ * the transition (UI) + the post-condition (DB).
  */
 final class [FlowName]FlowTest extends DuskTestCase
 {
     #[Test]
     final public function happy_path_completes_end_to_end(): void
     {
-        $this->browse(function (Browser $browser): void {
+        $code = 'APP-'.now()->timestamp;   // unique per run
+
+        $this->browse(function (Browser $browser) use ($code): void {
             $this->loginToNova($browser)
-                // 1. Create the trigger record via the Nova form
+                // 1. Create the trigger record via the real Nova form.
+                //    Use Selects per column — searchable()/BelongsTo are not drivable.
+                //    External-ref ids must be valid ULIDs.
                 ->visit('/nova/resources/[uri-key]/new')
                 ->waitForText('Create [Singular Label]')
-                ->type('@[field_a]', '[value_a]')
-                ->select('@[field_b]', '[option_b]')
+                ->type('@[code_field]', $code)
+                ->select('@[status_field]', '[Initial State]')
                 ->submitForm('@create-button')
                 ->assertNoErrorToast()
-                ->waitForText('The [Singular Label] was created!')   // Nova success toast
+                ->waitForText('The [Singular Label] was created!');
 
-                // 2. Run the Action that advances the flow
-                ->click('@action-dropdown')
-                ->click('[dusk="action-[action-identifier]"]')
-                ->waitFor('@confirm-action-button')
-                ->type('@[action_field]', '[action_value]')
-                ->submitForm('@confirm-action-button')
-                ->assertNoErrorToast()
-                ->waitForText('The action ran successfully!')        // Nova success toast
+            // 2. Run each Action of the subprocess from the detail toolbar.
+            //    runAction() opens [data-action-id], fills the modal, confirms,
+            //    and asserts no error toast.
+            $this->runAction($browser, '[action-identifier]', [
+                ['type', '[action_field]', '[action_value]'],  // dates in mdY: 01-15-2026
+            ]);
 
-                // 3. Assert user-visible outcome — leave business asserts to Feature tests
-                ->visit('/nova/resources/[uri-key]')
-                ->assertSee('[expected list row text]');
+            // 3. Assert the transition is visible AND persisted.
+            $browser->refresh()->waitForAnywhere('[New State]');
         });
+
+        // DB post-condition — reads the shared workbench SQLite the server wrote.
+        $record = [ModelName]::query()->where('[code_field]', $code)->firstOrFail();
+        expect($record->fresh()->status)->toBe([StatusEnum]::[NewState]);
     }
 
     // One additional test method per gateway branch, e.g.:
-    //   #[Test] final public function path_when_credit_score_too_low_shows_rejection(): void { ... }
-    //   #[Test] final public function path_when_external_lookup_fails_surfaces_validation(): void { ... }
+    //   #[Test] final public function path_when_credit_score_too_low_takes_rejection_branch(): void { ... }
+    //   #[Test] final public function path_when_amount_above_limit_shows_validation(): void { ... }
 }
 ```
 
@@ -529,13 +675,20 @@ Nova components expose these Dusk selectors:
 | Submit button (Create form) | `@create-button` | `->submitForm('@create-button')` |
 | Submit button (Update form) | `@update-button` | `->submitForm('@update-button')` |
 | Delete modal trigger | `@open-delete-modal-button` | `->click('@open-delete-modal-button')` |
-| Action dropdown (index/detail) | `@action-dropdown` | `->click('@action-dropdown')` |
-| Action menu item | `[dusk="action-{action-identifier}"]` | `->click('[dusk="action-approve-loan"]')` |
+| Action button (detail toolbar) | `[data-action-id="{action-identifier}"]` | `->click('[data-action-id="approve-loan"]')` — drive Actions from the DETAIL toolbar (see gotcha) |
+| Action modal field | `form [dusk="{column}"]` | `->select('form [dusk="committee_id"]', $ulid)` / `->type('form [dusk="decided_on"]', '01-15-2026')` |
 | Action modal confirm | `@confirm-action-button` | `->submitForm('@confirm-action-button')` |
 | Error toast (Nova 4/5) | `.toasted.toasted-error` | (asserted by `assertNoErrorToast()`) |
 | Error toast (Nova 3 legacy) | `[role="alert"].error` | (asserted by `assertNoErrorToast()`) |
 | Error toast (fallback) | `.notification--error` | (asserted by `assertNoErrorToast()`) |
 | Success toast (Nova 4/5) | `.toasted.toasted-success` | `->waitFor('.toasted.toasted-success')` |
+
+**Action toolbar gotcha (confirmed).** Drive Actions from the **detail** toolbar
+(`[data-action-id="{id}"]`), not the index toolbar. Standalone actions on the index
+are not Dusk-drivable — `NovaActionDecorator` does not propagate `$standalone` to the
+DOM, so the button never carries a usable selector. Register every Action a flow test
+must run on the detail toolbar. The `openAction()` / `runAction()` helpers on
+`DuskTestCase` encapsulate this.
 
 ### Nova UI Text Reference
 

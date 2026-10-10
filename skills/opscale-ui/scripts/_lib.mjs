@@ -256,6 +256,111 @@ export function loadTemplate(templatePath) {
 
 import { join } from 'node:path';
 
+// --- Nova field-block renderer -------------------------------------------
+//
+// Shared by generate-resource.mjs and generate-repeatable.mjs so a business
+// field renders identically wherever it appears. A field descriptor looks like:
+//
+//   {
+//     "field":     "Text" | "Textarea" | "Select" | "BelongsTo" | ...,
+//     "label":     "Code",            // EN — required
+//     "attribute": "code",
+//     "enum_class":       "OrderType",           // Select only
+//     "related_resource": "Customer",            // BelongsTo/MorphTo only
+//     "contract_class":   "CounterpartyContract",// VirtualSelect only
+//     "modifiers": [ "sortable", { "rules": "code" }, "hideWhenCreating" ]
+//   }
+//
+// String modifiers pass straight through as `->name()`, so every Nova
+// hide/show helper (onlyOnForms, hideWhenCreating, hideWhenUpdating,
+// showOnCreating, showOnUpdating, exceptOnForms, hideFromIndex, onlyOnDetail,
+// onlyOnIndex, showOnIndex, sortable, filterable, searchable,
+// displayUsingLabels) works without any special-casing here.
+
+export const FIELD_NAMESPACE = {
+  Text:          'Laravel\\Nova\\Fields\\Text',
+  Textarea:      'Laravel\\Nova\\Fields\\Textarea',
+  Trix:          'Laravel\\Nova\\Fields\\Trix',
+  Number:        'Laravel\\Nova\\Fields\\Number',
+  Boolean:       'Laravel\\Nova\\Fields\\Boolean',
+  Select:        'Laravel\\Nova\\Fields\\Select',
+  // VirtualSelect is a cross-subdomain logical-ref Select (see
+  // references/virtual-relations.md). It renders Nova's Select with options
+  // sourced from a contract registered in the host app — never Text + help.
+  VirtualSelect: 'Laravel\\Nova\\Fields\\Select',
+  BelongsTo:     'Laravel\\Nova\\Fields\\BelongsTo',
+  MorphTo:       'Laravel\\Nova\\Fields\\MorphTo',
+  Date:          'Laravel\\Nova\\Fields\\Date',
+  DateTime:      'Laravel\\Nova\\Fields\\DateTime',
+  Currency:      'Laravel\\Nova\\Fields\\Currency',
+  Email:         'Laravel\\Nova\\Fields\\Email',
+  Password:      'Laravel\\Nova\\Fields\\Password',
+  File:          'Laravel\\Nova\\Fields\\File',
+  Image:         'Laravel\\Nova\\Fields\\Image',
+  Slug:          'Laravel\\Nova\\Fields\\Slug',
+};
+
+// Relationship-typed fields must never appear in fieldsForIndex() — Nova would
+// resolve each row's relation and produce N+1 queries on the index.
+export const RELATION_FIELDS = new Set(['BelongsTo', 'MorphTo', 'HasOne', 'HasMany', 'VirtualSelect']);
+
+// `contIndent` aligns any multi-line head continuation (Select's ->options
+// block) with the chained modifiers that renderFieldBlock appends after it.
+export function fieldHead(f, contIndent = '                ') {
+  const c = contIndent;
+  switch (f.field) {
+    case 'BelongsTo':
+      return `BelongsTo::make(__('${f.label}'), '${f.attribute}', ${f.related_resource}::class)`;
+    case 'MorphTo':
+      return `MorphTo::make(__('${f.label}'), '${f.attribute}')`;
+    case 'Select':
+      return `Select::make(__('${f.label}'), '${f.attribute}')\n`
+        + `${c}->options(\n`
+        + `${c}    collect(${f.enum_class}::cases())\n`
+        + `${c}        ->mapWithKeys(fn ($case) => [$case->value => __($case->name)])\n`
+        + `${c}        ->all()\n`
+        + `${c})`;
+    case 'VirtualSelect':
+      // Cross-subdomain logical ref. The Select pulls its options from a
+      // contract bound by the host application — the contract MUST expose
+      // forSelect(): array.
+      return `Select::make(__('${f.label}'), '${f.attribute}')\n`
+        + `${c}->options(fn () => app(${f.contract_class}::class)->forSelect())`;
+    default:
+      return `${f.field}::make(__('${f.label}'), '${f.attribute}')`;
+  }
+}
+
+export function renderModifiers(modifiers, modelName) {
+  return (modifiers || []).map(m => {
+    if (typeof m === 'string') return `->${m}()`;
+    if (m.rules)               return `->rules(...${modelName}Model::$validationRules['${m.rules}'])`;
+    if (m.help)                return `->help(__('${m.help}'))`;
+    if (m.default !== undefined) {
+      const v = typeof m.default === 'string' ? `'${m.default}'` : m.default;
+      return `->default(${v})`;
+    }
+    if (m.min !== undefined)   return `->min(${m.min})`;
+    if (m.max !== undefined)   return `->max(${m.max})`;
+    // Valueless flag objects, e.g. { "hideFromIndex": true } — treat as ->key().
+    const keys = Object.keys(m);
+    if (keys.length === 1 && m[keys[0]] === true) return `->${keys[0]}()`;
+    throw new Error(`Unknown modifier: ${JSON.stringify(m)}`);
+  });
+}
+
+// `contIndent` is the whitespace prepended to each continuation line (chained
+// modifiers / multi-line option blocks). The head line is emitted bare — the
+// caller/template supplies its base indent. Standard Nova style puts
+// continuations 4 spaces deeper than the head, so pass head-indent + 4.
+export function renderFieldBlock(f, modelName, contIndent = '                ') {
+  if (!FIELD_NAMESPACE[f.field]) throw new Error(`Unknown Nova field: ${f.field}`);
+  const head = fieldHead(f, contIndent);
+  const mods = renderModifiers(f.modifiers, modelName);
+  if (mods.length === 0) return head;
+  return [head, ...mods].join('\n' + contIndent);
+}
+
 export function seedTranslations(langDir, locale, entries) {
   const filePath = join(langDir, `${locale}.json`);
   let json = {};

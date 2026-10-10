@@ -190,7 +190,7 @@ skills/        → 14 skills (orchestrators — own workflow and user dialogue)
   └─ opscale-{domain,ui,logic}/
        scripts/   → deterministic Node.js generators (.mjs)
        templates/ → mustache-lite PHP templates (.php.tmpl)
-agents/        → 24 agents (execution units — own parallelizable work)
+agents/        → 23 agents (execution units — own parallelizable work)
 ```
 
 Skills manage the sequence, interact with the user, and spawn agents. Agents do the actual work — generating files, running validators, checking gates — in parallel where possible. Agents receive normalized input from the skill and generate code independently.
@@ -342,8 +342,7 @@ All deterministic wrappers — each runs the matching `scripts/generate-*.mjs` a
 
 | Agent | Spawned by | Script | Unit |
 |-------|-----------|--------|------|
-| `resource-generator` | opscale-ui | `generate-resource.mjs` | One per aggregate root |
-| `field-trait-generator` | opscale-ui | `generate-field-trait.mjs` | One per aggregate |
+| `resource-generator` | opscale-ui | `generate-resource.mjs` | One per DBML entity |
 | `repeatable-generator` | opscale-ui | `generate-repeatable.mjs` | One per nested collection |
 
 #### Logic Generation (app, module, package)

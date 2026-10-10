@@ -16,8 +16,8 @@ class [ModelName] extends Resource
 {
     // 1. Static properties
     public static $model = [ModelName]::class;
-    public static $title = '[display_field]';
-    public static $search = ['id', '[searchable_field]'];
+    public static $title = '[descriptive_field]';   // a business column — NEVER 'id'
+    public static $search = ['[searchable_field]'];  // never 'id'
 
     // 2. URI + labels
     public static function uriKey(): string
@@ -29,11 +29,12 @@ class [ModelName] extends Resource
     public function authorizedToUpdate(Request $request): bool
     public function authorizedToDelete(Request $request): bool
 
-    // 4. Fields
-    public function fields(NovaRequest $request): array
+    // 4. fieldsForIndex() — curated, N+1-free subset for the index view
+    public function fieldsForIndex(NovaRequest $request): array
 
-    // 5. fieldsForCreate() — only when create/edit fields differ from display
-    public function fieldsForCreate(): array
+    // 5. fields() — full set (detail + create + update); per-field hide/show
+    //    handles view differences (no separate create/core method)
+    public function fields(NovaRequest $request): array
 
     // 6. Cards (metrics) — only when metrics exist
     public function cards(NovaRequest $request): array
@@ -41,8 +42,23 @@ class [ModelName] extends Resource
     // 7. Actions — every Action from src/Services/Actions/ that targets this
     //    entity, registered with its canSee guard (see Phase 5)
     public function actions(NovaRequest $request): array
+
+    // 8. statusBadge() — private single-field helper, only when the entity
+    //    has a status enum; called from both field methods
+    private function statusBadge(): Badge
 }
 ```
+
+**Two field methods, never more.** Every Resource defines exactly
+`fieldsForIndex()` (curated) and `fields()` (full). There is **no**
+`fieldsForCreate()`, **no** `coreFields()`, and **no** shared `{ModelName}Fields`
+trait — business fields are declared inline in `fields()`. Form-view
+differences are expressed per field with Nova's hide/show modifiers
+(`->onlyOnForms()`, `->hideWhenCreating()`, `->hideWhenUpdating()`,
+`->exceptOnForms()`, `->hideFromIndex()`, `->onlyOnDetail()`). `fieldsForIndex()`
+carries only the most-relevant, cheap-to-render columns — **never** a
+`BelongsTo`/`HasMany`/`HasOne`/`MorphTo`/virtual-`Select` field, which would
+resolve per row and cause N+1 on the index. See `references/fields-catalog.md`.
 
 ## Actions block — registered by opscale-ui (Phase 5)
 
