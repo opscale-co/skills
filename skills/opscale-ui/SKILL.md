@@ -81,9 +81,19 @@ Every Resource follows a fixed structure: static properties → URI + labels →
 
 `uriKey()`, `label()`, `singularLabel()` are non-optional and labels must be **contextual translations**, not literal `subdomain · entity` joins. The generator prompts the user for EN and ES per resource. Both label methods go through `__()`.
 
-### i18n — seed BOTH `lang/en.json` AND `lang/es.json`
+### i18n — namespaced KEYS seeded into BOTH `lang/en.json` AND `lang/es.json`
 
-Every `__()`-wrapped string must have keys in both `lang/en.json` and `lang/es.json` immediately after generation. EN-only seeding shifts work to the user post-generation and gets silently dropped. Existing keys are never overwritten — re-runs only fill gaps.
+Every translatable item carries a **namespaced KEY** plus its EN and ES values.
+The template emits `__(key)`; seeding writes `key → en` into `lang/en.json` and
+`key → es` into `lang/es.json`. Domain strings use `{prefix}.{resource}.{slug}`
+(`ventas.opportunity.title`, `ventas.opportunity.tab.quotes`,
+`ventas.opportunity.status.won`); generic fixed UI strings use the global
+`opscale.*` namespace (`opscale.details`, `opscale.status`, `opscale.created_at`,
+`opscale.updated_at`) and are supplied by the assembler. `uriKey()` stays a raw
+kebab slug — never translated. Field/resource/tab/status descriptors therefore
+carry `label` = the KEY (not English) plus `label_en`/`label_es`. Every
+`__()`-wrapped key must exist in both lang files immediately after generation;
+existing keys are never overwritten — re-runs only fill gaps.
 
 For the full i18n contract — the three sources of translation values, the URI+label method shape, the contextual-label rules and example — see `references/lang-seeding.md`.
 
@@ -172,7 +182,7 @@ The JSON contract for each is documented at the top of the matching `scripts/gen
 15. **No shared field traits** — business fields are declared **inline** in the Resource's `fields()` and, for Repeatables, inline in the Repeatable's `fields()`. There is no `Nova/Concerns/{ModelName}Fields.php` and no `coreFields()`.
 16. **Rules via `Model::$validationRules`** — never duplicate rules inline. Use spread: `->rules(...Model::$validationRules['col'])`.
 17. **`uriKey()`, `label()`, `singularLabel()` MANDATORY — labels are CONTEXTUAL translations.** `uri_key`, `label`, `singular_label`, `label_es`, `singular_label_es` are required JSON inputs.
-18. **Lang seeded for BOTH `en` and `es` automatically** — `generate-resource.mjs` and `generate-repeatable.mjs` append every user-visible string (labels, field labels, help, badge labels, tab labels) to BOTH `lang/en.json` AND `lang/es.json` in a single run. Existing keys are never overwritten. EN-only seeding is forbidden.
+18. **Lang seeded for BOTH `en` and `es` automatically, by namespaced KEY** — every translatable carries a namespaced key (`{prefix}.{resource}.{slug}` for domain strings, `opscale.*` for fixed UI) plus `label_en`/`label_es`. `generate-resource.mjs` and `generate-repeatable.mjs` write `key → en` into `lang/en.json` and `key → es` into `lang/es.json` in a single run. Existing keys are never overwritten. EN-only seeding is forbidden; `uriKey()` is never translated.
 19. **Every Resource renders its own relations as tabs.** Tab visibility follows the creatable-from-UI rule. Counts are loaded via Nova `$with` / `indexQuery()` withCount on the **Resource**, never on the Eloquent model.
 20. **Child-entity Resources must emit `redirectAfterCreate()`.** The generator emits this method automatically when the JSON contract carries `child_of: { parent_uri, foreign_key }`, landing the operator on the parent's detail page.
 21. **Cross-subdomain logical refs render as Select, never Text** — `Select::make(...)->options(fn () => app({Repo}::class)->forSelect())->searchable()->filterable()->displayUsingLabels()`. Text + `->help('Logical reference…')` is no longer accepted. **Drivability caveat:** `->searchable()` renders a custom typeahead a Dusk `select()` cannot set. Any column a Browser flow test must set on the **create form** must be a **native `Select`** (no `->searchable()` on that field) — or the flow seeds the record and selects a seeded option (see Rule 23).
@@ -276,7 +286,9 @@ For each aggregate, confirm Nova CRUD access (default from dbml.json permissions
 
 The answers map directly to the JSON contract of `generate-resource.mjs`: `can_create`, `can_update`, `can_delete`. When any flag is `false` (a `"false"` predicate or an operator `n`), the generated Resource emits the corresponding `authorizedTo*` method returning `false`. When all three are `true` with no field predicate, no overrides are emitted. A field predicate becomes the state-conditional `authorizedToUpdate`/`authorizedToDelete` added in the customization pass.
 
-Read-only / system-generated resources (all-`false` permissions) answer `n / n / n`. State-locked resources (field predicate) answer `Y` here and get the predicate's guard added in the customization pass.
+Read-only / system-generated resources (all-`false` permissions) answer `n / n / n`. State-locked resources (field predicate) answer `Y` here and get the predicate's guard compiled in Phase 4.
+
+The confirmed answers are the input to the Phase 4 `resource-authorization-generator`, which compiles each predicate into the `authorize: { create, update, delete }` contribution with the shared `compilePredicate` helper (`false` → deny, `true` → omit the override, a field predicate → `{ expr }`). No predicate is hand-translated into PHP.
 
 Do not proceed to generation until every entity has all three answers recorded.
 
@@ -286,24 +298,62 @@ Do not proceed to generation until every entity has all three answers recorded.
 
 For each entity, ask the user for the **contextual** plural and singular label in both English and Spanish. Do NOT auto-derive from the entity name — only the operator/owner knows whether `application` in `credits` should read "Credit application" vs "Loan application". Reject empty answers, reject literal `subdomain · entity` concatenations, reject the bare entity name when more than one subdomain is in play. Enum option labels and any custom Tab labels get the same EN/ES treatment.
 
-For the verbatim prompt template, the JSON contract mapping, and the EN/ES seeding rules, see `references/lang-seeding.md`.
+These contextual values are the input to the Phase 4 `resource-labels-generator`, which pairs them with the namespaced KEYS (`{prefix}.{resource}.{slug}`) the fields/tabs/actions agents minted and returns the EN/ES values the assembler seeds. For the verbatim prompt template, the JSON contract mapping, and the EN/ES seeding rules, see `references/lang-seeding.md`.
 
 **Wait for user approval before continuing.**
 
-### Phase 4 — Generate Nova bundles (one per entity)
+### Phase 4 — Generate Nova bundles (fleet of section agents → assembler)
 
-Generation is **always deterministic**. The skill normalizes each entity into the JSON contract for each script, then spawns the wrapper agents in parallel — one Resource per DBML entity, plus a Repeatable only for strongly-composed collections.
+Generation is **always deterministic**. A Nova Resource is no longer built by one
+monolithic generator: it is assembled from the structured contributions of a
+**fleet of single-concern section agents**, each reading only its narrow
+`dbml.json` / `bpmn.json` slice and returning a JSON fragment. The deterministic
+`scripts/generate-resource.mjs` assembler merges the fragments and renders the
+class. The LLM supplies only the contextual EN/ES label values (via
+`resource-labels-generator`) and subjective display tweaks.
 
-| Script | Template | Agent |
-|--------|----------|-------|
-| `scripts/generate-resource.mjs` | `templates/resource.php.tmpl` | resource-generator |
-| `scripts/generate-repeatable.mjs` | `templates/repeatable.php.tmpl` | repeatable-generator (only for strongly-composed collections) |
+**Per entity, derive the shared inputs once** (`MODULE_PREFIX` from the
+constitution, the business-types binding, the entity's `dbml.json` slice and the
+module's `bpmn.json`/`graph.json`), then **fan out the six section agents IN
+PARALLEL**:
 
-The Resource and any Repeatable for an entity render in parallel; there is no field-trait to sequence first. Entity bundles themselves run fully in parallel — there are no cross-entity dependencies in this phase.
+| Agent | Concern | Reads | Emits |
+|-------|---------|-------|-------|
+| `resource-fields-generator` | ordered `fields[]` + badge inputs | entity fields + enums + business-types binding | `fields[]`, `has_status`, `status_enum`, `status_badge` |
+| `resource-authorization-generator` | CRUD authorization | entity `permissions` | `authorize: { create, update, delete }` (via `compilePredicate`) |
+| `resource-index-generator` | the index view | entity fields | `title_column`, `search_columns`, `on_index` flags (long-text `raw` Str::limit cap) |
+| `resource-labels-generator` | contextual i18n (interactive) | entity + enums + the minted keys | resource/field/tab/status KEYS + EN/ES values, `uri_key` |
+| `resource-tabs-generator` | relation tabs | entity `relationships[]` + child `permissions.create` | `has_many_relationships`, `has_one_relationships` (`creatable_from_ui`) |
+| `resource-actions-generator` | Action wiring | `bpmn.json`/`graph.json` logic ops + entity enum | `actions[]` with `can_see_expr` |
 
-The JSON contract for each script lives in its header comment. The skill is responsible for picking the right Nova field per column (`Text` / `Select` / `BelongsTo` / `Boolean` / `Number` / `DateTime` …) and building the `fields` array (each entry flagged `on_index` when it belongs on the index), plus the `status_badge` map, `has_many_relationships`, and `has_one_relationships` lists — the script does not look at the Eloquent model. Every entity's has-many/has-one relations become tabs on **its own** Resource (`child_of` is set on child entities so `redirectAfterCreate()` is emitted). The generator rejects `title_column: "id"` and rejects any relationship field flagged `on_index`.
+**Merge** the six contributions into one `generate-resource.mjs` input (fold the
+labels-generator's EN/ES onto the matching field/tab/status descriptors as
+`label_en`/`label_es`), **run the assembler**, then gate. A Repeatable is emitted
+in parallel only for strongly-composed value collections (same inline-fields +
+i18n-key scheme via `generate-repeatable.mjs`). Entity bundles run fully in
+parallel — no cross-entity dependencies.
 
-> **Generator contract — one Resource per entity + relation tabs.** `generate-resource.mjs` renders one Resource per invocation; producing one-per-entity is a matter of invoking it once per `dbml.json` `entities[]` entry. It already emits `has_many_relationships` as tabs and `child_of` → `redirectAfterCreate()`. `has_one_relationships` renders as `HasOne` tabs the same way as `has_many` (mirror the `has_many` handling). **TODO (acotado):** if `has_one_relationships` is not yet wired in `scripts/generate-resource.mjs` + `templates/resource.php.tmpl`, add it mirroring `has_many_relationships` (import `HasOne`, one `Tab::make` per relation, `->onlyOnDetail()` on the `HasOne` field). Do NOT hand-write Resource PHP — extend the template/script.
+**The deterministic rules each agent applies** (do NOT re-derive per entity — the
+agents own them): field selection from the business type / `foreignKey` /
+`externalRef` / `enum`; `calculated → exceptOnForms`; FK `→ BelongsTo + searchable`;
+`externalRef → VirtualSelect` (filterable + displayUsingLabels, never searchable —
+drivable); long-text `→ hideFromIndex`; filterable on date/money/number/boolean;
+field order pk→fk/ext→rest→date; status enum → `Badge` (filterable, sortable);
+`title_column`/`$search` are descriptive columns, never `id`; tabs count-gated
+unless the child is creatable; `child_of` on child entities → `redirectAfterCreate()`.
+See `references/fields-catalog.md`, `references/aggregate-tabs.md`,
+`references/resource-anatomy.md`.
+
+**Foundation the assembler now provides** (shared, copied by the logic/domain
+builds): `compilePredicate(pred, enumCaseResolver)` in `scripts/_lib.mjs`
+(predicate grammar → PHP boolean over `$this`, resolving enum values to
+`{EnumClass}::{Case}`); the `raw` modifier passthrough
+(`{ "raw": "displayUsing(fn ($v) => Str::limit((string) $v, 40))" }`, with `Str`
+auto-imported); the namespaced i18n-key seeding (`__(key)`; `key → en` into
+`en.json`, `key → es` into `es.json`); the `authorize` block; and the `actions`
+block. The JSON contract lives in the header of `scripts/generate-resource.mjs`.
+The skill never hand-writes Resource PHP — normalize into the JSON contract and
+let the assembler render the template.
 
 **Business types drive field selection.** Before picking a field heuristically, check the field's `dbml.json` **`type`**: the business-type slug IS the declared field type (`{ "code": "contact_email", "type": "email" }`), and the Nova field, its `config`, and its `->help()` hint come from the Laravel/Nova **binding** (`.specify/memory/business-types.php`; canonical slugs in `docs/plan/context/business-types.md`) — an `email` field renders `Email::make`, a `money` field renders `Currency::make` with its currency config, never a bare `Text::make`. Heuristics apply only to `enum`-typed fields (field carries `enum:"<code>"` → the Enum's select) and to `fk` fields (`foreignKey` → `BelongsTo`, `externalRef` → virtual `Select`). **Why:** the registry is what guarantees the same business type looks and validates identically across every module.
 

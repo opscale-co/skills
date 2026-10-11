@@ -8,11 +8,20 @@
 //     "output_dir":           "src/Nova",
 //     "title_column":         "code",                // descriptive column — NEVER "id"
 //     "search_columns":       ["code"],
-//     "uri_key":              "orders",
-//     "label":                "Orders",                 // EN plural — contextual
-//     "singular_label":       "Order",                  // EN singular — contextual
-//     "label_es":             "Pedidos",                // ES plural — contextual
-//     "singular_label_es":    "Pedido",                 // ES singular — contextual
+//     "uri_key":              "orders",                 // raw kebab slug — NOT translated
+//     // i18n: `label`/`singular_label` are the KEYS wrapped in __(); the
+//     // _en/_es are the values seeded into en.json/es.json. Domain keys are
+//     // namespaced `{prefix}.{resource}.{slug}` (ventas.order.title); the
+//     // global fixed-UI keys (opscale.details/status/created_at/updated_at)
+//     // are supplied by the generator. Legacy callers may pass the English
+//     // string as the key (label:"Orders") with just _es — then the key
+//     // doubles as the English value.
+//     "label":                "ventas.order.label",        // KEY (plural)
+//     "label_en":             "Orders",                    // EN plural
+//     "label_es":             "Pedidos",                   // ES plural
+//     "singular_label":       "ventas.order.singular",     // KEY (singular)
+//     "singular_label_en":    "Order",                     // EN singular
+//     "singular_label_es":    "Pedido",                    // ES singular
 //
 //     // Business fields — rendered inline in fields() (full set). Flag the
 //     // most-relevant, cheap-to-render ones with `on_index: true` to place
@@ -71,9 +80,23 @@
 //       "foreign_key": "application_id"          // column on this aggregate that points to the parent
 //     },
 //
-//     "can_create": true,     // optional — default true; when false, emit authorizedToCreate
-//     "can_update": true,     // optional — default true; when false, emit authorizedToUpdate
-//     "can_delete": true,     // optional — default true; when false, emit authorizedToDelete
+//     // Authorization. Each of create/update/delete is:
+//     //   true           → allowed; no override method emitted
+//     //   false          → emit the override returning false
+//     //   { "expr": "…" } → emit the override returning <expr> (PHP already
+//     //                     compiled from the entity permission predicate by
+//     //                     compilePredicate — see _lib.mjs)
+//     "authorize": { "create": true, "update": { "expr": "$this->status === OrderStatus::Draft" }, "delete": false },
+//     // Legacy (still accepted): can_create/can_update/can_delete booleans —
+//     // false maps to an authorize-deny, true omits the override.
+//
+//     // Actions registered on this Resource's actions() method. Each renders
+//     // `(new {action_class})` with an optional ->canSee(fn () => <expr>).
+//     "actions": [
+//       { "action_class": "ApproveOrder", "label": "ventas.order.action.approve",
+//         "label_en": "Approve", "label_es": "Aprobar",
+//         "can_see_expr": "$this->status === OrderStatus::Draft" }
+//     ],
 //
 //     "lang_dir": "lang"      // optional — defaults to <project_root>/lang (derived from output_dir)
 //   }
@@ -103,15 +126,16 @@ import {
   FIELD_NAMESPACE, RELATION_FIELDS, renderFieldBlock,
 } from './_lib.mjs';
 
-// EN → ES dictionary for fixed UI strings. The dictionary is intentionally
-// small — it only covers labels the generator emits literally. Domain labels
-// (resource names, tab names tied to entities, status badge labels, enum
-// option labels, business field labels) are always user-supplied per locale.
+// Fixed UI strings the template emits literally, under the global `opscale.*`
+// namespace. The KEY is what the template wraps in __(); the en/es values are
+// seeded into both lang files. Domain labels (resource names, tab names, status
+// badge labels, business field labels) carry their OWN namespaced keys supplied
+// per resource — they never come from here.
 const FIXED_STRINGS = {
-  'Details':     { en: 'Details',      es: 'Detalles' },
-  'Status':      { en: 'Status',       es: 'Estado' },
-  'Created At':  { en: 'Created At',   es: 'Creado en' },
-  'Updated At':  { en: 'Updated At',   es: 'Actualizado en' },
+  'opscale.details':    { en: 'Details',      es: 'Detalles' },
+  'opscale.status':     { en: 'Status',       es: 'Estado' },
+  'opscale.created_at': { en: 'Created At',   es: 'Creado en' },
+  'opscale.updated_at': { en: 'Updated At',   es: 'Actualizado en' },
 };
 
 function resolveLangDir(input) {
@@ -155,14 +179,24 @@ function main() {
     }
   }
 
-  const normalizeRelation = (r) => ({
-    name:              r.name,
-    label:             r.label_en || r.label || r.name,
-    label_es:          r.label_es || r.label_en || r.label || r.name,
-    related_resource:  r.related_resource,
-    creatable_from_ui: r.creatable_from_ui !== false, // default: creatable, always visible
-    count_column:      r.count_column || `${r.name}_count`,
-  });
+  // `label` carries the i18n KEY the template wraps in __() (e.g.
+  // `ventas.opportunity.tab.quotes`); `label_en`/`label_es` are the values
+  // seeded into the lang files. Legacy callers pass only `label_en`/`label_es`
+  // (no key) — the English string then doubles as the key.
+  const normalizeRelation = (r) => {
+    const en  = r.label_en || r.label || r.name;
+    const es  = r.label_es || en;
+    const key = r.label || r.label_en || r.name;
+    return {
+      name:              r.name,
+      label:             key,
+      label_en:          en,
+      label_es:          es,
+      related_resource:  r.related_resource,
+      creatable_from_ui: r.creatable_from_ui !== false, // default: creatable, always visible
+      count_column:      r.count_column || `${r.name}_count`,
+    };
+  };
 
   const has_many = (input.has_many_relationships || []).map(normalizeRelation);
   const has_one  = (input.has_one_relationships  || []).map(normalizeRelation);
@@ -224,26 +258,61 @@ function main() {
   const contract_imports = [...contractSet].sort()
     .map(c => `${input.package_namespace}\\Contracts\\${c}`);
 
-  const can_create = input.can_create !== false; // default true
-  const can_update = input.can_update !== false;
-  const can_delete = input.can_delete !== false;
+  // --- Authorization -------------------------------------------------------
+  // New contract: `authorize: { create, update, delete }`, each one of
+  //   true          → allowed; no override method emitted
+  //   false         → emit the override returning false
+  //   { expr: "…" } → emit the override returning the (already-compiled) PHP
+  // Legacy contract: can_create / can_update / can_delete booleans — false maps
+  // to an authorize-deny (returns false), true omits the override.
+  const authorizeOf = (key, legacyFlag) => {
+    const a = input.authorize && input.authorize[key] !== undefined
+      ? input.authorize[key]
+      : (legacyFlag === false ? false : true);
+    if (a === false)                           return { emit: true,  body: 'return false;' };
+    if (a && typeof a === 'object' && a.expr)  return { emit: true,  body: `return ${a.expr};` };
+    return { emit: false, body: '' }; // true → no override
+  };
+  const authorize_create = authorizeOf('create', input.can_create);
+  const authorize_update = authorizeOf('update', input.can_update);
+  const authorize_delete = authorizeOf('delete', input.can_delete);
 
-  // Normalize status_badge.labels — accept either { case, label } (legacy
-  // EN-only) or { case, label_en, label_es } (new). Template still reads
-  // `.label`, so we project to that field; the ES copy is seeded separately
-  // into the lang file below.
+  // --- Actions -------------------------------------------------------------
+  // Each entry: { action_class, label?, label_en?, label_es?, can_see_expr? }.
+  // The template registers `(new {action_class})` with an optional
+  // `->canSee(fn () => {can_see_expr})`. Labels (when supplied) are seeded so
+  // the Action's display name has keys in both lang files.
+  const actions = (input.actions || []).map(a => ({
+    action_class: a.action_class,
+    can_see_expr: a.can_see_expr || '',
+  }));
+  for (const a of actions) {
+    if (!a.action_class) throw new Error('actions[]: every entry needs an action_class');
+  }
+  const action_imports = [...new Set((input.actions || []).map(a => a.action_class))].sort()
+    .map(c => `${input.package_namespace}\\Services\\Actions\\${c}`);
+
+  // Normalize status_badge.labels — accept { case, label (key), label_en,
+  // label_es } (new) or { case, label_en, label_es } / { case, label } (legacy).
+  // The template wraps `.label` in __(), so `.label` is the i18n KEY.
   const status_badge = input.status_badge || { map: [], labels: [] };
   const status_badge_normalized = {
     map: status_badge.map || [],
     labels: (status_badge.labels || []).map(entry => ({
       case:  entry.case,
-      label: entry.label_en || entry.label,
+      label: entry.label || entry.label_en,
     })),
   };
-  const status_badge_es_labels = (status_badge.labels || []).map(entry => ({
-    en: entry.label_en || entry.label,
-    es: entry.label_es || entry.label_en || entry.label,
+  const status_badge_label_i18n = (status_badge.labels || []).map(entry => ({
+    key: entry.label || entry.label_en,
+    en:  entry.label_en || entry.label,
+    es:  entry.label_es || entry.label_en || entry.label,
   }));
+
+  // `Str` is imported only when a field uses a `raw` modifier that references
+  // it (the long-text index cap displayUsing(... Str::limit ...)).
+  const uses_str = businessFields.some(f =>
+    (f.modifiers || []).some(m => typeof m === 'object' && m && m.raw && /\bStr::/.test(m.raw)));
 
   const child_of = input.child_of && input.child_of.parent_uri && input.child_of.foreign_key
     ? { parent_uri: input.child_of.parent_uri, foreign_key: input.child_of.foreign_key }
@@ -257,14 +326,18 @@ function main() {
     uri_key:                  input.uri_key,
     label:                    input.label,
     singular_label:           input.singular_label,
-    can_create,
-    can_update,
-    can_delete,
+    authorize_create,
+    authorize_update,
+    authorize_delete,
+    uses_str,
     field_blocks,
     index_field_blocks,
     has_status:               !!input.has_status,
     status_enum:              input.status_enum || '',
     status_badge:             status_badge_normalized,
+    has_actions:              actions.length > 0,
+    actions,
+    action_imports,
     has_many_relationships:   has_many,
     has_one_relationships:    has_one,
     has_tabs,
@@ -284,38 +357,43 @@ function main() {
   const outPath = resolve(input.output_dir, `${modelName}.php`);
   const result = writeOrConflict(outPath, rendered);
 
-  // Build per-locale translation maps. The key is the English string the
-  // template emits inside __(). The value is the translation for the target
-  // locale.
+  // Build the key→{en,es} translation map. The KEY is what the template wraps
+  // in __(); domain keys are namespaced (`{prefix}.{resource}.{slug}`), fixed
+  // UI keys are global (`opscale.*`). Each key seeds its EN value into en.json
+  // and its ES value into es.json.
   const enEntries = new Map();
   const esEntries = new Map();
 
-  function add(en, es) {
-    if (!en) return;
-    if (!enEntries.has(en)) enEntries.set(en, en);
-    if (!esEntries.has(en)) esEntries.set(en, es || en);
+  function add(key, en, es) {
+    if (!key) return;
+    if (!enEntries.has(key)) enEntries.set(key, en != null ? en : key);
+    if (!esEntries.has(key)) esEntries.set(key, es != null ? es : (en != null ? en : key));
   }
 
-  add(input.label,          input.label_es);
-  add(input.singular_label, input.singular_label_es);
+  add(input.label,          input.label_en          || input.label,          input.label_es);
+  add(input.singular_label, input.singular_label_en || input.singular_label, input.singular_label_es);
 
-  // Business field labels + help strings.
+  // Business field labels + help strings. `f.label` is the KEY; `f.label_en`
+  // is its English value (legacy: the key doubles as the English string).
   for (const f of businessFields) {
-    add(f.label, f.label_es);
+    add(f.label, f.label_en || f.label, f.label_es);
     for (const m of (f.modifiers || [])) {
-      if (typeof m === 'object' && m && m.help) add(m.help, m.help_es || m.help);
+      if (typeof m === 'object' && m && m.help) {
+        add(m.help, m.help_en || m.help, m.help_es || m.help_en || m.help);
+      }
     }
   }
 
-  // Fixed UI strings emitted by the template.
-  for (const key of ['Details', 'Created At', 'Updated At']) {
-    add(key, FIXED_STRINGS[key].es);
-  }
-  if (input.has_status) add('Status', FIXED_STRINGS['Status'].es);
+  // Fixed UI strings emitted by the template under the global opscale.* keys.
+  add('opscale.details',    FIXED_STRINGS['opscale.details'].en,    FIXED_STRINGS['opscale.details'].es);
+  add('opscale.created_at', FIXED_STRINGS['opscale.created_at'].en, FIXED_STRINGS['opscale.created_at'].es);
+  add('opscale.updated_at', FIXED_STRINGS['opscale.updated_at'].en, FIXED_STRINGS['opscale.updated_at'].es);
+  if (input.has_status) add('opscale.status', FIXED_STRINGS['opscale.status'].en, FIXED_STRINGS['opscale.status'].es);
 
-  for (const entry of status_badge_es_labels) add(entry.en, entry.es);
-  for (const rel of has_many)                 add(rel.label, rel.label_es);
-  for (const rel of has_one)                  add(rel.label, rel.label_es);
+  for (const e of status_badge_label_i18n) add(e.key, e.en, e.es);
+  for (const rel of has_many)               add(rel.label, rel.label_en, rel.label_es);
+  for (const rel of has_one)                add(rel.label, rel.label_en, rel.label_es);
+  for (const a of (input.actions || []))    add(a.label, a.label_en || a.label, a.label_es);
 
   const langDir = resolveLangDir(input);
   const enResult = seedTranslations(langDir, 'en', enEntries);
@@ -332,9 +410,11 @@ function main() {
   console.log(resultLine('HAS_MANY', has_many.length));
   console.log(resultLine('HAS_ONE', has_one.length));
   console.log(resultLine('STATUS_BADGE', input.has_status ? 'yes' : 'no'));
-  console.log(resultLine('CAN_CREATE', can_create ? 'yes' : 'no'));
-  console.log(resultLine('CAN_UPDATE', can_update ? 'yes' : 'no'));
-  console.log(resultLine('CAN_DELETE', can_delete ? 'yes' : 'no'));
+  console.log(resultLine('ACTIONS', actions.length));
+  const authDesc = (a) => a.emit ? (a.body === 'return false;' ? 'deny' : 'guard') : 'allow';
+  console.log(resultLine('AUTHORIZE_CREATE', authDesc(authorize_create)));
+  console.log(resultLine('AUTHORIZE_UPDATE', authDesc(authorize_update)));
+  console.log(resultLine('AUTHORIZE_DELETE', authDesc(authorize_delete)));
   console.log(resultLine('CHILD_OF', child_of ? `${child_of.parent_uri}.${child_of.foreign_key}` : '(root)'));
   console.log(resultLine('COUNT_STRATEGY', count_strategy));
   console.log(resultLine('LANG_EN_PATH',  enResult.path));

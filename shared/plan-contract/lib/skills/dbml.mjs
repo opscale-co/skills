@@ -63,10 +63,11 @@ function semantic(json, R, { planDir } = {}) {
       lastRank = Math.max(lastRank, r);
     }
 
-    // Calculated fields are derived by the system — never a pk or a reference.
+    // Calculated = not user-entered (computed OR set by a Logic Action). It may
+    // be a reference the logic writes (e.g. approved_by_id), but never the pk.
     for (const f of fields) {
-      if (f.calculated && (isPk(f) || isRef(f)))
-        R.fail(`${e.code}.${f.code}: a calculated field cannot be a pk or a foreign/external reference`);
+      if (f.calculated && isPk(f))
+        R.fail(`${e.code}.${f.code}: the pk cannot be calculated`);
     }
 
     // No tenant_id anywhere (single-tenant).

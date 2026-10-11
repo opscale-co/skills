@@ -17,7 +17,7 @@ description: >
 
 Transform the planned module into a complete PHP domain layer. **`docs/plan/dbml.json`
 is both the inventory and the detail** for this layer: its `entities[]` (with their
-`fields[]`, categories, business-type slugs, enums, FKs, external refs, `permissions`) and
+`fields[]`, business-type slugs, enums, FKs, external refs, `permissions`) and
 `enums[]` (code/name/values) are the exhaustive list of classes to generate. The **graph**
 (`docs/plan/graph.json`) is the module's overall build manifest/hierarchy — but it no longer
 carries entity/enum nodes, so the entity/enum set is enumerated from `dbml.json` directly.
@@ -102,7 +102,7 @@ When `docs/plan/context/external-refs.md` carries an `external-refs` index, the 
 
 The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (either the line `**Module Prefix:** {value}` or the unsubstituted `[MODULE_PREFIX]` token) and apply it automatically.
 
-**Each `dbml.json` field → one column, keyed off its single type discriminator.** Every entry in `entities[].fields[]` carries **exactly one** of `type` (a business-type slug) / `enum` (an enum `code`) / `foreignKey` (a sibling entity `code`) / `externalRef` (a cross-subdomain slug), plus `nullable`, optional `default`, and an optional `calculated: true` (a derived value — generate the column normally, but it is not user-input; `opscale-logic`/`opscale-ui` exclude it from capture forms). There is no `category` property: the pk is the `id` field typed `identifier`; fields are already ordered pk → references → the rest. Normalize each into the generator JSON as:
+**Each `dbml.json` field → one column, keyed off its single type discriminator.** Every entry in `entities[].fields[]` carries **exactly one** of `type` (a business-type slug) / `enum` (an enum `code`) / `foreignKey` (a sibling entity `code`) / `externalRef` (a cross-subdomain slug), plus `nullable`, optional `default`, and an optional `calculated: true` (a derived value — generate the column normally, but it is not user-input; `opscale-logic`/`opscale-ui` exclude it from capture forms). There is no `category` property: the pk is the `id` field typed `identifier`, and one **inferred field order** is applied identically to migrations and models by the shared `orderFields(fields)` helper in `scripts/_lib.mjs` (see "Inferred field order" below). Normalize each into the generator JSON as:
 
 | field shape in `dbml.json` | migration column | model side |
 |----------------------------|------------------|------------|
@@ -111,6 +111,18 @@ The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (eith
 | `enum:"<enum_code>"` | `$table->string('{col}')->default('{default}')` | cast to the Enum class |
 | `foreignKey:"<entity_code>"` (intra-subdomain) | `$table->ulid('{col}')` + FK to `{prefix}_{target_table}.id` | `BelongsTo` relation |
 | `externalRef:"<slug>"` (cross-subdomain) | `$table->ulid('{col}')` + comment `// logical reference to {slug} — no FK constraint` | no Eloquent relation (or `belongsToContract` via the external-refs index) |
+
+**Inferred field order (no `category`) — applied identically in BOTH migrations and models.** The shared `orderFields(fields)` helper in `scripts/_lib.mjs` sorts every field into one canonical sequence; `generate-migration.mjs` and `generate-model.mjs` both apply it so the migration column list, the model `@property` / `$fillable` / `$casts`, and the Nova resource all AGREE field-for-field (today the migration hoists FKs while the model keeps raw input order — this removes that disagreement):
+
+```
+pk (id / identifier)
+→ foreignKey / externalRef   (references, in authored order)
+→ authored rest              (descriptive + operational, in authored order)
+→ enum (status)
+→ date / moment
+```
+
+Ordering is **stable within a bucket**, so authored order is preserved field-by-field. `created_at` / `updated_at` / `deleted_at` are never passed to `orderFields` — they stay template anchors emitted last. The migration emits each `foreignKey`/`externalRef` column inline in its ordered position (an indexed `ulid`; external refs carry the `// logical reference …` comment), with the `->foreign()` **constraints** following the column block. `calculated` columns are generated normally (column, cast, and validation rule); the flag is consumed only by `opscale-ui`/`opscale-logic` to drop the field from capture forms — document, never special-case it here.
 
 **Business types resolve through the binding — verify, never guess.** `dbml.json` carries no physical types: a business column's `type` IS a slug (`email`, `money`, `quantity`, `identifier`, `document`, …). The concrete migration column, the model `$casts` entry, AND the model `$validationRules` for that column all come from resolving the slug through `.specify/memory/business-types.php` (the Laravel/Nova binding of the canonical registry in `docs/plan/context/business-types.md`) — e.g. `email → $table->string('{col}', 255)` + `['email','max:255']`, `money → $table->decimal('{col}', 12, 2)`, `identifier → $table->ulid('{col}')`. Read the binding for the actual field/rules/config; do not invent a type or a rule. Every slug used in `dbml.json` MUST exist in the binding — a missing slug is a hard stop, not a fallback to `varchar`. The gate (Phase 6) asserts this explicitly.
 
@@ -194,6 +206,8 @@ The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (eith
 20. **Business types resolve through the binding** — migration column, `$casts`, and `$validationRules` all come from `.specify/memory/business-types.php`. A slug missing from the binding is a hard stop, never a `varchar` fallback.
 21. **Ship verified** — every generated component gets a Unit test (domain in isolation, in-memory SQLite); the layer is not done until `composer test --testsuite=Unit`, `composer lint`, and `composer analyse` are all green.
 22. **Factories per model, seeder skeleton only** — one `{Model}Factory` each; the `DatabaseSeeder` carries only the idempotent `opscale-domain:seed` skeleton (admin + one row per aggregate). The connected DEMO dataset is built later, in the Presentation phase.
+23. **One inferred field order, applied in both generators** — `orderFields` (`scripts/_lib.mjs`) sorts fields `pk → foreignKey/externalRef → authored rest → enum (status) → date/moment`, stable within each bucket, timestamps last. `generate-migration.mjs` and `generate-model.mjs` both apply it so the migration columns and the model `@property`/`$fillable`/`$casts` agree field-for-field. There is no `category` property to drive order.
+24. **The model is assembled from three single-concern agents** — `model-relations-generator` (relationships + `belongsToContract`), `model-validations-generator` (`$validationRules`), `model-attributes-generator` (`$fillable`/`$casts`/`$attributes`), each reading only its `dbml.json` slice and returning JSON. `generate-model.mjs` merges and renders. `calculated` columns are generated normally; the flag is consumed only by `opscale-ui`/`opscale-logic`.
 
 ## Steps
 
@@ -230,14 +244,24 @@ Total files to generate: [migrations] + [models] + [enums] + [VOs] + [repository
 
 Generation is **always deterministic** — every file produced by this skill comes out of a Node.js script that renders a template from a JSON input. The parallel agents are thin wrappers — they never write PHP themselves.
 
-| Script | Template | Agent |
-|--------|----------|-------|
+The **model** is no longer built by one monolithic generator. It is assembled from the structured contributions of a **fleet of single-concern model-section agents**, each reading only its narrow `dbml.json` slice and returning a JSON fragment; `generate-model.mjs` is the deterministic **assembler** that merges the fragments and applies the inferred field order. `generate-migration.mjs` is likewise the migration assembler (same `orderFields`).
+
+| Script | Template | Agent(s) |
+|--------|----------|----------|
 | `scripts/generate-enum.mjs` | `templates/enum.php.tmpl` | enum-generator |
 | `scripts/generate-value-object.mjs` | `templates/value-object.php.tmpl` | value-object-generator |
-| `scripts/generate-migration.mjs` | `templates/migration.php.tmpl` | migration-generator |
-| `scripts/generate-model.mjs` | `templates/model.php.tmpl` | model-generator |
+| `scripts/generate-migration.mjs` (assembler) | `templates/migration.php.tmpl` | migration-generator |
+| `scripts/generate-model.mjs` (assembler) | `templates/model.php.tmpl` | model-relations-generator + model-validations-generator + model-attributes-generator |
 | `scripts/generate-repository.mjs` | `templates/repository.php.tmpl` | repository-generator |
-| `scripts/generate-contract.mjs` | `templates/contract.php.tmpl` + `templates/has-contract-relations.php.tmpl` | model-generator (per slug) |
+| `scripts/generate-contract.mjs` | `templates/contract.php.tmpl` + `templates/has-contract-relations.php.tmpl` | model-relations-generator (per slug) |
+
+The three model-section agents, each narrow and reading only its slice:
+
+| Agent | Concern | Reads | Emits |
+|-------|---------|-------|-------|
+| `model-relations-generator` | Eloquent relationships | entity `relationships[]` + `externalRef` fields | `relationships[]` (`foreignKey`→`belongsTo`; inverse→`hasMany`/`hasOne`; `many_to_many`→`belongsToMany`) + `cross_subdomain_refs[]` (`externalRef`→`belongsToContract`) |
+| `model-validations-generator` | `$validationRules` map | entity `fields[]` + business-types binding + enums | `validation_rules` (binding rules + `nullable`/required/`unique`/enum) |
+| `model-attributes-generator` | `$fillable` / `$casts` / `$attributes` | entity `fields[]` + business-types binding + enums | `fillable`, `casts` (business type + enum classes), `attributes` (defaults) |
 
 The JSON contract for each script is documented in the header comment of the `.mjs` file. The skill normalizes `dbml.json` into that JSON before spawning the agents — the scripts do **not** read `dbml.json` (nor the old DBML).
 
@@ -336,7 +360,9 @@ Generation proceeds in strict dependency order. All file generation runs through
 
 **3d. Contracts + HasContractRelations trait.** If `docs/plan/context/external-refs.md` carries an `external-refs` index, run `scripts/generate-contract.mjs` once per unique slug **before** generating models. Each call emits one `src/Contracts/{ContractName}Contract.php` and (idempotently) the shared `src/Models/Concerns/HasContractRelations.php`. If there is no `docs/plan/context/external-refs.md`, skip this step.
 
-**3e. Models.** Generate all Eloquent model files. Models import contracts and the trait when normalizing each model's `cross_subdomain_refs` (the entity's `fk` fields carrying `externalRef`). Pass each model's `entity_id` (the entity `code` in `dbml.json` — the kebab slug) and `entity_name` (the `name`, the canonical business name) in the payload — the generator stamps them as the class docblock's `@entity` tag.
+**3e. Models (fleet of section agents → assembler).** A model is no longer built by one monolithic generator. **Per entity**, derive the shared inputs once (`MODULE_PREFIX` from the constitution, the business-types binding, the entity's `dbml.json` slice and its enums), then **fan out the three model-section agents IN PARALLEL** — `model-relations-generator`, `model-validations-generator`, `model-attributes-generator` — each reading only its slice and returning a STRUCTURED JSON fragment (relationships + cross_subdomain_refs / validation_rules / fillable + casts + attributes). **Merge** the three fragments into one `generate-model.mjs` input together with the structural `columns` (`@property` set), `entity_id` (the entity `code` — the kebab slug) and `entity_name` (the `name`), then **run the migration + model assemblers** — both apply the shared `orderFields` so columns and `@property`/`$fillable`/`$casts` agree — and gate.
+
+The model assembler derives each `cross_subdomain_refs` entry's `{Slug}Contract` class and `belongsToContract` method, and imports the contracts + `HasContractRelations` trait automatically; it stamps `entity_id`/`entity_name` as the class docblock's `@entity` tag. Entity bundles run fully in parallel — no cross-entity dependencies beyond FK ordering (parents before children, handled by the migration timestamp sequence).
 
 **3f. Repositories.** Generate the repository trait per model.
 

@@ -45,7 +45,7 @@ You receive:
 - [ ] `dbml.json` exists in plan_dir and PASSES `validate-dbml.mjs` (schema-valid; re-renders `dbml.dbml` and parses with `@dbml/core`)
 - [ ] `prefix`, `standards`, `enums[]`, `entities[]` present (no `terminology` block — name normalization stays in `names.md`; no `module` block — the subdomain is derived from `process.json` at render)
 - [ ] Every entity has a kebab `code`, an EN `name`, a `description`, and `fields[]`
-- [ ] Every field carries **exactly one** of `type` (business-type slug) / `enum` (enum code) / `foreignKey` (sibling entity code) / `externalRef` (cross-subdomain slug) — no raw technical types; derived fields may set `calculated: true` (never a pk or reference)
+- [ ] Every field carries **exactly one** of `type` (business-type slug) / `enum` (enum code) / `foreignKey` (sibling entity code) / `externalRef` (cross-subdomain slug) — no raw technical types; fields not user-entered (computed or Logic-written) set `calculated: true` (never the pk; a logic-set reference may be calculated)
 - [ ] No audit fields in the JSON (`created_at`/`updated_at` are projection-only)
 - [ ] No `tenant_id` field anywhere (Opscale is single-tenant)
 - [ ] Every `foreignKey` targets an entity `code` present in `entities[]`; every `enum` targets an `enums[]` `code`
@@ -81,6 +81,11 @@ You receive:
 - [ ] All models use their repository trait
 - [ ] `declare(strict_types=1)` in every PHP file
 
+**Field order + fleet (mirror the model section agents):**
+- [ ] Field order is identical in the migration and the model (`@property`/`$fillable`/`$casts`) and follows `pk → foreignKey/externalRef → the rest → enum (status) → date/moment`, with `created_at`/`updated_at` last
+- [ ] One Eloquent relationship method per `dbml.json` `relationships[]` entry (`belongsTo`/`hasOne`/`hasMany`/`belongsToMany`; `externalRef` → `belongsToContract`)
+- [ ] `$validationRules` present for every field (resolved from the business-types binding + nullable/unique/enum); enum columns cast to their Enum class
+
 ### opscale-ui Gate
 
 **When plan_dir is available:**
@@ -89,21 +94,36 @@ You receive:
 **Always (structural checks):**
 - [ ] Repeatable exists only for strongly-composed value collections (NOT one per aggregate)
 - [ ] No business logic in Nova files
-- [ ] All strings use __() for translation
 - [ ] Status fields use Badge, not Select/Text
 - [ ] Every Action is registered on exactly one Resource's `actions()`
+
+**Rule enforcement (mirror the resource section agents — FAIL on any):**
+- [ ] No `id`/ULID rendered as a field (no `ID::make`, no `Text::make('…','id')`); `id` not in `$search`; `$title` is a descriptive column, never `id`
+- [ ] Every `calculated:true` field (per `dbml.json`) is display-only on forms (`->exceptOnForms()`/`->onlyOnDetail()`), never editable
+- [ ] Every `BelongsTo` is `->searchable()`; no `Select`/`VirtualSelect` is `->searchable()`
+- [ ] `Date`/`DateTime`/`Currency`/`Number`/`Boolean` fields and the status `Badge` are `->filterable()`
+- [ ] `$search` holds descriptive fields (name/title/code/identifier/slug); long-text columns are capped on index (`Str::limit`) or `->hideFromIndex()`
+- [ ] `authorizedToCreate/Update/Delete` present and consistent with the entity's `permissions`: `false`→`return false`; a field predicate→a `return <expr>;` guard (enum cases resolved); `true`→no override
+- [ ] Each child-relation tab is count-gated (`->canSee(count>0)`) unless the child entity's `permissions.create` ≠ false
+- [ ] Every user-visible string uses `__()` with a namespaced key `{prefix}.{resource}.{...}` (fixed UI strings `opscale.*`); every key present in BOTH `lang/en.json` and `lang/es.json`
+- [ ] `title`/`label()`/`singularLabel()`/`uriKey()` all implemented
 
 ### opscale-logic Gate
 
 **When plan_dir is available:**
 - [ ] Action exists for every distinct first-level `logic` operation `id` in `bpmn.json` (equivalently, every first-level `logic` operation in the `graph.json` hierarchy)
-- [ ] Every Action's identifier() matches its `bpmn.json` logic `id`
+- [ ] Every Action's `identifier()` is `{MODULE_PREFIX}.{sipoc.id}` (prefixed; the un-prefixed part matches its `bpmn.json` logic `id`)
 
 **Always (structural checks):**
 - [ ] Every Action extends Opscale\Actions\Action
 - [ ] Every handle() starts with fill() then validate()
 - [ ] Every handle() returns array with success key
 - [ ] No HTTP context in handle() methods
+
+**Rule enforcement (mirror the action section agents — FAIL on any):**
+- [ ] `name()`, `description()`, each parameter/output `description`, and each `canRun()`/`fail()`/exception message use `__()` with a namespaced key `{prefix}.{action-slug}.{...}`; every key present in BOTH `lang/en.json` and `lang/es.json`
+- [ ] No option/relation/id parameter rendered as a free `Text` — each has an `options()` source or an `exists:` rule
+- [ ] The Action's SIPOC `process[]` contains no `create` operation (record creation is a Nova create form, not an Action)
 
 ### opscale-init Gate (environment: dev + debug + test harness)
 - [ ] Xdebug configured (php.ini or .env for Sail); Telescope installed as --dev, registered with an env-gated Gate (local + staging only), NOT auto-loaded in providers.php; Debugbar local-only; no debug config references production; MCP dev servers in .claude/settings.json

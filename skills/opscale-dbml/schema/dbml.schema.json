@@ -80,7 +80,7 @@
                 "description": { "type": "string", "minLength": 1 },
                 "calculated": {
                   "type": "boolean",
-                  "description": "true when the value is derived/computed by the system (never captured as input): it is produced on create/update, not entered. Must not be a pk or a foreign/external reference."
+                  "description": "true when the value is not user-entered — computed, or written by a Logic Action (e.g. approved_by_id, subtotal). It is produced on create/update, not captured in a form. May be a reference the logic sets; never the pk."
                 },
                 "nullable": { "type": "boolean" },
                 "default": {},

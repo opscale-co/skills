@@ -34,12 +34,12 @@ class {{action_class_name}} extends Action
 
     public function name(): string
     {
-        return __('{{name}}');
+        return __('{{name_key}}');
     }
 
     public function description(): string
     {
-        return '{{description}}';
+        return __('{{description_key}}');
     }
 
     public function parameters(): array
@@ -48,7 +48,7 @@ class {{action_class_name}} extends Action
 {{#each parameters}}
             [
                 'name'        => '{{name}}',
-                'description' => '{{description}}',
+                'description' => __('{{description_key}}'),
                 'type'        => {{type_expr}},
                 'rules'       => [{{rules}}],
             ],
@@ -100,7 +100,7 @@ class {{action_class_name}} extends Action
 {{#each outputs}}
             [
                 'name'        => '{{name}}',
-                'description' => '{{description}}',
+                'description' => __('{{description_key}}'),
                 'type'        => {{type_expr}},
                 'rules'       => [{{rules}}],
             ],

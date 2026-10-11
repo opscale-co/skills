@@ -10,18 +10,32 @@
 //     "constitution_path": ".specify/memory/constitution.md", // optional — explicit constitution path
 //     "tenant_aware":      true,
 //     "soft_deletes":      false,
+//     // `columns` is the FULL ordered field list in dbml authored order,
+//     // INCLUDING the foreignKey / externalRef columns (as `ulid` + a
+//     // `reference` marker) and EXCLUDING `id` (the template hardcodes the pk)
+//     // and the implicit timestamps. The assembler re-sorts it into the one
+//     // canonical order (orderFields in _lib.mjs) shared with generate-model.mjs
+//     // so the migration columns and the model @property/$fillable AGREE:
+//     //   pk → foreignKey/externalRef → authored rest → enum (status) → date.
 //     "columns": [
+//       { "name": "customer_id", "type": "ulid", "reference": "fk",       "nullable": false },
+//       { "name": "owner_id",    "type": "ulid", "reference": "external", "nullable": true,
+//         "comment": "logical reference to iam.user — no FK constraint" },
 //       { "name": "code",      "type": "string",  "length": 50,    "nullable": false, "unique": true, "default": null, "comment": "Human code." },
 //       { "name": "amount",    "type": "decimal", "precision": 12, "scale": 2,        "nullable": false },
 //       { "name": "narrative", "type": "text",    "nullable": true },
 //       { "name": "status",    "type": "enum",    "default": "Pending" },
-//       { "name": "due_at",    "type": "timestamp", "nullable": true }
+//       { "name": "due_at",    "type": "dateTime", "nullable": true }
 //     ],
+//     // FK CONSTRAINT lines only (the ->foreign() statements). The ulid COLUMN
+//     // for each FK is carried in `columns` above with `reference:"fk"`.
 //     "foreign_keys": [
 //       { "column": "customer_id", "references": "id", "on": "customers", "on_delete": "cascade" }
 //     ],
+//     // Legacy: external-ref columns may instead be passed here; any whose
+//     // `column` is not already in `columns` is folded into the ordered stream.
 //     "cross_subdomain_refs": [
-//       { "column": "tenant_user_id", "subdomain": "auth", "table": "users" }
+//       { "column": "tenant_user_id", "subdomain": "auth", "table": "users", "nullable": true }
 //     ],
 //     "indexes": [
 //       { "columns": ["status", "created_at"], "name": "orders_status_created_idx", "unique": false }
@@ -33,7 +47,7 @@
 import { dirname, join, resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { readJsonInput, render, writeOrConflict, loadTemplate, resultLine } from './_lib.mjs';
+import { readJsonInput, render, writeOrConflict, loadTemplate, resultLine, orderFields } from './_lib.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -74,6 +88,20 @@ const SUPPORTED_TYPES = new Set([
 ]);
 
 function columnLine(col) {
+  // Reference columns (foreignKey / externalRef) render as an indexed ulid.
+  // External refs additionally carry an inline `// logical reference …` comment
+  // and never get a ->foreign() constraint (that lives in fk_lines).
+  if (col.reference === 'fk' || col.reference === 'external') {
+    let base = `$table->ulid('${col.name}')`;
+    if (col.nullable === true) base += '->nullable()';
+    base += '->index();';
+    if (col.reference === 'external') {
+      const note = col.comment || `logical reference to ${col.name} — no FK constraint`;
+      base += ` // ${note}`;
+    }
+    return base;
+  }
+
   const type = col.type;
   if (!SUPPORTED_TYPES.has(type)) throw new Error(`Unsupported column type: ${type} (${col.name})`);
 
@@ -111,10 +139,6 @@ function fkLine(fk) {
   return line + ';';
 }
 
-function crossRefLine(ref) {
-  return `$table->ulid('${ref.column}')->index(); // logical reference to ${ref.subdomain}.${ref.table} — no FK constraint`;
-}
-
 function indexLine(idx) {
   const cols = idx.columns.map(c => `'${c}'`).join(', ');
   const method = idx.unique ? 'unique' : 'index';
@@ -131,27 +155,34 @@ function main() {
   const modulePrefix = resolveModulePrefix(input);
   const prefixed = prefixedTable(modulePrefix, input.table_name);
 
-  // Drop FK columns from the "business columns" list — they're rendered separately as FKs.
-  const fkColumnNames = new Set((input.foreign_keys || []).map(fk => fk.column));
-  const crossColumnNames = new Set((input.cross_subdomain_refs || []).map(r => r.column));
+  // Build the unified column set in dbml authored order, then apply the ONE
+  // canonical order (orderFields) shared with generate-model.mjs. References
+  // (foreignKey/externalRef) are columns too — they belong in the ordered
+  // stream (pk → references → rest → enum → date), NOT hoisted to the top.
+  const presentNames = new Set(input.columns.map(c => c.name));
 
-  // FK columns still need their column definition (ulid index). We emit them
-  // as ulid index lines in the business-columns block, then a separate
-  // ->foreign() statement in the FK block.
-  const fkColumnDefs = (input.foreign_keys || []).map(fk => `$table->ulid('${fk.column}')->index();`);
+  // Legacy support: FK / external-ref columns passed as separate arrays whose
+  // column is NOT already in `columns` are folded into the stream as refs so a
+  // valid migration is still produced (the new contract carries them inline).
+  const legacyFkCols = (input.foreign_keys || [])
+    .filter(fk => !presentNames.has(fk.column))
+    .map(fk => ({ name: fk.column, type: 'ulid', reference: 'fk', nullable: !!fk.nullable }));
+  const legacyCrossCols = (input.cross_subdomain_refs || [])
+    .filter(r => !presentNames.has(r.column))
+    .map(r => ({
+      name: r.column, type: 'ulid', reference: 'external', nullable: r.nullable !== false,
+      comment: r.comment || `logical reference to ${r.subdomain}.${r.table} — no FK constraint`,
+    }));
 
-  const businessColumnLines = input.columns
-    .filter(c => !fkColumnNames.has(c.name) && !crossColumnNames.has(c.name))
-    .map(columnLine);
+  const allColumns = orderFields([...input.columns, ...legacyFkCols, ...legacyCrossCols]);
+  const column_lines = allColumns.map(columnLine);
 
-  const column_lines = [...fkColumnDefs, ...businessColumnLines];
-  // Intra-subdomain FKs reference the prefixed parent table.
+  // Intra-subdomain FK CONSTRAINTS reference the prefixed parent table.
   const fk_lines = (input.foreign_keys || []).map(fk => fkLine({
     ...fk,
     on: prefixedTable(modulePrefix, fk.on),
   }));
-  const cross_ref_lines = (input.cross_subdomain_refs || []).map(crossRefLine);
-  const index_lines     = (input.indexes || []).map(indexLine);
+  const index_lines = (input.indexes || []).map(indexLine);
 
   const context = {
     table_name:      prefixed,
@@ -159,10 +190,8 @@ function main() {
     soft_deletes:    !!input.soft_deletes,
     column_lines,
     fk_lines,
-    cross_ref_lines,
     index_lines,
     has_intra_fks:   fk_lines.length > 0,
-    has_cross_refs:  cross_ref_lines.length > 0,
     has_indexes:     index_lines.length > 0,
   };
 

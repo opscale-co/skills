@@ -50,7 +50,7 @@ Transform a validated business spec into a DDD data model fit for a software sys
 
 Hard schema rules: `prefix` and `standards.modeling` present (there is **no `terminology` block** — name normalization is analysis that stays in `names.md`; `dbml.json` holds only the conclusion); every entity has `code`/`name`/`description`/`fields`/`permissions`/`relationships` (relationships **minItems 1**); `permissions` requires create+update+delete (predicate grammar); each field has **exactly one** of `type`/`enum`/`foreignKey`/`externalRef`; an optional `calculated: true` marks a derived field; `type` ∈ the business-type registry; each enum value has a `description`; **no audit codes** in fields (`created_at`/`updated_at`/`created_by`/`updated_by`/`deleted_at` are forbidden — the renderer appends `created_at`/`updated_at` automatically).
 
-Semantic rules the schema can't express (checked by the validator): fields ordered pk → foreign/external refs → the rest, with exactly one `pk` (the `id identifier`); a `calculated` field is never a pk or a reference; `foreignKey`/`enum` refs resolve in-doc; `externalRef` slugs appear in `context/external-refs.md`; permission predicates reference real fields and real enum values; `code == slugify(name)`; no `tenant_id` anywhere.
+Semantic rules the schema can't express (checked by the validator): fields ordered pk → foreign/external refs → the rest, with exactly one `pk` (the `id identifier`); a `calculated` field is never the pk (but may be a logic-set reference); `foreignKey`/`enum` refs resolve in-doc; `externalRef` slugs appear in `context/external-refs.md`; permission predicates reference real fields and real enum values; `code == slugify(name)`; no `tenant_id` anywhere.
 
 ### Prerequisites
 
@@ -160,7 +160,7 @@ Process **one entity at a time**. For each entity present the full field set —
 
 **Why one at a time:** presenting many entities at once collapses attention — the user confirms by reflex. Attribute decisions materialize one-for-one into the generated data layer, so they earn full attention, entity by entity. **Stop-gate: do not advance until the current entity's fields are confirmed.** If the user says "they all look fine, move on," push back and present them one at a time anyway.
 
-Resolve each type in precedence: `externalRef` → `foreignKey` → `enum` → `type` (business slug). No technical-type fallback — extend the registry first if nothing matches. The pk is `id`/`identifier`; never author `created_at`/`updated_at`/`tenant_id`. Order fields pk → foreign/external refs → the rest (recommended within "the rest": descriptive, operational, status, then date/time fields). Mark any field whose value is computed (not user-entered) with `calculated: true` — it must not be a pk or a reference.
+Resolve each type in precedence: `externalRef` → `foreignKey` → `enum` → `type` (business slug). No technical-type fallback — extend the registry first if nothing matches. The pk is `id`/`identifier`; never author `created_at`/`updated_at`/`tenant_id`. Order fields pk → foreign/external refs → the rest (recommended within "the rest": descriptive, operational, status, then date/time fields). Mark any field whose value is not user-entered — computed or written by a Logic Action — with `calculated: true` (never the pk; a logic-set reference like `approved_by_id` may be calculated).
 
 **Wait for user approval before continuing (per entity).**
 

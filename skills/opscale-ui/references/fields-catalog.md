@@ -104,15 +104,35 @@ scan a row, nothing more. Curation rules:
 - Do not restate every field from `fields()`. A small amount of duplication
   between the two methods is expected and preferred over a shared helper.
 
-## Virtual relations — Select with options/searchable/filterable
+## Virtual relations — Select with options/filterable (no searchable)
 
 ```php
-Select::make(__('Counterparty'), 'counterparty_id')
-    ->options(fn () => app(CounterpartyRepository::class)->forSelect())
-    ->searchable()
+Select::make(__('ventas.quote.currency_id'), 'currency_id')
+    ->options(fn () => app(CurrenciesContract::class)->forSelect())
     ->filterable()
     ->displayUsingLabels(),
 ```
 
 The foreign repository contract MUST expose `forSelect(): array`
-returning `[id => label]`. See `virtual-relations.md` for the full pattern.
+returning `[id => label]`. `resource-fields-generator` emits this for every
+`externalRef` column with `filterable` + `displayUsingLabels` and **no
+`searchable`** (drivable; `no Select is searchable` is an invariant). See
+`virtual-relations.md` for the full pattern.
+
+## Deterministic field rules (applied by the opscale-ui fleet)
+
+These conventions are not re-derived per entity — they are the rule contract of
+`resource-fields-generator` / `resource-index-generator`:
+
+- `foreignKey` → `BelongsTo` + `->searchable()`; `externalRef` → `VirtualSelect`
+  (`Select`, `filterable` + `displayUsingLabels`, never `searchable`); a status
+  `enum` → the `Badge`; any other `enum` → `Select` (never `searchable`);
+  otherwise the business-type binding field.
+- `calculated: true` → append `->exceptOnForms()`.
+- `date`/`moment`/`money`/`quantity`/`yesNo` → `->filterable()`; the status
+  `Badge` is `->filterable()->sortable()`.
+- long text (`description`/`text`/`post`) → `->hideFromIndex()`.
+- field order: pk (excluded) → foreignKey/externalRef → authored rest →
+  date/moment; status renders as the `Badge` after the business fields.
+- `$title` / `$search` are descriptive columns, never `id`; no `id` is ever
+  exposed as a Nova field.

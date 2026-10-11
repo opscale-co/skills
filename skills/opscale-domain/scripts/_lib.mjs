@@ -235,6 +235,66 @@ export function readJsonInput(argv = process.argv.slice(2)) {
   throw new Error('No input provided. Use --input <path>, OPSCALE_INPUT=<path>, or pipe JSON to stdin.');
 }
 
+// --- Inferred field order -------------------------------------------------
+//
+// ONE canonical field order, applied identically to the migration columns and
+// to the model @property / $fillable / $casts so the two always AGREE (today
+// the migration hoists FKs while the model keeps raw input order — this makes
+// them the same). The resource layer consumes the same order. Buckets:
+//
+//   pk (id/identifier)
+//   → foreignKey / externalRef             (references, in authored order)
+//   → authored rest (descriptive + operational, in authored order)
+//   → enum (status)                        (enum-typed columns)
+//   → date / moment                        (date + datetime columns)
+//
+// `created_at`/`updated_at`/`deleted_at` are NOT passed here — they stay
+// template anchors emitted last. Ordering is STABLE within a bucket, so the
+// authored order is preserved field-by-field.
+//
+// `fieldKind(f)` classifies one descriptor. It accepts an explicit `f.kind`,
+// else derives from whatever discriminators the caller carries:
+//   - dbml field:       `type`/`enum`/`foreignKey`/`externalRef`
+//   - migration column: `reference` ("fk"|"external") + physical `type`
+//   - model column:     the `is_reference`/`is_enum`/`is_date` hints the
+//                        model assembler annotates from its own inputs
+const FIELD_KIND_ORDER = { pk: 0, ref: 1, rest: 2, enum: 3, date: 4 };
+
+export function fieldKind(f) {
+  if (f.kind && Object.prototype.hasOwnProperty.call(FIELD_KIND_ORDER, f.kind)) return f.kind;
+  const name = f.code || f.name || f.column || '';
+  if (name === 'id' || f.type === 'identifier') return 'pk';
+  if (f.foreignKey || f.externalRef || f.reference || f.is_reference) return 'ref';
+  if (f.enum || f.is_enum) return 'enum';
+  const t = f.type;
+  if (t === 'date' || t === 'moment' || t === 'dateTime' || t === 'timestamp' || f.is_date) return 'date';
+  return 'rest';
+}
+
+// Stable sort of field descriptors into the canonical order above.
+export function orderFields(fields) {
+  return (fields || [])
+    .map((f, i) => [f, i])
+    .sort((a, b) => (FIELD_KIND_ORDER[fieldKind(a[0])] - FIELD_KIND_ORDER[fieldKind(b[0])]) || (a[1] - b[1]))
+    .map(([f]) => f);
+}
+
+// Reorder an auxiliary list ($fillable names, $casts, $attributes, validation
+// entries) to follow a canonical column-name sequence, so every model section
+// renders in the SAME order as the @property docblock. Entries whose key is not
+// in `orderedNames` keep their relative order after the known ones.
+export function orderByColumn(list, keyFn, orderedNames) {
+  const rank = new Map(orderedNames.map((n, i) => [n, i]));
+  return [...list]
+    .map((item, i) => [item, i])
+    .sort((a, b) => {
+      const ra = rank.has(keyFn(a[0])) ? rank.get(keyFn(a[0])) : Number.MAX_SAFE_INTEGER;
+      const rb = rank.has(keyFn(b[0])) ? rank.get(keyFn(b[0])) : Number.MAX_SAFE_INTEGER;
+      return (ra - rb) || (a[1] - b[1]);
+    })
+    .map(([item]) => item);
+}
+
 // --- Result reporting ----------------------------------------------------
 
 export function resultLine(key, value) { return `${key}: ${value}`; }
