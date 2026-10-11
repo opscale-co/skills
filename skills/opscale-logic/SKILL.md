@@ -18,8 +18,8 @@ Generate Opscale Action classes — atomic, typed, independently testable busine
 
 Mode is determined by project type:
 
-- **BPMN-driven** (app/module) — one Action per `businessRuleTask` node in `docs/plan/bpmn.bpmn`. Parameters derived from BPMN + DBML. Business rules from the SIPOCs (`docs/plan/sipoc/*.md`, section `Business Rules enforced`).
-- **Standalone** (package) — Actions defined directly by name, purpose, and parameters. No BPMN or DBML files required.
+- **BPMN-driven** (app/module) — one Action per **first-level `logic` operation** in `docs/plan/bpmn.json` (equivalently, each first-level operation in the `docs/plan/graph.json` hierarchy — `subprocesses[].steps[].operations[]` — whose `ref` resolves to a `bpmn.json` operation of `type:"logic"`). Parameters, process, outputs and rules come from the matching entry in `docs/plan/sipoc.json`; entity/field detail from `docs/plan/dbml.json`.
+- **Standalone** (package) — Actions defined directly by name, purpose, and parameters. No Plan JSON files required.
 
 The same Action class serves multiple execution contexts automatically:
 - **Nova Action** — admin panel (fields inferred from `parameters()` rules + `options()`)
@@ -38,11 +38,11 @@ Output files are written to `src/Services/Actions/` (+ `tests/Feature/`) and lis
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
-| 2 | `opscale-process` has been run | `docs/plan/process.txt` exists and PASS | Stop. Run `/opscale-process`. |
-| 3 | `opscale-dbml` has been run | `docs/plan/dbml.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
-| 4 | `opscale-bpmn` has been run | `docs/plan/bpmn.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
-| 5 | `opscale-sipoc` has been run | One `docs/plan/sipoc/{kebab-id}.md` per `businessRuleTask` | Stop. Run `/opscale-sipoc`. |
-| 6 | `opscale-ontology` has been run | `docs/plan/ontology.mmd` + `ontology.txt` exist — the manifest that indexes every Logic (⚙️ node, unique kebab id) | Stop. Run `/opscale-ontology`. |
+| 2 | `opscale-process` has been run | `docs/plan/process.json` exists and PASS (`validate-process.mjs`) | Stop. Run `/opscale-process`. |
+| 3 | `opscale-dbml` has been run | `docs/plan/dbml.json` exists and PASS (`validate-dbml.mjs`) | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `docs/plan/bpmn.json` exists and PASS (`validate-bpmn.mjs`) | Stop. Run `/opscale-bpmn`. |
+| 5 | `opscale-sipoc` has been run | `docs/plan/sipoc.json` exists — one `sipocs[]` entry per BPMN first-level `logic` operation (`validate-sipoc.mjs`) | Stop. Run `/opscale-sipoc`. |
+| 6 | The Plan graph has been generated | `docs/plan/graph.json` exists — the hierarchy manifest that indexes every Logic (first-level operation resolving to a `bpmn.json` `type:"logic"`, unique kebab `id`) (`validate-graph.mjs`) | Stop. Generate the graph. |
 | 7 | `opscale-domain` has been run | `src/Models/` populated **and factories exist** (`database/factories/`), domain bundle tasks in `tasks.md` complete — Feature tests seed through these factories | Stop. Run `/opscale-domain`. |
 
 This skill is **Step 2 of the Generate phase**. Order is strict: `domain → logic → ui`. `opscale-logic` runs **before** `opscale-ui`: the Nova Resources do not exist yet when the Actions are generated — registering each Action on its Resource (with a `canSee` guard) is `opscale-ui`'s job, not this skill's. After `opscale-ui`, the module is feature-complete and ready for the Review phase (`debug → test → release`).
@@ -70,7 +70,7 @@ src/
         └── {ActionClassName}.php    (one per businessRuleTask or standalone action)
 ```
 
-In **BPMN-driven mode**, this skill consumes the per-Action SIPOC documents that `opscale-sipoc` already produced under `docs/plan/sipoc/{kebab-id}.md`. The SIPOC Inputs table feeds `parameters()`; the SIPOC Process section feeds the `handle()` body. This skill does NOT author SIPOCs — that's [opscale-sipoc](../opscale-sipoc/SKILL.md)'s job.
+In **BPMN-driven mode**, this skill consumes the SIPOC objects that `opscale-sipoc` already produced in `docs/plan/sipoc.json` (`sipocs[]`, one per BPMN first-level `logic` operation). Each SIPOC's `inputs[]` feeds `parameters()`; its `process[]` feeds the `handle()` body; `outputs[]` feeds `outputs()`; `businessRules[]` (`{code, text}`) + `failureModes` feed `canRun()`/`fail()`. This skill does NOT author SIPOCs — that's [opscale-sipoc](../opscale-sipoc/SKILL.md)'s job. The rendered `docs/plan/sipoc/<id>.md` files are projections; read `sipoc.json`.
 
 In **Standalone mode** (packages) there is no SIPOC: the user supplies the same information directly.
 
@@ -84,9 +84,9 @@ return against `outputs()` → dispatch the system event when the class uses
 
 | Method | Required | SIPOC | Purpose |
 |--------|----------|-------|---------|
-| `identifier(): string` | YES | — | kebab-case ID — matches BPMN logic id or derived from class name. Also the name of the system event |
-| `name(): string` | YES | — | Human-readable name |
-| `description(): string` | YES | — | One sentence explaining the action. Written for AI/MCP context |
+| `identifier(): string` | YES | — | **`{MODULE_PREFIX}.{sipoc.id}`** (e.g. `ventas.approve-quote`) — prefix from `.specify/memory/constitution.md` (as the other generators read it). Also the name of the system event |
+| `name(): string` | YES | — | Human-readable name — wrapped in `__()` with key `{prefix}.{id}.name`, seeded into both `lang/en.json` and `lang/es.json` |
+| `description(): string` | YES | — | One sentence for AI/MCP context — wrapped in `__()` with key `{prefix}.{id}.desc`, seeded into both locales |
 | `parameters(): array` | YES | Inputs | Typed input declarations with validation rules |
 | `handle(array $inputs = []): array` | YES | Process | Business logic — receives VALIDATED inputs; returns `$this->succeed([...])` or `$this->fail('reason')` |
 | `outputs(): array` | YES | Outputs | Output schema, same shape as `parameters()`. The success payload of `handle()` is validated against it |
@@ -187,6 +187,32 @@ every id parameter an options source: `options()` (host contracts like
 `UsersContract` when the id references host data), a per-parameter
 `options` key, or an `exists:` rule.
 
+### Option/relation/id parameters are never free `Text`; Actions never create
+
+An **enum** param → a Select with `options()`; a **relation / host-id** param
+(`type:"identifier"`, or an `externalRef`/`foreignKey` column) → an option-backed
+Select (`resolve({Host}Contract::class)->options()` cross-module, or
+`{Model}::query()->pluck('name','id')->all()` for a local catalog) **or** an
+`exists:{table},id` rule. `generate-action.mjs` fails generation when a param
+flagged `requires_options` ships neither — the `ApproveQuote.approver` bug class
+(an actor picked from another module is a Select, never a `['required','string']`
+free Text). The **entity_param** (the `source:"System"`+`type:"identifier"`
+prefilled record) is exempt. The assembler also asserts no `create` op in the
+SIPOC `process[]`: record creation is a Nova create form (CRUD) authored by
+`opscale-ui`, not an Action.
+
+### i18n — namespaced KEYS seeded into BOTH `lang/en.json` AND `lang/es.json`
+
+Everything the caller/operator reads is translatable (`name()`, `description()`,
+each parameter/output `description`, every `canRun()`/`fail()`/exception
+message), wrapped in `__()` with a namespaced key
+`{prefix}.{id}.{name|desc|param.<p>|output.<o>|fail.<n>}`. The assembler OWNS the
+key scheme and seeds `key → en` into `lang/en.json` and `key → es` into
+`lang/es.json` in one pass (mirroring opscale-ui; existing keys never
+overwritten). Values come from `action-translations-generator`; an absent
+override falls back to the English string so neither file ships a gap. The
+technical parameter/output `name` stays untranslated — it is the array key.
+
 ### Adapter surfaces — never override
 
 The pipeline already translates the `Result` envelope to every surface
@@ -205,16 +231,36 @@ Because of this, the skill never passes a `nova_registration` block to `generate
 
 **Why the guard matters (for opscale-ui):** an action visible in an invalid state surfaces to the operator as "click button → mysterious failure"; hiding the action at the Resource level keeps the Nova UI honest about what is doable right now. The `canRun()` gate this skill DOES generate is the authoritative enforcement; the `canSee` opscale-ui adds is the UI affordance built from the same rule.
 
-### Code template
+### Code template — a fleet of single-concern section agents → one assembler
 
-The authoritative template is `templates/action.php.tmpl` and the renderer is `scripts/generate-action.mjs`. The skill normalizes each Action into the JSON contract documented at the top of that script, then spawns `action-generator` (a thin wrapper that just runs the script) in parallel — one instance per Action.
+Generation is **always deterministic**. An Action is no longer built by one
+monolithic generator: like a Nova Resource in `opscale-ui`, it is assembled from
+the structured contributions of a **fleet of single-concern section agents**,
+each reading only its narrow `sipoc.json` / `dbml.json` slice and returning a
+JSON fragment. The authoritative template is `templates/action.php.tmpl`; the
+deterministic **assembler** is `scripts/generate-action.mjs` (JSON contract in
+its header). `action-generator` is the thin wrapper that runs the assembler on
+the merged input.
 
-The skill is responsible for assembling `handle_body` as ready-to-run PHP (including any `OtherAction::run([...])` composition calls). The script indents and inserts it verbatim — it does not transform business logic.
+| Agent | Concern | Reads | Emits |
+|-------|---------|-------|-------|
+| `action-identifier-generator` | identity + classification | sipoc (`id`,`title`,`description`,`inputs`,`outputs`) + bpmn logic op | `identifier` (slug), `action_class_name`, `entity_param`, `entities`, `dependencies`, `emits_event`, `process` (for the no-create assertion) |
+| `action-parameters-generator` | `parameters[]` + `options_entries[]` | sipoc `inputs[]` + dbml enums/entities + business-types binding + external-refs | `parameters[]` (with `requires_options` flags), `options_entries[]` — forbids free Text for option/relation/id params |
+| `action-outputs-generator` | `outputs[]` | sipoc `outputs[]` + dbml entities | `outputs[]` (mirrors the SIPOC Outputs table) |
+| `action-translations-generator` | contextual i18n (EN+ES values) | sipoc title/description/inputs/outputs/businessRules/failureModes | `translations` = `{name,desc,param.<p>,output.<o>,fail.<n>}` EN/ES values |
+
+The `handle()` / `canRun()` BODIES are NOT a rule-slice — they are the real
+business logic the SIPOC `process[]`/`businessRules[]` describe. The skill still
+authors them via the existing `action-generator` flow, as ready-to-run PHP
+(including any `OtherAction::run([...])` composition); it only **wraps their
+messages in `__('{prefix}.{id}.fail.<n>')`** so the translations agent can seed
+them. The assembler indents and inserts the bodies verbatim — it never transforms
+business logic.
 
 ### Domain Rules
 
 1. **One BPMN task = one Action class = one spec-kit task** — never merge two BPMN tasks or two standalone requests into one class, and never let a single Action span more than one entry in `tasks.md`.
-2. **SIPOC is an input, not an output** (BPMN-driven mode) — every Action depends on a SIPOC under `docs/plan/sipoc/{kebab-id}.md`. This skill consumes them; `opscale-sipoc` produces them.
+2. **SIPOC is an input, not an output** (BPMN-driven mode) — every Action depends on a `sipocs[]` object in `docs/plan/sipoc.json`. This skill consumes them; `opscale-sipoc` produces them.
 3. **Spec-kit plan + tasks before code** — `/speckit.plan` and `/speckit.tasks` run BEFORE any `action-generator` agent is spawned.
 4. **Every implementation task has a preceding test task** — `tasks.md` lists `Test {ClassName}` immediately before `Implement {ClassName}`.
 5. **handle() receives validated inputs** — never `fill()`/`validate()`/`get()`; read `$inputs` directly and resolve model params through the private resolver (instance | Collection | id).
@@ -225,30 +271,32 @@ The skill is responsible for assembling `handle_body` as ready-to-run PHP (inclu
 10. **Never override the adapter methods** — `asNovaAction()`, `asController()`, `asCommand()`, `asMCPTool()` are the pipeline; the old manual "map selected model + translate success to message/danger" override is replaced by a `prefill()` closure (`fn ($ctx) => $ctx?->models?->first()`).
 11. **Compose via `::run()`** — generate leaf actions before composite actions.
 12. **handle() is context-free** — no `request()`, no `redirect()`, no HTTP assumptions.
-13. **`identifier()` derivation** — from BPMN `logic.id` when available, otherwise kebab-case from class name.
-14. **`description()` is for AI** — write it as if explaining to an AI agent what the tool does and when to invoke it.
+13. **`identifier()` = `{MODULE_PREFIX}.{sipoc.id}`** — e.g. `ventas.approve-quote`; prefix from `.specify/memory/constitution.md`. The assembler prepends it; agents return the bare slug. It is also the system-event name, so events are module-namespaced.
+14. **`description()` is for AI** — write it as if explaining to an AI agent what the tool does and when to invoke it. It is still translatable (key `{prefix}.{id}.desc`, both locales).
 15. **`declare(strict_types=1)`** — every PHP file.
-16. **Single-quote hygiene** — every string emitted into `identifier()`, `name()`, `description()`, and parameter `name`/`description` is wrapped in single quotes by the template. Generators MUST escape apostrophes (`'` → `\'`) on every value.
+16. **Everything translatable, both locales** — `name()`, `description()`, each parameter/output `description`, and every `canRun()`/`fail()`/exception message are wrapped in `__()` with namespaced keys `{prefix}.{id}.{name|desc|param.<p>|output.<o>|fail.<n>}`, seeded into BOTH `lang/en.json` and `lang/es.json`. The technical parameter/output `name` is the array key and stays untranslated. Apostrophes in authored body messages are the author's responsibility; translated values live in JSON (no PHP single-quote hazard).
+20. **Option/relation/id params are never free `Text`** — an enum param → Select with `options()`; a relation/host-id param (`type:"identifier"` or an `externalRef`/`foreignKey`) → option-backed Select or an `exists:` rule. The assembler FAILS generation when a `requires_options` param ships neither. The prefilled entity_param is exempt.
+21. **An Action never creates a record** — the assembler asserts no `create` op in the SIPOC `process[]`. Record creation is a Nova create form (CRUD) authored by `opscale-ui`, not an Action.
 17. **Actions are NOT registered on Resources here** — `opscale-ui` runs after this skill, so the Resources do not exist yet. This skill only writes `src/Services/Actions/{Class}.php` (+ its Feature test) and never passes `nova_registration` to the generator. `opscale-ui` performs the registration when it builds the Resources.
 18. **`canSee` state-visibility is opscale-ui's job** — the SIPOC state precondition this skill encodes into `canRun()` is the same rule `opscale-ui` later turns into a `canSee` guard on the Resource. The pattern catalogue in `references/canSee-patterns.md` is the handoff contract for that step.
 19. **One Action = one Feature test** — every generated Action ships a `tests/Feature/{ActionName}Test.php` that exercises `Action::run()` against a real DB (factories from `opscale-domain`, no DB mocks) and covers the four cases: positive, negative, false-positive, false-negative.
 
 ## Steps
 
-### Phase 1 — Inventory Logics from the ontology manifest, then the SIPOC/BPMN detail
+### Phase 1 — Inventory Logics from the graph manifest, then the SIPOC/BPMN detail
 
 **Mode Detection:** determine the mode based on project type:
-- **app/module** projects → `docs/plan/bpmn.bpmn` exists → **BPMN-driven mode**
-- **package** projects → no `docs/plan/bpmn.bpmn` or spec files → **Standalone mode**
+- **app/module** projects → `docs/plan/bpmn.json` exists → **BPMN-driven mode**
+- **package** projects → no `docs/plan/bpmn.json` or spec files → **Standalone mode**
 
-For BPMN-driven mode the **ontology is the manifest** — the source of truth for *which* Actions exist. `sipoc/{kebab}.md` + `bpmn.bpmn` are the *detail* for each one.
+For BPMN-driven mode the **graph is the manifest** — the source of truth for *which* Actions exist. `sipoc.json` + `bpmn.json` are the *detail* for each one.
 
-**1a. Enumerate the Logics from the ontology.** Read `docs/plan/ontology.txt` (or `ontology.mmd`) and collect every Logic node — the `⚙️` entries (`⚙️ SP-XX-YY-LZZ {kebab-id} [BR-NN, …]`). Take the **unique kebab `logic.id`s** as the definitive set of Actions to generate (a leaf `⚙️` composed inside another Logic is the same Action reused, not a new one — dedupe by kebab id). This count is the manifest that every later phase reconciles against.
+**1a. Enumerate the Logics from the graph.** Walk the `docs/plan/graph.json` hierarchy — `subprocesses[].steps[].operations[]` — and collect every **first-level** operation whose `ref` resolves to a `bpmn.json` operation of `type:"logic"` (its `bpmn.json` entry has an `id`, a `rules[]`, and nested composed `operations[]`). Take the **unique kebab `id`s** (the logic `id` field in `bpmn.json`) as the definitive set of Actions to generate — a composed operation that reuses a logic `id` inside another Logic is the same Action reused, not a new one; dedupe by kebab id. This count is the manifest that every later phase reconciles against.
 
-**1b. Pull the detail per Logic.** For each unique kebab id, read `docs/plan/sipoc/{kebab}.md` (Inputs → `parameters`, Process → `handle` body, Outputs → `outputs()`, Business Rules → `canRun` state gate) and cross-reference `docs/plan/bpmn.bpmn` (the `{"type":"logic","id":…,"composed":[…]}` documentation JSON) for the composition edges. Build the generation plan:
+**1b. Pull the detail per Logic.** For each unique kebab id, read its `docs/plan/sipoc.json` object (`sipocs[]` where `id` == the logic id): `inputs[]` → `parameters`, `process[]` → `handle` body, `outputs[]` → `outputs()`, `businessRules[]` (`{code, text}`) + `failureModes` → `canRun` state gate. Cross-reference the matching `bpmn.json` operation (`operations[].id` == the logic id) for its composed `operations[]` (each a `crud` with `entity`+`action`, a `logic` ref, or an `output`). Build the generation plan:
 
 ```
-Logic Actions to generate (from ontology manifest):
+Logic Actions to generate (from graph manifest):
 
 | # | Action name | logic id | Subprocess | Business Rules |
 |---|-------------|----------|------------|----------------|
@@ -256,18 +304,20 @@ Logic Actions to generate (from ontology manifest):
 | 2 | [name] | [kebab-id] | [SP-XX] | BR-03 |
 ```
 
-If the number of unique `⚙️` kebab ids in the ontology does not match the number of `sipoc/*.md` files, stop — the Plan is inconsistent; re-run `/opscale-ontology` (or the missing Plan skill) before continuing.
+If the number of unique logic `id`s in the graph manifest does not match the number of `sipocs[]` entries in `docs/plan/sipoc.json`, stop — the Plan is inconsistent; re-run the missing Plan skill (or regenerate the graph) before continuing.
 
-**1c. Business-type check on every parameter (explicit).** Each Action input must be **typed with a business type**, not a raw scalar. The SIPOC Inputs column carries the business-type **slug** from `docs/plan/context/business-types.md`; the executable binding for that slug (field, validation rules, cast) lives in `.specify/memory/business-types.php`. Before generating, verify for every parameter:
+**1c. Business-type check on every parameter (explicit).** Each Action input must be **typed with a business type**, not a raw scalar. Each `sipoc.json` input (`inputs[].type`) carries the business-type **slug** from `docs/plan/context/business-types.md`; the executable binding for that slug (field, validation rules, cast) lives in `.specify/memory/business-types.php`. Before generating, verify for every parameter:
 
 ```
-[ ] Each parameter's SIPOC type is a business-type slug (not a bare varchar/text/decimal)
+[ ] Each parameter's sipoc.json inputs[].type is a business-type slug (not a bare varchar/text/decimal)
 [ ] Every slug used exists in .specify/memory/business-types.php (the binding)
 [ ] The binding's `rules` are folded into the parameter's `rules` array
 [ ] Model/FK/id params use identifier (exists:table,id), never a free string
 ```
 
 If a slug is missing from `.specify/memory/business-types.php`, stop and add it to the binding (or re-run the Plan skill that owns it) before generating — an untyped parameter cannot be validated.
+
+**Authorization from `dbml.json` permissions.** The entity an Action writes carries a `permissions` block in `docs/plan/dbml.json` (`{ "create": <predicate>, "update": <predicate>, "delete": <predicate> }`, predicate strings over the entity's own fields, e.g. `"status != won and status != lost"`). When an Action's primary write is a `create`/`update`/`delete` on that entity, fold the matching predicate into the Action's `canRun()` gate (alongside the SIPOC state preconditions) so the write is refused in a state the data model forbids. `true`/`false` predicates are trivial (always/never). This is the authoritative guard; `opscale-ui` renders the same predicates as `authorizedTo*`/`canSee` affordances.
 
 Then resolve dependency order — when an Action calls another Action:
 
@@ -288,11 +338,11 @@ For Standalone mode, follow the standalone variant in `references/standalone-mod
 
 Before generating any code, formalize the plan through spec-kit so that every Action becomes a tracked task in the MVP feature (`.specify/specs/001-mvp/`). This is what makes the implementation phase auditable. Each Action gets an `Implement` task **and** a preceding `Test` task (this skill generates that Feature test itself — see Phase 4).
 
-**2a. Build the spec-kit plan input.** Compose a brief that lists every Action to be generated, in dependency order, with its source BPMN task, lane, parameters (from BPMN + DBML), and Business Rules from its SIPOC (`docs/plan/sipoc/{id}.md`). Pass this as the seed for `/speckit.plan`:
+**2a. Build the spec-kit plan input.** Compose a brief that lists every Action to be generated, in dependency order, with its source BPMN `logic` operation, parameters (from `sipoc.json` `inputs[]` + `dbml.json`), and Business Rules from its SIPOC (`sipoc.json` `businessRules[]`). Pass this as the seed for `/speckit.plan`:
 
 ```
 /speckit.plan "Logic layer for {module-name}: [N] Opscale Actions derived from
-docs/plan/bpmn.bpmn. Generate one Action class per businessRuleTask. Each Action:
+docs/plan/bpmn.json. Generate one Action class per first-level logic operation. Each Action:
 - extends Opscale\\Actions\\Action (opscale-co/actions ^2.2)
 - declares identifier(), name(), description(), parameters(), handle(), outputs()
   (+ prefill()/options()/canRun()/EmitsEvent per its SIPOC)
@@ -336,31 +386,53 @@ If any check fails, regenerate tasks.md before continuing.
 
 **Wait for user approval before continuing.**
 
-### Phase 3 — Generate Action classes
+### Phase 3 — Generate Action classes (fleet of section agents → assembler)
 
-For each task in `tasks.md` (dependency order), normalize the matching SIPOC (produced by `opscale-sipoc`) into the JSON contract documented at the top of `scripts/generate-action.mjs`, then spawn `action-generator` (a thin wrapper) in parallel within each dependency level (leaves first, composites next).
+Generation is **always deterministic**. Per Action, do not normalize one giant
+JSON blob by hand — **derive the shared inputs once, then fan out the four
+section agents in parallel**, author the bodies, merge, assemble, gate. Entities
+within one dependency level run fully in parallel (leaves first, composites next
+so `::run()` targets already exist).
 
-**SIPOC → JSON contract mapping:**
+**3a. Derive the shared inputs** for the Action (once):
+- `prefix` — `MODULE_PREFIX` from `.specify/memory/constitution.md` (as the other
+  generators read it).
+- `sipoc` — the `sipocs[]` object where `id` == the logic id.
+- `bpmn_op` — the first-level `logic` operation (`operations[].id` == the logic
+  id) with its composed `operations[]`.
+- `dbml` — the enums + the entity each input/output resolves to.
+- `business_types_binding` + `external_refs` — `.specify/memory/business-types.php`
+  and `docs/plan/context/external-refs.md`.
 
-| SIPOC section | JSON field | Notes |
-|---------------|-----------|-------|
-| `Identifier:` | `identifier` | kebab-case; matches BPMN `logic.id` |
-| `# SIPOC — {Name}` heading | `name`, `action_class_name` | name is human text; class is PascalCase |
-| First paragraph after heading | `description` | one sentence, for AI/MCP context |
-| Suppliers (system-supplied entity) | `entity_param` | name of the model parameter that arrives as the Nova selection — generates the `prefill()` closure + private resolver |
-| Inputs table | `parameters[]` | each row → `{name, description, type, rules}` |
-| Inputs with closed domains / host-id refs | `options_entries[]` | `{param, php_expr}` — enum `array_column(...cases(), 'name', 'value')` or host contract `resolve(XContract::class)->options()`. MANDATORY for `uuid`/`identifier` params |
-| Business Rules — state preconditions | `can_run_body` | raw PHP for `canRun($inputs)`: resolve entity, check states, return reason string with BR-NN or `true` |
-| Composes line | `dependencies[]` | other Actions imported and called via `::run()` |
-| Process section (numbered list) | `handle_body` | ordered PHP per step; in-process guards via `$this->fail()`; final `return $this->succeed([...])` assembled from Outputs |
-| Outputs table | `outputs[]` | each row → `{name, description, type, rules}` — REQUIRED (abstract in ^2.2) |
-| Outputs — notifications ("notificar...", "output:") | `emits_event: true` | adds `use EmitsEvent;` — the ONLY event mechanism; never manual `event()` calls |
+**3b. Fan out the four section agents IN PARALLEL** (see the fleet table in Code
+template). Each reads only its slice and returns a JSON fragment:
+`action-identifier-generator` → identity/classification; `action-parameters-generator`
+→ `parameters[]` + `options_entries[]` (with the free-Text ban); `action-outputs-generator`
+→ `outputs[]`; `action-translations-generator` → `translations` (EN/ES values).
 
-The script handles all string escaping, parameter formatting, import ordering, and conflict detection. The skill never writes PHP — it just hands the generator the normalized JSON.
+**3c. Author the bodies.** The `handle()`/`canRun()` bodies are business logic,
+not a rule-slice — the skill writes them as ready-to-run PHP from the SIPOC
+`process[]`/`businessRules[]`/`failureModes` (+ the entity's `dbml.json`
+`permissions` predicate folded into `canRun()`). Every message is wrapped
+`__('{prefix}.{id}.fail.<n>')`; list those `<n>` short names so the translations
+agent seeds them. Composition is `OtherAction::run([...])` from `composes[]` / the
+bpmn logic's composed `logic` refs.
+
+**3d. Merge + assemble.** Fold the four contributions + the bodies into one
+`generate-action.mjs` input (contract in the script header: `prefix`,
+`identifier` slug, `action_class_name`, `name`/`description` EN fallbacks,
+`parameters` with `requires_options`, `options_entries`, `outputs`, `entities`,
+`dependencies`, `entity_param`, `emits_event`, `process`, `can_run_body`,
+`handle_body`, `translations`). Spawn `action-generator` (the thin assembler
+wrapper) on it. The assembler prefixes `identifier()`, wraps name/description/
+params/outputs/messages in namespaced `__()` keys, seeds BOTH `lang/en.json` and
+`lang/es.json`, enforces the option/relation/id → options()/exists: rule, asserts
+no `create` in `process[]`, and handles all string escaping, import ordering and
+conflict detection. The skill never writes PHP — it hands over the merged JSON.
 
 **Do NOT include a `nova_registration` block.** `opscale-ui` runs after this skill, so the target Resources do not exist yet. Omit `nova_registration` entirely — the generator writes only `src/Services/Actions/{Class}.php`. `opscale-ui` performs the `actions()` + `canSee` registration later, reading the same SIPOC state preconditions.
 
-If the SIPOC file is missing for any Action in `tasks.md`, stop. Run `/opscale-sipoc` to author the missing SIPOC(s), then return here.
+If a `sipocs[]` object is missing from `docs/plan/sipoc.json` for any Action in `tasks.md`, stop. Run `/opscale-sipoc` to author the missing SIPOC(s), then return here.
 
 **Wait for user approval before continuing.**
 
@@ -419,9 +491,11 @@ for f in src/Services/Actions/*.php; do
   grep -q -- '->fresh()'  "$t" || { echo "$t: no persisted-state assertion"; exit 1; }
   grep -q 'Event::assert' "$t" || { echo "$t: no event assertion"; exit 1; }
   # SIPOC only exists in BPMN-driven mode
-  if [ -f docs/plan/bpmn.bpmn ]; then
-    id=$(grep -oP "return '\\K[a-z][a-z0-9-]*" "$f" | head -1)
-    [ -f "docs/plan/sipoc/$id.md" ] || { echo "Missing SIPOC for $id"; exit 1; }
+  if [ -f docs/plan/bpmn.json ]; then
+    # identifier() is now "{prefix}.{sipoc-id}" — strip the module prefix to the slug.
+    full=$(grep -oP "return '\\K[a-z][a-z0-9.-]*" "$f" | head -1)
+    id="${full##*.}"
+    grep -q "\"id\"[[:space:]]*:[[:space:]]*\"$id\"" docs/plan/sipoc.json || { echo "Missing SIPOC for $id in sipoc.json"; exit 1; }
   fi
 done
 

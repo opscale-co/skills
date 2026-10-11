@@ -5,17 +5,40 @@ Runs quick_validate.py first; refuses to package if validation fails. Produces
 <skill-name>.zip in the chosen output directory, excluding junk (node_modules,
 .DS_Store, .git, __pycache__).
 
+For the 5 Plan skills it also VENDORS shared/plan-contract/ (JSON Schemas +
+renderers + runtime node_modules) into the bundle at <bundle-root>/plan-contract/
+so the skill's contractLib() resolver finds it when packaged standalone. See
+shared/plan-contract/README.md.
+
 Usage:
     python scripts/package_skill.py /path/to/skill [-o OUTPUT_DIR] [--skip-validate]
 """
 import sys, os, argparse, zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(HERE)
 EXCLUDE_DIRS = {"node_modules", ".git", "__pycache__", ".pytest_cache"}
 EXCLUDE_FILES = {".DS_Store"}
 # evals/ (queries + fixtures) is validation material, never part of the
 # distributed bundle — same rule as the vendored skill-creator packager.
 ROOT_EXCLUDE_DIRS = {"evals"}
+
+# The 5 Plan skills resolve the shared Plan contract (JSON Schemas + renderers +
+# bundled node_modules) at runtime. In-repo their scripts find it at
+# ../../../shared/plan-contract; packaged standalone there is no repo, so the
+# contract must be VENDORED into the bundle at <bundle-root>/plan-contract/ —
+# the resolver's `../plan-contract` fallback (see scripts/validate-*.mjs). The
+# vendored skill-creator packager cannot do this (it strips node_modules and
+# packages a single folder), so the step lives here. See
+# shared/plan-contract/README.md.
+PLAN_SKILLS = {
+    "opscale-process", "opscale-dbml", "opscale-bpmn", "opscale-sipoc", "opscale-graph",
+}
+CONTRACT_DIR = os.path.join(REPO_ROOT, "shared", "plan-contract")
+# node_modules is intentionally NOT excluded when vendoring the contract: the
+# bundled runtime deps (ajv, @dbml/core, bpmn-moddle, bpmn-auto-layout) must
+# travel with it. Only build junk is dropped.
+CONTRACT_EXCLUDE_DIRS = {".git", "__pycache__", ".pytest_cache"}
 
 
 def package(skill_dir, out_dir):
@@ -35,6 +58,23 @@ def package(skill_dir, out_dir):
                 arc = os.path.join(name, os.path.relpath(full, skill_dir))
                 z.write(full, arc)
                 count += 1
+
+        # Vendor the shared Plan contract into Plan-skill bundles so the skill's
+        # contractLib() resolver finds it at <bundle-root>/plan-contract/.
+        if name in PLAN_SKILLS:
+            if not os.path.isdir(CONTRACT_DIR):
+                raise FileNotFoundError(
+                    f"{name} is a Plan skill but the shared contract is missing: {CONTRACT_DIR}")
+            for root, dirs, files in os.walk(CONTRACT_DIR):
+                dirs[:] = [d for d in dirs if d not in CONTRACT_EXCLUDE_DIRS]
+                for fn in files:
+                    if fn in EXCLUDE_FILES:
+                        continue
+                    full = os.path.join(root, fn)
+                    arc = os.path.join(
+                        name, "plan-contract", os.path.relpath(full, CONTRACT_DIR))
+                    z.write(full, arc)
+                    count += 1
     return zip_path, count
 
 

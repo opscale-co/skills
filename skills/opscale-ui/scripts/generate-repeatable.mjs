@@ -20,6 +20,11 @@
 // rendered by the shared renderFieldBlock() helper. `{ rules: 'col' }`
 // resolves to ->rules(...{ParentModel}Model::$validationRules['col']).
 //
+// i18n (same scheme as generate-resource.mjs): `label` is the KEY wrapped in
+// __() (`{prefix}.{resource}.{slug}`); `label_en`/`label_es` are the values
+// seeded — `key → en` into en.json, `key → es` into es.json. Legacy callers may
+// pass the English string as `label` with only `label_es`.
+//
 // Output: writes `{output_dir}/{model_name}.php` and seeds every field label +
 // every `{ help: '...' }` modifier into BOTH `{lang_dir}/en.json` AND
 // `{lang_dir}/es.json` (created if missing; existing keys preserved).
@@ -99,17 +104,21 @@ function main() {
   const outPath = resolve(input.output_dir, `${input.model_name}.php`);
   const result = writeOrConflict(outPath, rendered);
 
+  // Same i18n-key scheme as generate-resource.mjs: `f.label` is the KEY wrapped
+  // in __(); `f.label_en` its English value (legacy: the key doubles as EN).
   const enEntries = new Map();
   const esEntries = new Map();
-  function add(en, es) {
-    if (!en) return;
-    if (!enEntries.has(en)) enEntries.set(en, en);
-    if (!esEntries.has(en)) esEntries.set(en, es || en);
+  function add(key, en, es) {
+    if (!key) return;
+    if (!enEntries.has(key)) enEntries.set(key, en != null ? en : key);
+    if (!esEntries.has(key)) esEntries.set(key, es != null ? es : (en != null ? en : key));
   }
   for (const f of fields) {
-    add(f.label, f.label_es);
+    add(f.label, f.label_en || f.label, f.label_es);
     for (const m of (f.modifiers || [])) {
-      if (typeof m === 'object' && m && m.help) add(m.help, m.help_es || m.help);
+      if (typeof m === 'object' && m && m.help) {
+        add(m.help, m.help_en || m.help, m.help_es || m.help_en || m.help);
+      }
     }
   }
 

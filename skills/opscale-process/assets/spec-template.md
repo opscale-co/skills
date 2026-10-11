@@ -1,4 +1,4 @@
-# Templates — docs/plan/context/names.md + docs/plan/process.txt
+# Templates — docs/plan/context/names.md + docs/plan/process.json
 
 The structural keywords (`Trigger:`, `Ends with:`) stay in English exactly as
 written here — validators and downstream skills parse them literally. Step
@@ -22,7 +22,7 @@ activity. Replace every `[...]`.
 
 ---
 
-## docs/plan/process.txt
+## docs/plan/process.json
 
 Plain text — no markdown, no emojis. One block per subprocess, blocks
 separated by exactly one blank line. Each block: the subprocess name line,

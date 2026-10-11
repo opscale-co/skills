@@ -1,0 +1,66 @@
+[
+  {
+    "query": "generate the ontology for the publishing module",
+    "should_trigger": true
+  },
+  {
+    "query": "genera la ontología del módulo de facturación",
+    "should_trigger": true
+  },
+  {
+    "query": "muéstrame la jerarquía del software para este módulo",
+    "should_trigger": true
+  },
+  {
+    "query": "the SIPOCs passed — close the plan phase with the ontology view",
+    "should_trigger": true
+  },
+  {
+    "query": "quiero un resumen navegable de la fase de plan del módulo de créditos",
+    "should_trigger": true
+  },
+  {
+    "query": "show me software → domain → subprocess → steps → operations as one collapsible tree",
+    "should_trigger": true
+  },
+  {
+    "query": "build the interactive hierarchy html so stakeholders can browse what we planned",
+    "should_trigger": true
+  },
+  {
+    "query": "render docs/plan/graph.mmd for the recruitment module",
+    "should_trigger": true
+  },
+  {
+    "query": "map the domains and their modules for the whole app",
+    "should_trigger": false
+  },
+  {
+    "query": "which module owns the users table?",
+    "should_trigger": false
+  },
+  {
+    "query": "spec the module — the clerk registers the order, then the manager approves it",
+    "should_trigger": false
+  },
+  {
+    "query": "generate the BPMN for the billing module",
+    "should_trigger": false
+  },
+  {
+    "query": "detail each businessRuleTask as a SIPOC",
+    "should_trigger": false
+  },
+  {
+    "query": "modela las entidades y genera el DBML del módulo",
+    "should_trigger": false
+  },
+  {
+    "query": "plan is done, generate the domain layer",
+    "should_trigger": false
+  },
+  {
+    "query": "organize the admin menu around the module's processes",
+    "should_trigger": false
+  }
+]

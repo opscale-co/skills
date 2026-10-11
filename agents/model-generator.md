@@ -10,10 +10,15 @@ model: haiku
 maxTurns: 3
 ---
 
-# Model Generator (deterministic wrapper)
+# Model Generator (deterministic assembler wrapper)
 
 Generation is fully deterministic. You do not write PHP. You execute the
-generator script and report its output.
+`generate-model.mjs` **assembler** and report its output. The parent skill has
+already merged the three model-section contributions — `model-relations-generator`
+(`relationships` + `cross_subdomain_refs`), `model-validations-generator`
+(`validation_rules`), `model-attributes-generator` (`fillable`/`casts`/
+`attributes`) — into the single payload below. The assembler applies the one
+inferred field order (`orderFields`) so the model agrees with the migration.
 
 ## Input
 

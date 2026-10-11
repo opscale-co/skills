@@ -18,12 +18,20 @@ For each aggregate, confirm contextual labels:
     singular ES :
 ```
 
-The four strings map directly to the JSON contract of
-`generate-resource.mjs`: `label`, `singular_label`, `label_es`,
-`singular_label_es`. They flow into `__()` and get seeded into BOTH
-`lang/en.json` and `lang/es.json`. Reject empty answers, reject
-literal `subdomain · entity` concatenations, reject the bare entity
-name when more than one subdomain is in play.
+Every translatable carries a namespaced KEY plus its EN and ES values.
+The assembler emits `__(key)` and seeds `key → en` into `lang/en.json`
+and `key → es` into `lang/es.json`. Domain keys are
+`{prefix}.{resource}.{slug}` (`ventas.opportunity.label`,
+`ventas.opportunity.singular`, `ventas.opportunity.title`,
+`ventas.opportunity.tab.quotes`, `ventas.opportunity.status.won`);
+generic fixed UI keys are global `opscale.*` (`opscale.details`,
+`opscale.status`, `opscale.created_at`, `opscale.updated_at`) and are
+supplied by the assembler. So the JSON contract carries `label` = the
+KEY, plus `label_en`/`label_es` (same for `singular_label`, tab labels,
+status-badge labels, field labels). `uri_key` stays a raw kebab slug —
+never translated. Reject empty answers, reject literal `subdomain ·
+entity` concatenations, reject the bare entity name when more than one
+subdomain is in play.
 
 Enum option labels and any custom Tab labels get the same EN/ES
 treatment when their resources are generated.

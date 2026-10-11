@@ -71,13 +71,16 @@ the Action's SIPOC precondition:
 public function actions(NovaRequest $request): array
 {
     return [
-        ApproveApplication::make()
-            ->canSee(fn ($request) => $request->findModel()?->status?->is(ApplicationStatus::PendingReview)),
+        (new ApproveQuote)
+            ->canSee(fn () => $this->status === QuoteStatus::Draft),
     ];
 }
 ```
 
-Single state → `->status?->is(...)`; multiple → `in_array(..., strict: true)`;
+The assembler emits `(new {action_class})` with an optional
+`->canSee(fn () => <can_see_expr>)` from the `actions[]` contribution of
+`resource-actions-generator`. Single state → `$this->status === {Enum}::{State}`;
+multiple → `in_array($this->status, [...], true)`;
 role → `$request->user()?->can('...')`; none → no `canSee`. Full catalogue in
 `references/canSee-patterns.md`. Every Action registers on exactly one
 Resource; `canSee` is a UI affordance, not security.
@@ -104,31 +107,27 @@ correct for them.
 
 ## Authorization patterns
 
-Authorization has two layers:
+Authorization is driven by the `authorize: { create, update, delete }`
+contribution of `resource-authorization-generator`, compiled from the entity's
+`dbml.json` `permissions` predicates (confirmed with the user in Phase 3) via the
+shared `compilePredicate` helper. Each of the three is one of:
 
-1. **Hard floor — set per resource in Phase 3.** For every aggregate the skill
-   asks the user `can create? / can update? / can delete?`. Any `no` answer
-   emits the matching `authorizedTo*` returning `false`, baked into the
-   generated Resource. This is the floor — a downstream policy cannot loosen
-   it.
+- `true` → allowed; the assembler emits **no** override method.
+- `false` → the assembler emits the override returning `false` (hard floor).
+- `{ "expr": "<php>" }` → the assembler emits the override returning `<php>` — a
+  state-conditional guard compiled from a field predicate.
 
-2. **State-conditional overrides — added in the customization pass.** When the
-   spec restricts an operation only under specific states (e.g. "editable
-   only while `Draft`"), the generator emits the `Y` answer (no method) and
-   the customization pass adds a guard that inspects `$this->resource->status`.
-
-Patterns:
+Patterns (as emitted):
 
 ```php
-// Read-only resource
+// Read-only resource — permissions { create:false, update:false, delete:false }
 public static function authorizedToCreate(Request $request): bool { return false; }
 public function authorizedToUpdate(Request $request): bool        { return false; }
 public function authorizedToDelete(Request $request): bool        { return false; }
 
-// State-locked (only editable while in a specific status)
+// State-locked — permissions.update "status != won and status != lost"
 public function authorizedToUpdate(Request $request): bool
 {
-    return $this->resource->status !== [StatusEnum]::[LockedState]
-        && parent::authorizedToUpdate($request);
+    return $this->status !== OpportunityStatus::Won && $this->status !== OpportunityStatus::Lost;
 }
 ```

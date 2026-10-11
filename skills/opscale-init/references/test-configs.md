@@ -558,7 +558,7 @@ abstract class DuskTestCase extends BaseTestCase
 Browser tests **execute the subprocess end to end** — log in, create the trigger
 record through the real Nova form, run each Action of the subprocess from the
 detail toolbar, then assert both the **user-visible transition** and the
-**persisted DB post-condition**. One file per subprocess in `docs/plan/process.txt`;
+**persisted DB post-condition**. One file per subprocess in `docs/plan/process.json`;
 one test method per flow path (happy path + each gateway branch + each failure
 path that is observable in the UI).
 
@@ -608,7 +608,7 @@ use [PackageNamespace]\Tests\DuskTestCase;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
- * One file per subprocess in docs/plan/process.txt.
+ * One file per subprocess in docs/plan/process.json.
  * Inside: one test method per path (happy + branches + visible failures).
  * Each method CREATES via the form, RUNS the subprocess Actions, and asserts
  * the transition (UI) + the post-condition (DB).

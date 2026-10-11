@@ -293,6 +293,7 @@ export const FIELD_NAMESPACE = {
   Date:          'Laravel\\Nova\\Fields\\Date',
   DateTime:      'Laravel\\Nova\\Fields\\DateTime',
   Currency:      'Laravel\\Nova\\Fields\\Currency',
+  URL:           'Laravel\\Nova\\Fields\\URL',
   Email:         'Laravel\\Nova\\Fields\\Email',
   Password:      'Laravel\\Nova\\Fields\\Password',
   File:          'Laravel\\Nova\\Fields\\File',
@@ -334,6 +335,10 @@ export function fieldHead(f, contIndent = '                ') {
 export function renderModifiers(modifiers, modelName) {
   return (modifiers || []).map(m => {
     if (typeof m === 'string') return `->${m}()`;
+    // `raw` passthrough: emit `->{raw}` verbatim. Used for display tweaks the
+    // descriptor cannot express declaratively — e.g. the long-text index cap
+    // `{ "raw": "displayUsing(fn ($v) => Str::limit((string) $v, 40))" }`.
+    if (m.raw)                 return `->${m.raw}`;
     if (m.rules)               return `->rules(...${modelName}Model::$validationRules['${m.rules}'])`;
     if (m.help)                return `->help(__('${m.help}'))`;
     if (m.default !== undefined) {
@@ -359,6 +364,64 @@ export function renderFieldBlock(f, modelName, contIndent = '                ') 
   const mods = renderModifiers(f.modifiers, modelName);
   if (mods.length === 0) return head;
   return [head, ...mods].join('\n' + contIndent);
+}
+
+// --- Predicate → PHP compiler --------------------------------------------
+//
+// Compiles the permission-predicate grammar used in dbml.json
+//   true | false | field op value [ (and|or) field op value … ]
+// (the SAME grammar `shared/plan-contract/lib/skills/dbml.mjs`
+// `predicateComparisons` parses) into a PHP boolean expression evaluated
+// against `$this` (a Nova Resource proxies property access to its model):
+//
+//   "true"                              → "true"
+//   "false"                             → "false"
+//   "amount > 0"                        → "$this->amount > 0"
+//   "status = draft"                    → "$this->status === QuoteStatus::Draft"
+//   "status != won and status != lost"  → "$this->status !== OpportunityStatus::Won
+//                                           && $this->status !== OpportunityStatus::Lost"
+//
+// `enumCaseResolver(field, value)` resolves an enum comparison value to its
+// PHP case string (`{EnumClass}::{Case}`). Return `null`/`undefined` when the
+// field is not enum-backed: a numeric value then renders as a literal and any
+// other bareword is single-quoted. Pass `() => null` when there are no enums.
+const OP_PHP = { '=': '===', '!=': '!==', '>=': '>=', '<=': '<=', '>': '>', '<': '<' };
+const CONN_PHP = { and: '&&', or: '||' };
+const CLAUSE_RE = /^([a-z_][a-z0-9_.]*)\s*(=|!=|>=|<=|>|<)\s*(\S+)$/i;
+
+export function compilePredicate(pred, enumCaseResolver = () => null) {
+  const t = String(pred == null ? '' : pred).trim();
+  if (t === '' || t === 'true')  return 'true';
+  if (t === 'false')             return 'false';
+
+  // Split on the and/or connectors, keeping them so we can map to && / ||.
+  const parts = t.split(/\s+(and|or)\s+/i);
+  const out = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    const clause = parts[i].trim();
+    const m = clause.match(CLAUSE_RE);
+    if (!m) throw new Error(`compilePredicate: cannot parse clause "${clause}" in "${pred}"`);
+    const [, field, op, rawValue] = m;
+    const lhs = '$this->' + field.replace(/\./g, '->');
+    const value = rawValue.replace(/^['"]|['"]$/g, '');
+
+    let rhs;
+    const resolved = enumCaseResolver(field, value);
+    if (resolved) {
+      rhs = resolved;
+    } else if (/^-?\d+(\.\d+)?$/.test(value)) {
+      rhs = value;
+    } else if (value === 'true' || value === 'false' || value === 'null') {
+      rhs = value;
+    } else {
+      rhs = `'${value}'`;
+    }
+    out.push(`${lhs} ${OP_PHP[op]} ${rhs}`);
+
+    const conn = parts[i + 1];
+    if (conn) out.push(CONN_PHP[conn.toLowerCase()]);
+  }
+  return out.join(' ');
 }
 
 export function seedTranslations(langDir, locale, entries) {

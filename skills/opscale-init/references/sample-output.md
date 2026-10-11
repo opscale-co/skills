@@ -73,7 +73,7 @@ prerequisites and outputs in its `SKILL.md`. ...
 ## 3. Companion files seeded next to `.specify/`
 
 ```
-docs/plan/                     # Plan intake folder (flat, exportable — see references/artifact-paths.md)
+docs/plan/                     # Plan intake folder (flat, exportable — see shared/plan-contract/artifact-paths.md)
 ├── README.md                  # manifest: which skill produces which file, in order
 └── context/
     └── business-types.md      # canonical business-type registry (Plan side)

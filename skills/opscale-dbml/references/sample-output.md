@@ -22,7 +22,7 @@ Project proveedores {
 
   Note: '''
   # Subdomain: Proveedores
-  Source spec: docs/plan/process.txt
+  Source spec: docs/plan/process.json
   Modeling standard: UBL / Peppol (Universal Business Language — Party, SupplierParty, PartyLegalEntity, PartyTaxScheme, FinancialAccount, Contact, PaymentTerms)
 
   Registro maestro del proveedor en el dominio Compras: gobierna el ciclo de
@@ -130,7 +130,7 @@ employees: verified_by, assessed_by
 ```
 ````
 
-## Sample docs/plan/dbml.txt
+## Sample docs/plan/dbml.json
 
 One entity per line, exactly the `Table` blocks of `dbml.dbml`, same order —
 the cheap diff surface for entity coverage across the Plan artifacts.

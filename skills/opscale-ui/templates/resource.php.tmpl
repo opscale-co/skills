@@ -3,6 +3,9 @@
 namespace {{package_namespace}}\Nova;
 
 use Illuminate\Http\Request;
+{{#if uses_str}}
+use Illuminate\Support\Str;
+{{/if}}
 {{#each field_imports}}
 use {{.}};
 {{/each}}
@@ -22,6 +25,9 @@ use {{.}};
 use {{.}};
 {{/each}}
 {{#each contract_imports}}
+use {{.}};
+{{/each}}
+{{#each action_imports}}
 use {{.}};
 {{/each}}
 
@@ -66,27 +72,27 @@ class {{model_name}} extends Resource
         return $query->withCount([{{#each index_with_count}}'{{.}}'{{#unless @last}}, {{/unless}}{{/each}}]);
     }
 {{/if}}
-{{#unless can_create}}
+{{#if authorize_create.emit}}
 
     public static function authorizedToCreate(Request $request): bool
     {
-        return false;
+        {{authorize_create.body}}
     }
-{{/unless}}
-{{#unless can_update}}
+{{/if}}
+{{#if authorize_update.emit}}
 
     public function authorizedToUpdate(Request $request): bool
     {
-        return false;
+        {{authorize_update.body}}
     }
-{{/unless}}
-{{#unless can_delete}}
+{{/if}}
+{{#if authorize_delete.emit}}
 
     public function authorizedToDelete(Request $request): bool
     {
-        return false;
+        {{authorize_delete.body}}
     }
-{{/unless}}
+{{/if}}
 {{#if child_of}}
 
     /**
@@ -110,9 +116,9 @@ class {{model_name}} extends Resource
             {{.}},
 {{/each}}
 {{#if has_status}}
-            $this->statusBadge()->sortable(),
+            $this->statusBadge()->filterable()->sortable(),
 {{/if}}
-            DateTime::make(__('Created At'), 'created_at')
+            DateTime::make(__('opscale.created_at'), 'created_at')
                 ->displayUsing(fn ($value) => $value?->diffForHumans())
                 ->sortable(),
         ];
@@ -127,20 +133,20 @@ class {{model_name}} extends Resource
     {
 {{#if has_tabs}}
         return [
-            Tab::group(__('{{model_name}}'), [
-                Tab::make(__('Details'), [
+            Tab::group(__('{{label}}'), [
+                Tab::make(__('opscale.details'), [
 {{#each field_blocks}}
                     {{.}},
 {{/each}}
 {{#if has_status}}
-                    $this->statusBadge()->sortable(),
+                    $this->statusBadge()->filterable()->sortable(),
 {{/if}}
-                    DateTime::make(__('Created At'), 'created_at')
+                    DateTime::make(__('opscale.created_at'), 'created_at')
                         ->displayUsing(fn ($value) => $value?->diffForHumans())
                         ->exceptOnForms()
                         ->sortable(),
 
-                    DateTime::make(__('Updated At'), 'updated_at')
+                    DateTime::make(__('opscale.updated_at'), 'updated_at')
                         ->displayUsing(fn ($value) => $value?->diffForHumans())
                         ->exceptOnForms(),
                 ]),
@@ -164,24 +170,41 @@ class {{model_name}} extends Resource
             {{.}},
 {{/each}}
 {{#if has_status}}
-            $this->statusBadge()->sortable(),
+            $this->statusBadge()->filterable()->sortable(),
 {{/if}}
-            DateTime::make(__('Created At'), 'created_at')
+            DateTime::make(__('opscale.created_at'), 'created_at')
                 ->displayUsing(fn ($value) => $value?->diffForHumans())
                 ->exceptOnForms()
                 ->sortable(),
 
-            DateTime::make(__('Updated At'), 'updated_at')
+            DateTime::make(__('opscale.updated_at'), 'updated_at')
                 ->displayUsing(fn ($value) => $value?->diffForHumans())
                 ->exceptOnForms(),
         ];
 {{/if}}
     }
+{{#if has_actions}}
+
+    /**
+     * Opscale Actions operating on this entity. Each is guarded by its SIPOC
+     * state precondition via canSee — a UI affordance only; the Action's
+     * handle()/canRun() remains the authoritative guard.
+     */
+    public function actions(NovaRequest $request): array
+    {
+        return [
+{{#each actions}}
+            (new {{action_class}}){{#if can_see_expr}}
+                ->canSee(fn () => {{can_see_expr}}){{/if}},
+{{/each}}
+        ];
+    }
+{{/if}}
 {{#if has_status}}
 
     private function statusBadge(): Badge
     {
-        return Badge::make(__('Status'), 'status')
+        return Badge::make(__('opscale.status'), 'status')
             ->map([
 {{#each status_badge.map}}
                 {{status_enum}}::{{case}}->value => '{{color}}',

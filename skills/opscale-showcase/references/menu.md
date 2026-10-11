@@ -40,7 +40,7 @@ historical `opscale-menu` prefix for backward-compatible replacement):
 
 ## Process-driven grouping (preferred)
 
-Read `docs/plan/process.txt` and build the sidebar around what the operator
+Read `docs/plan/process.json` and build the sidebar around what the operator
 does:
 
 - One section per natural phase / process group, in the **order the operator

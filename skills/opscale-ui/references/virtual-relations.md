@@ -15,20 +15,25 @@ on the index.
 use Laravel\Nova\Fields\Select;
 use Acme\Credits\Contracts\CounterpartyContract;
 
-Select::make(__('Counterparty'), 'counterparty_id')
+Select::make(__('ventas.quote.currency_id'), 'currency_id')
     ->options(fn () => app(CounterpartyContract::class)->forSelect())
-    ->searchable()
     ->filterable()
     ->displayUsingLabels(),
 ```
 
+- The deterministic default (emitted by `resource-fields-generator` for every
+  `externalRef` column) is `VirtualSelect` → `Select` with `filterable` +
+  `displayUsingLabels`, and **NO `searchable`**.
 - `options(fn () => ...)` is a closure so the option list is loaded only
   when the field is actually rendered (avoids N+1 across an index page
   full of rows).
-- `searchable()` turns the select into a typeahead — critical when the
-  option list is large.
 - `filterable()` exposes the field as a real filter on the index.
 - `displayUsingLabels()` renders the label (not the id) on detail/index.
+- **Why no `searchable` by default:** `->searchable()` renders a custom
+  typeahead a Dusk `select()` cannot drive (`references/flow-test-gotchas.md` §1),
+  and `no Select is searchable` is a generation invariant. Add `->searchable()`
+  as a deliberate display tweak only on a field no Browser flow sets on a form,
+  when the option list is large.
 
 ## Contract extension
 
@@ -100,14 +105,18 @@ For each entry in `fields[]`, signal a virtual relation with:
 
 ```json
 {
-  "field":         "VirtualSelect",
-  "label":         "Counterparty",
-  "label_es":      "Contraparte",
-  "attribute":     "counterparty_id",
-  "contract_class": "CounterpartyContract",
-  "modifiers":     ["searchable", "filterable", "displayUsingLabels"]
+  "field":          "VirtualSelect",
+  "label":          "ventas.quote.currency_id",
+  "label_en":       "Currency",
+  "label_es":       "Moneda",
+  "attribute":      "currency_id",
+  "contract_class": "CurrenciesContract",
+  "modifiers":      ["filterable", "displayUsingLabels"]
 }
 ```
+
+(`label` is the i18n KEY; `label_en`/`label_es` are the values seeded into the
+lang files. No `searchable` — see the drivability note above.)
 
 The generator imports `Select` + the contract, emits the closure-based
 `->options(fn () => app({Contract}::class)->forSelect())`, and seeds the

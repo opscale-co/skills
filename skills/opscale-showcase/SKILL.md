@@ -47,7 +47,7 @@ contracts now live in `references/seeder.md` and `references/menu.md`.
 | 2 | `opscale-domain` has been run | `src/Models/` populated; `workbench/database/factories/` present | Stop. Run `/opscale-domain` — nothing to seed. |
 | 3 | `opscale-ui` has been run | `src/Nova/*.php` populated; `tests/Browser/*FlowTest.php` present | Stop. Run `/opscale-ui` — there's nothing to walk. |
 | 4 | Dusk harness from `opscale-init` is set up | `tests/DuskTestCase.php` + `phpunit.dusk.xml` exist; `showcase` script in `composer.json` | Re-run `/opscale-init` — it stands up the dev/test/debug environment and registers the `showcase` script. |
-| 5 | `docs/plan/process.txt` has subprocess blocks | Read `docs/plan/process.txt` | Run `/opscale-process` — the seed and walkthrough are organized by process. |
+| 5 | `docs/plan/process.json` has subprocess blocks | Read `docs/plan/process.json` | Run `/opscale-process` — the seed and walkthrough are organized by process. |
 | 6 | Workbench User model exists | `workbench/app/Models/User.php` | Restore from a sibling module or create the standard testbench User model. |
 | 7 | ChromeDriver matches local Chrome major version | `vendor/bin/testbench dusk:chrome-driver --detect` | Re-run with explicit version. On macOS arm the binary lives at `vendor/laravel/dusk/bin/chromedriver-mac-arm` (no `-arm64` suffix). |
 
@@ -127,7 +127,7 @@ final class {Module}ShowcaseTest extends DuskTestCase
             $browser->visit('/nova/dashboards/main')
                 ->pause(self::MAIN_BUTTON_PAUSE_MS);
 
-            // --- 3. Drive each process in docs/plan/process.txt end to end ---
+            // --- 3. Drive each process in docs/plan/process.json end to end ---
             // Reuse each subprocess's flow from tests/Browser/{Process}FlowTest
             // (authored by opscale-ui); pause 3s before the main action on
             // every screen.
@@ -202,7 +202,7 @@ Full contract, seeding order, template, and rules: **`references/seeder.md`**.
 1. **Inventory aggregate roots + flows.** Read `src/Models/` and
    `src/Models/Enums/`; build the topological FK order. Identify catalog tables
    (no FKs + `is_active`) and aggregate roots. Cross-reference
-   `docs/plan/process.txt` — each subprocess needs an end-to-end walkable
+   `docs/plan/process.json` — each subprocess needs an end-to-end walkable
    dataset. Present the planned order and the flows covered.
 2. **Propose the connected dataset.** For each flow, list the connected chain of
    records (trigger → each step's record with its FK back → final resolved
@@ -227,7 +227,7 @@ Full contract, grouping heuristic, template, and rules: **`references/menu.md`**
    sidebar entries). Read any `MENU_SECTION` / `MENU_ICON` / `MENU_ORDER`
    constants via reflection.
 2. **Propose the menu structure.** Group the roots by process (from
-   `docs/plan/process.txt`) in operator-work order — or the fallback heuristic
+   `docs/plan/process.json`) in operator-work order — or the fallback heuristic
    when the spec gives no process info. Confirm section order, icons, and
    per-section item order.
 3. **Generate the menu block** inside `workbench/app/Providers/NovaServiceProvider.php`
@@ -243,7 +243,7 @@ Full contract, grouping heuristic, template, and rules: **`references/menu.md`**
 
 ### Phase group C — Guided walkthrough
 
-1. **Inventory processes.** Read `docs/plan/process.txt` — one walkthrough
+1. **Inventory processes.** Read `docs/plan/process.json` — one walkthrough
    segment per subprocess, in flow order. For each, reuse the steps from its
    `tests/Browser/{Process}FlowTest` (authored by `opscale-ui`) so the showcase
    drives the same flow, only non-headless and with a 3s pause before each main

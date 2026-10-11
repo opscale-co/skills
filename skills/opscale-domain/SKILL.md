@@ -2,8 +2,8 @@
 name: opscale-domain
 description: >
   Generates the PHP domain layer (migrations, models, enums, repositories,
-  value objects) plus its Unit tests and factories, from the ontology manifest
-  and DBML. First step of Generate code, after opscale-init, before
+  value objects) plus its Unit tests and factories, from the data model
+  (dbml.json), within the module's graph (graph.json). First step of Generate code, after opscale-init, before
   opscale-logic. Trigger: "generate the domain", "create the models",
   "build the domain layer".
   Use it whenever the PHP domain layer must be generated, even if just "build the models". Not for Action logic (opscale-logic) or Nova UI (opscale-ui).
@@ -15,12 +15,15 @@ description: >
 
 ### Purpose
 
-Transform the planned module into a complete PHP domain layer. The **ontology**
-(`docs/plan/ontology.mmd` + `ontology.txt`) is the **manifest** — the index of what to
-build: it enumerates every entity (one `%% entity:` line / one tree node) the module owns.
-`docs/plan/dbml.dbml` is the **detail** — the columns, types, enums, and FKs for each of
-those entities. Every class generated maps 1:1 to an entity in the manifest and a table in
-the DBML; nothing is created that cannot be traced back to both.
+Transform the planned module into a complete PHP domain layer. **`docs/plan/dbml.json`
+is both the inventory and the detail** for this layer: its `entities[]` (with their
+`fields[]`, business-type slugs, enums, FKs, external refs, `permissions`) and
+`enums[]` (code/name/values) are the exhaustive list of classes to generate. The **graph**
+(`docs/plan/graph.json`) is the module's overall build manifest/hierarchy — but it no longer
+carries entity/enum nodes, so the entity/enum set is enumerated from `dbml.json` directly.
+Every class generated maps 1:1 to an `entity`/`enum` entry in `dbml.json`; nothing is
+created that cannot be traced back to it. Read the JSON source of truth directly — the
+rendered `dbml.dbml`/`graph.html` are projections, not the parsing surface.
 
 Beyond the classes, this skill also generates the domain's **Unit tests** (domain in
 isolation) and **factories + a seeder skeleton**, so the layer ships verified and seedable.
@@ -32,12 +35,12 @@ Output files are written to the package source directory and listed in
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has stood up the harness | `.specify/memory/constitution.md` exists and the MVP feature `.specify/specs/001-mvp/` is open | Stop. Run `/opscale-init` first. |
-| 2 | `opscale-process` has been run | `docs/plan/process.txt` exists and PASS | Stop. Run `/opscale-process`. |
-| 3 | `opscale-dbml` has been run | `docs/plan/dbml.dbml` exists and PASS | Stop. Run `/opscale-dbml`. |
-| 4 | `opscale-bpmn` has been run | `docs/plan/bpmn.bpmn` exists and PASS | Stop. Run `/opscale-bpmn`. |
-| 5 | `opscale-ontology` has closed the Plan | `docs/plan/ontology.mmd` + `ontology.txt` exist | Stop. Run `/opscale-ontology` — it is the manifest this skill iterates. |
+| 2 | `opscale-process` has been run | `docs/plan/process.json` exists and PASS (`validate-process.mjs`) | Stop. Run `/opscale-process`. |
+| 3 | `opscale-dbml` has been run | `docs/plan/dbml.json` exists and PASS (`validate-dbml.mjs`) | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `docs/plan/bpmn.json` exists and PASS (`validate-bpmn.mjs`) | Stop. Run `/opscale-bpmn`. |
+| 5 | The Plan graph has closed the Plan | `docs/plan/graph.json` exists and PASS (`validate-graph.mjs`) | Stop. Generate the graph — it is the module's build manifest. |
 
-This skill is the **first step of Generate (code)**. The full prerequisite chain `init → process → dbml → bpmn → ontology` must be complete before this skill runs: `opscale-init` has already stood up the dev/test harness (Pest, testbench, phpstan, linters) and opened the MVP feature, so this skill only adds tasks and generates. After this skill, `opscale-logic` is next.
+This skill is the **first step of Generate (code)**. The full prerequisite chain `init → process → dbml → bpmn → graph` must be complete before this skill runs: `opscale-init` has already stood up the dev/test harness (Pest, testbench, phpstan, linters) and opened the MVP feature, so this skill only adds tasks and generates. After this skill, `opscale-logic` is next.
 
 ### Generator contract — scaffold, then customize
 
@@ -88,7 +91,7 @@ When `docs/plan/context/external-refs.md` carries an `external-refs` index, the 
 
 ### Generation rules
 
-**Subdomain prefix on tables.** In the Opscale ontology **subdomain = module** (do not confuse with *subprocess*, a wait-bounded segment inside the flow). Table names in migrations and models MUST be prefixed with the subdomain (the `MODULE_PREFIX` declared in `.specify/memory/constitution.md`). The DBML keeps entity names un-prefixed — the prefix is applied here, at the infrastructure boundary.
+**Subdomain prefix on tables.** In the Opscale ontology **subdomain = module** (do not confuse with *subprocess*, a wait-bounded segment inside the flow). Table names in migrations and models MUST be prefixed with the subdomain (the `MODULE_PREFIX` declared in `.specify/memory/constitution.md`). `dbml.json` keeps entity `code`s un-prefixed — the prefix is applied here, at the infrastructure boundary.
 
 - Migration filename: `YYYY_MM_DD_HHMMSS_create_{prefix}_{table}_table.php`
 - Migration body: `Schema::create('{prefix}_{table}', fn (Blueprint $t) => …)`
@@ -99,7 +102,33 @@ When `docs/plan/context/external-refs.md` carries an `external-refs` index, the 
 
 The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (either the line `**Module Prefix:** {value}` or the unsubstituted `[MODULE_PREFIX]` token) and apply it automatically.
 
-**Business types resolve through the binding — verify, never guess.** The DBML carries no physical types: every business column's type IS a slug (`email`, `money`, `quantity`, `identifier`, `document`, …). The concrete migration column, the model `$casts` entry, AND the model `$validationRules` for that column all come from resolving the slug through `.specify/memory/business-types.php` (the Laravel/Nova binding of the canonical registry in `docs/plan/context/business-types.md`) — e.g. `email → $table->string('{col}', 255)` + `['email','max:255']`, `money → $table->decimal('{col}', 12, 2)`, `identifier → $table->ulid('{col}')`. Read the binding for the actual field/rules/config; do not invent a type or a rule. Every slug used in the DBML MUST exist in the binding — a missing slug is a hard stop, not a fallback to `varchar`. The gate (Phase 6) asserts this explicitly.
+**Each `dbml.json` field → one column, keyed off its single type discriminator.** Every entry in `entities[].fields[]` carries **exactly one** of `type` (a business-type slug) / `enum` (an enum `code`) / `foreignKey` (a sibling entity `code`) / `externalRef` (a cross-subdomain slug), plus `nullable`, optional `default`, and an optional `calculated: true` (a derived value — generate the column normally, but it is not user-input; `opscale-logic`/`opscale-ui` exclude it from capture forms). There is no `category` property: the pk is the `id` field typed `identifier`, and one **inferred field order** is applied identically to migrations and models by the shared `orderFields(fields)` helper in `scripts/_lib.mjs` (see "Inferred field order" below). Normalize each into the generator JSON as:
+
+| field shape in `dbml.json` | migration column | model side |
+|----------------------------|------------------|------------|
+| `code:"id"`, `type:"identifier"` (the pk) | `$table->ulid('id')->primary()` | `HasUlids`; `@property string $id` |
+| `type:"<slug>"` (business type) | binding storage for the slug | `$casts` + `$validationRules` from the binding |
+| `enum:"<enum_code>"` | `$table->string('{col}')->default('{default}')` | cast to the Enum class |
+| `foreignKey:"<entity_code>"` (intra-subdomain) | `$table->ulid('{col}')` + FK to `{prefix}_{target_table}.id` | `BelongsTo` relation |
+| `externalRef:"<slug>"` (cross-subdomain) | `$table->ulid('{col}')` + comment `// logical reference to {slug} — no FK constraint` | no Eloquent relation (or `belongsToContract` via the external-refs index) |
+
+**Inferred field order (no `category`) — applied identically in BOTH migrations and models.** The shared `orderFields(fields)` helper in `scripts/_lib.mjs` sorts every field into one canonical sequence; `generate-migration.mjs` and `generate-model.mjs` both apply it so the migration column list, the model `@property` / `$fillable` / `$casts`, and the Nova resource all AGREE field-for-field (today the migration hoists FKs while the model keeps raw input order — this removes that disagreement):
+
+```
+pk (id / identifier)
+→ foreignKey / externalRef   (references, in authored order)
+→ authored rest              (descriptive + operational, in authored order)
+→ enum (status)
+→ date / moment
+```
+
+Ordering is **stable within a bucket**, so authored order is preserved field-by-field. `created_at` / `updated_at` / `deleted_at` are never passed to `orderFields` — they stay template anchors emitted last. The migration emits each `foreignKey`/`externalRef` column inline in its ordered position (an indexed `ulid`; external refs carry the `// logical reference …` comment), with the `->foreign()` **constraints** following the column block. `calculated` columns are generated normally (column, cast, and validation rule); the flag is consumed only by `opscale-ui`/`opscale-logic` to drop the field from capture forms — document, never special-case it here.
+
+**Business types resolve through the binding — verify, never guess.** `dbml.json` carries no physical types: a business column's `type` IS a slug (`email`, `money`, `quantity`, `identifier`, `document`, …). The concrete migration column, the model `$casts` entry, AND the model `$validationRules` for that column all come from resolving the slug through `.specify/memory/business-types.php` (the Laravel/Nova binding of the canonical registry in `docs/plan/context/business-types.md`) — e.g. `email → $table->string('{col}', 255)` + `['email','max:255']`, `money → $table->decimal('{col}', 12, 2)`, `identifier → $table->ulid('{col}')`. Read the binding for the actual field/rules/config; do not invent a type or a rule. Every slug used in `dbml.json` MUST exist in the binding — a missing slug is a hard stop, not a fallback to `varchar`. The gate (Phase 6) asserts this explicitly.
+
+**Audit fields are implicit.** `dbml.json` deliberately omits `created_at`/`updated_at` (and `deleted_at`); emit `$table->timestamps()` in every migration and `$table->softDeletes()` only where the module needs it, exactly as before — do not look for them in the JSON.
+
+**`permissions` is not a domain concern.** Each entity carries a `permissions` block (`create`/`update`/`delete` predicate strings). The domain generators (migration/model/repository) take no permissions input; these predicates are authorization and are consumed downstream by `opscale-logic` (`canRun()` gates) and `opscale-ui` (`authorizedTo*`). The only domain-adjacent use is the repository boot guard for `status` transitions, which is derived from the status enum, not from `permissions`.
 
 **Migrations:**
 - One migration per DBML table; increment timestamp by 1 second to enforce dependency order
@@ -107,11 +136,11 @@ The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (eith
 - **No `tenant_id` column** — Opscale is single-tenant; isolation is at the database level
 - **Business-typed columns → the binding's storage.** The DBML declares business types as column types (`email`, `money`, `quantity`, …) and carries no physical types; resolve each slug through `.specify/memory/business-types.php` to the concrete column (`email` → `$table->string('{col}', 255)`, `money` → `$table->decimal('{col}', 12, 2)`, `identifier` → `$table->ulid('{col}')`, …)
 - Enum columns → `$table->string('{col}')->default('{default}')`
-- Timestamps → `$table->timestamps()`
-- Soft deletes → `$table->softDeletes()` only if `deleted_at` in DBML
-- Intra-subdomain FK → `$table->foreign('{col}')->references('id')->on('{prefix}_{table}')->cascadeOnDelete()`
-- Cross-subdomain reference → `$table->ulid('{col}')` + comment: `// logical reference to {subdomain}.{table} — no FK constraint`
-- DBML indexes → `$table->index(['{col}'])` or composite
+- Timestamps → `$table->timestamps()` (implicit — not in `dbml.json`)
+- Soft deletes → `$table->softDeletes()` only where the module needs it (also implicit — not in `dbml.json`)
+- Intra-subdomain FK (field `foreignKey:"<entity>"`) → `$table->foreign('{col}')->references('id')->on('{prefix}_{table}')->cascadeOnDelete()`
+- Cross-subdomain reference (field `externalRef:"<slug>"`) → `$table->ulid('{col}')` + comment: `// logical reference to {slug} — no FK constraint`
+- `dbml.json` indexes → `$table->index(['{col}'])` or composite
 
 **Eloquent Models:**
 - `@property` docblock for every column — type must be `string` for ULIDs (not `int`)
@@ -120,17 +149,17 @@ The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (eith
 - `protected $table = '{prefix}_{table}'` — ALWAYS emitted with the subdomain prefix
 - Use `HasUlids` trait — handles PK type and ULID generation automatically
 - `protected $fillable` — all business columns except `id`, timestamps, `deleted_at`
-- `protected $attributes` — default values for columns with DBML `default:`. Emitted as literal PHP value.
+- `protected $attributes` — default values for fields carrying a `dbml.json` `default`. Emitted as literal PHP value.
 - `protected $casts` — enum columns → Enum class; VO columns → Cast class; every business-typed column (the DBML column type IS the slug: `email`, `money`, …) → the binding's storage, `cast` and `rules` (`$validationRules`) — the DBML carries no physical types, so migrations/casts always resolve slug → storage through the Laravel binding at `.specify/memory/business-types.php`; canonical slugs defined in `docs/plan/context/business-types.md`
 - Relationships only for intra-subdomain FKs
 - Cross-subdomain columns → comment: no Eloquent relationship, query via target repo
-- `SoftDeletes` trait only if `deleted_at` in DBML
+- `SoftDeletes` trait only where the module needs soft deletes (audit/delete columns are implicit, not in `dbml.json`)
 - No business logic in models — only property definitions, casts, relationships, validation rules
 - `declare(strict_types=1)` in every file
 
 **Enums:**
 - `enum {Name}: string` (PHP 8.3 backed)
-- Case name: PascalCase — value: **Title Case** string matching the DBML value exactly
+- Case name: PascalCase — value: **Title Case** string matching the `dbml.json` enum `value` exactly
 - Every case must have a docblock comment explaining its business meaning
 - When the enum is a **status** field, add `canTransitionTo(self $status): bool`
 - Docblock describing the business concept
@@ -173,20 +202,20 @@ The generators read `MODULE_PREFIX` from `.specify/memory/constitution.md` (eith
 16. **Empty `$casts` is literal `[]`** — never emit `[ , ]`. Generators must check `count($casts) > 0` before joining.
 17. **Relation method names derive from FK column, not parent model** — two FKs to the same parent yield distinct method names. Track a `$used` set and append the parent model on collision.
 18. **Conditional relation imports** — `use ...\Relations\BelongsTo` (and `HasMany`) only when the model has ≥ 1 of that relation.
-19. **Ontology is the manifest, DBML is the detail** — enumerate entities from `docs/plan/ontology.mmd`; take columns/types from `docs/plan/dbml.dbml`. The two must agree entity-for-entity before any generation.
+19. **`dbml.json` is both the inventory and the detail** — enumerate every entity (`entities[]`) and enum (`enums[]`) from `docs/plan/dbml.json` directly; take fields/types/enums/permissions from the same entries. (`graph.json` is the module's overall hierarchy but no longer lists entity/enum nodes.) Every generated class must trace back to a `dbml.json` entry.
 20. **Business types resolve through the binding** — migration column, `$casts`, and `$validationRules` all come from `.specify/memory/business-types.php`. A slug missing from the binding is a hard stop, never a `varchar` fallback.
 21. **Ship verified** — every generated component gets a Unit test (domain in isolation, in-memory SQLite); the layer is not done until `composer test --testsuite=Unit`, `composer lint`, and `composer analyse` are all green.
 22. **Factories per model, seeder skeleton only** — one `{Model}Factory` each; the `DatabaseSeeder` carries only the idempotent `opscale-domain:seed` skeleton (admin + one row per aggregate). The connected DEMO dataset is built later, in the Presentation phase.
+23. **One inferred field order, applied in both generators** — `orderFields` (`scripts/_lib.mjs`) sorts fields `pk → foreignKey/externalRef → authored rest → enum (status) → date/moment`, stable within each bucket, timestamps last. `generate-migration.mjs` and `generate-model.mjs` both apply it so the migration columns and the model `@property`/`$fillable`/`$casts` agree field-for-field. There is no `category` property to drive order.
+24. **The model is assembled from three single-concern agents** — `model-relations-generator` (relationships + `belongsToContract`), `model-validations-generator` (`$validationRules`), `model-attributes-generator` (`$fillable`/`$casts`/`$attributes`), each reading only its `dbml.json` slice and returning JSON. `generate-model.mjs` merges and renders. `calculated` columns are generated normally; the flag is consumed only by `opscale-ui`/`opscale-logic`.
 
 ## Steps
 
-### Phase 1 — Inventory from the ontology manifest, detail from the DBML
+### Phase 1 — Inventory from `dbml.json` (the data model)
 
-Read the **manifest first**: `docs/plan/ontology.mmd` (and `ontology.txt`) is the index of what to build — enumerate every entity the module owns from its `%% entity: {kebab} | {Business name} | {aliases} | {table} | {enums}` lines (one per stamped table) and every `%% external:` ref. That list is the exhaustive set of classes to generate; it is the manifest/summary.
+Read `docs/plan/dbml.json` as both the inventory and the detail: walk its `entities[]` and `enums[]` — that set is the exhaustive list of classes to generate. Per entity it supplies the `code`/`name`/`description`, the `fields[]` (each with its single `type`/`enum`/`foreignKey`/`externalRef` discriminator, `nullable`, `default`, optional `calculated`), the `relationships[]`, and the `permissions` block; per enum the `code`/`name`/`values[]`. Also read the top-level `prefix` and `standards` for naming context, and `docs/plan/context/external-refs.md` if present. (The module's `docs/plan/graph.json` hierarchy no longer carries entity/enum nodes — the operation/Action manifest it indexes belongs to `opscale-logic`; ignore it here.) Cross-check against `src/Models/` on re-runs: every `dbml.json` entity must end up with a model and vice versa — a mismatch means the Plan is inconsistent; stop and reconcile before generating.
 
-Then read the **detail**: `docs/plan/dbml.dbml` (and `docs/plan/context/external-refs.md` if present) supplies the columns, business-type slugs, enums, defaults, indexes, and FKs for each entity the manifest named. The ontology says *which* entities exist; the DBML says *what each one contains*. Cross-check: every `%% entity:` in the manifest must have a matching `Table` in the DBML and vice versa — a mismatch means the Plan is inconsistent; stop and reconcile before generating.
-
-Present the full generation plan. **There is no cap on the number of entities, enums, or Value Objects** — generate every element the manifest declares, regardless of count.
+Present the full generation plan. **There is no cap on the number of entities, enums, or Value Objects** — generate every element `dbml.json` declares, regardless of count.
 
 ```
 Domain inventory for [Module Name]:
@@ -215,16 +244,26 @@ Total files to generate: [migrations] + [models] + [enums] + [VOs] + [repository
 
 Generation is **always deterministic** — every file produced by this skill comes out of a Node.js script that renders a template from a JSON input. The parallel agents are thin wrappers — they never write PHP themselves.
 
-| Script | Template | Agent |
-|--------|----------|-------|
+The **model** is no longer built by one monolithic generator. It is assembled from the structured contributions of a **fleet of single-concern model-section agents**, each reading only its narrow `dbml.json` slice and returning a JSON fragment; `generate-model.mjs` is the deterministic **assembler** that merges the fragments and applies the inferred field order. `generate-migration.mjs` is likewise the migration assembler (same `orderFields`).
+
+| Script | Template | Agent(s) |
+|--------|----------|----------|
 | `scripts/generate-enum.mjs` | `templates/enum.php.tmpl` | enum-generator |
 | `scripts/generate-value-object.mjs` | `templates/value-object.php.tmpl` | value-object-generator |
-| `scripts/generate-migration.mjs` | `templates/migration.php.tmpl` | migration-generator |
-| `scripts/generate-model.mjs` | `templates/model.php.tmpl` | model-generator |
+| `scripts/generate-migration.mjs` (assembler) | `templates/migration.php.tmpl` | migration-generator |
+| `scripts/generate-model.mjs` (assembler) | `templates/model.php.tmpl` | model-relations-generator + model-validations-generator + model-attributes-generator |
 | `scripts/generate-repository.mjs` | `templates/repository.php.tmpl` | repository-generator |
-| `scripts/generate-contract.mjs` | `templates/contract.php.tmpl` + `templates/has-contract-relations.php.tmpl` | model-generator (per slug) |
+| `scripts/generate-contract.mjs` | `templates/contract.php.tmpl` + `templates/has-contract-relations.php.tmpl` | model-relations-generator (per slug) |
 
-The JSON contract for each script is documented in the header comment of the `.mjs` file. The skill normalizes the DBML into that JSON before spawning the agents — the scripts do **not** parse DBML.
+The three model-section agents, each narrow and reading only its slice:
+
+| Agent | Concern | Reads | Emits |
+|-------|---------|-------|-------|
+| `model-relations-generator` | Eloquent relationships | entity `relationships[]` + `externalRef` fields | `relationships[]` (`foreignKey`→`belongsTo`; inverse→`hasMany`/`hasOne`; `many_to_many`→`belongsToMany`) + `cross_subdomain_refs[]` (`externalRef`→`belongsToContract`) |
+| `model-validations-generator` | `$validationRules` map | entity `fields[]` + business-types binding + enums | `validation_rules` (binding rules + `nullable`/required/`unique`/enum) |
+| `model-attributes-generator` | `$fillable` / `$casts` / `$attributes` | entity `fields[]` + business-types binding + enums | `fillable`, `casts` (business type + enum classes), `attributes` (defaults) |
+
+The JSON contract for each script is documented in the header comment of the `.mjs` file. The skill normalizes `dbml.json` into that JSON before spawning the agents — the scripts do **not** read `dbml.json` (nor the old DBML).
 
 Conflict policy is consistent across all scripts:
 
@@ -258,7 +297,7 @@ Batching is a **performance** decision, never a **scope** decision.
 **2a. Run `/speckit.plan`** (scoped to the open `001-mvp` feature) with the domain inventory from Phase 1:
 
 ```
-/speckit.plan "Domain layer for {module-name}: [N] entities from docs/plan/dbml.dbml.
+/speckit.plan "Domain layer for {module-name}: [N] entities from docs/plan/dbml.json.
 Generate one task per entity covering its full bundle:
   - 1 migration in database/migrations/
   - 1 Eloquent model in src/Models/
@@ -280,10 +319,10 @@ Confirm `plan.md` with the user.
 | Task field | Value |
 |------------|-------|
 | Title | `Implement {EntityName}` or `Implement {EnumName} enum` / `Implement {VOName} value object` |
-| Description | One sentence from the DBML entity Note |
-| Inputs | DBML table definition, columns, FK targets |
+| Description | The entity's `description` from `dbml.json` |
+| Inputs | `dbml.json` entity `fields[]`, FK (`foreignKey`) + external-ref (`externalRef`) targets |
 | Outputs | List of files the bundle produces |
-| Acceptance | Schema matches DBML; status transitions defined (if status enum) |
+| Acceptance | Schema matches `dbml.json`; status transitions defined (if status enum) |
 | Depends on | Task IDs of parent entities + shared enum/VO tasks the entity uses |
 
 **Verify `tasks.md`:**
@@ -321,11 +360,13 @@ Generation proceeds in strict dependency order. All file generation runs through
 
 **3d. Contracts + HasContractRelations trait.** If `docs/plan/context/external-refs.md` carries an `external-refs` index, run `scripts/generate-contract.mjs` once per unique slug **before** generating models. Each call emits one `src/Contracts/{ContractName}Contract.php` and (idempotently) the shared `src/Models/Concerns/HasContractRelations.php`. If there is no `docs/plan/context/external-refs.md`, skip this step.
 
-**3e. Models.** Generate all Eloquent model files. Models import contracts and the trait when normalizing each model's `cross_subdomain_refs`. Pass each model's `entity_id` (the kebab-case id that opens its table's Note in `docs/plan/dbml.dbml` — the table name with dashes) and `entity_name` (the canonical business name) in the payload — the generator stamps them as the class docblock's `@entity` tag.
+**3e. Models (fleet of section agents → assembler).** A model is no longer built by one monolithic generator. **Per entity**, derive the shared inputs once (`MODULE_PREFIX` from the constitution, the business-types binding, the entity's `dbml.json` slice and its enums), then **fan out the three model-section agents IN PARALLEL** — `model-relations-generator`, `model-validations-generator`, `model-attributes-generator` — each reading only its slice and returning a STRUCTURED JSON fragment (relationships + cross_subdomain_refs / validation_rules / fillable + casts + attributes). **Merge** the three fragments into one `generate-model.mjs` input together with the structural `columns` (`@property` set), `entity_id` (the entity `code` — the kebab slug) and `entity_name` (the `name`), then **run the migration + model assemblers** — both apply the shared `orderFields` so columns and `@property`/`$fillable`/`$casts` agree — and gate.
+
+The model assembler derives each `cross_subdomain_refs` entry's `{Slug}Contract` class and `belongsToContract` method, and imports the contracts + `HasContractRelations` trait automatically; it stamps `entity_id`/`entity_name` as the class docblock's `@entity` tag. Entity bundles run fully in parallel — no cross-entity dependencies beyond FK ordering (parents before children, handled by the migration timestamp sequence).
 
 **3f. Repositories.** Generate the repository trait per model.
 
-**3g. Verify the name lineage.** There is no lineage file to fill — the lineage is the kebab-id chain: the `{kebab} — ` opening of each table Note in `docs/plan/dbml.dbml` → the `@entity {kebab}` docblock the model generator just stamped (contracts carry `@entity ref:{slug}`). Verify it closed: every table in `docs/plan/dbml.txt` has a model whose docblock carries that table's kebab id (`grep -r "@entity" src/Models` and compare). A model missing its `@entity` tag means its payload omitted `entity_id` — regenerate it. This is what keeps stakeholders and developers aligned: one grep of the kebab id returns the table, its business meaning, and the class.
+**3g. Verify the name lineage.** There is no lineage file to fill — the lineage is the kebab-id chain: each entity `code` in `docs/plan/dbml.json` → the `@entity {kebab}` docblock the model generator just stamped (contracts carry `@entity ref:{slug}`). Verify it closed: every entity in `docs/plan/dbml.json` has a model whose docblock carries that entity's `code` (`grep -r "@entity" src/Models` and compare). A model missing its `@entity` tag means its payload omitted `entity_id` — regenerate it. This is what keeps stakeholders and developers aligned: one grep of the kebab id returns the entity, its business meaning, and the class.
 
 **3h. Update plan.md.** Append the generated file list to `.specify/specs/001-mvp/plan.md`, including the `Task ID` from `tasks.md` for each entity bundle so the file → task mapping is traceable.
 

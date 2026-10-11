@@ -1,5 +1,17 @@
 #!/usr/bin/env node
-// Deterministic generator for a single Eloquent model.
+// Deterministic ASSEMBLER for a single Eloquent model.
+//
+// Merges the three single-concern model-section contributions produced by the
+// fleet agents and applies the ONE inferred field order (see orderFields in
+// _lib.mjs) so the model @property/$fillable/$casts AGREE, field-for-field,
+// with the migration columns:
+//   - model-relations-generator   → `relationships` + `cross_subdomain_refs`
+//   - model-validations-generator  → `validation_rules`
+//   - model-attributes-generator   → `fillable` / `casts` / `attributes`
+// `columns` (the @property set) is structural (the skill supplies it). The
+// `calculated` flag is NOT consumed here — a calculated column is generated as
+// a normal column/cast/rule; only opscale-ui / opscale-logic exclude it from
+// capture forms.
 //
 // Input JSON shape:
 //   {
@@ -62,7 +74,7 @@
 import { dirname, join, resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { readJsonInput, render, writeOrConflict, loadTemplate, resultLine } from './_lib.mjs';
+import { readJsonInput, render, writeOrConflict, loadTemplate, resultLine, orderFields, orderByColumn } from './_lib.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -163,7 +175,50 @@ function main() {
   // the un-prefixed name would match Laravel's plural convention.
   const prefixedTableName = prefixedTable(modulePrefix, input.table_name);
 
-  const property_docs = input.columns.map(c => {
+  // --- Inferred field order -------------------------------------------------
+  // This generator is the model ASSEMBLER: it merges the three single-concern
+  // model-section contributions (relations, validations, attributes) and
+  // applies the ONE canonical field order shared with generate-migration.mjs,
+  // so the migration columns and the model @property / $fillable / $casts all
+  // AGREE (pk → fk/ext → authored rest → enum → date; timestamps last).
+  //
+  // Column `kind` is derived from the model's own inputs (relationships +
+  // cross_subdomain_refs = references, Enum-class casts = enum, date/datetime
+  // casts or Carbon php_type = date). `created_at`/`updated_at`/`deleted_at`
+  // are pinned last as template anchors — never reordered into the date bucket.
+  const TIMESTAMP_COLS = new Set(['created_at', 'updated_at', 'deleted_at']);
+  const enumClassSet = new Set((input.enums || []).map(e => e.class));
+  const refColumnSet = new Set([
+    ...(input.relationships || []).filter(r => r.foreign_key).map(r => r.foreign_key),
+    ...(input.cross_subdomain_refs || []).map(r => r.column),
+  ]);
+  const castByColumn = new Map((input.casts || []).map(c => [c.column, String(c.cast)]));
+  const unquote = (s) => String(s).replace(/^['"]|['"]$/g, '');
+  const isEnumColumn = (name) => {
+    const cast = castByColumn.get(name);
+    if (!cast) return false;
+    const m = cast.match(/^([A-Za-z_][A-Za-z0-9_]*)::class$/);
+    return !!(m && enumClassSet.has(m[1]));
+  };
+  const isDateColumn = (name, phpType) => {
+    const cast = castByColumn.get(name);
+    if (cast && ['date', 'datetime', 'immutable_date', 'immutable_datetime'].includes(unquote(cast))) return true;
+    return /\bCarbon$/.test(String(phpType || ''));
+  };
+
+  const annotate = (c) => ({
+    ...c,
+    is_reference: refColumnSet.has(c.name),
+    is_enum:      isEnumColumn(c.name),
+    is_date:      isDateColumn(c.name, c.php_type),
+  });
+
+  const timestampColumns = input.columns.filter(c => TIMESTAMP_COLS.has(c.name));
+  const mainColumns = input.columns.filter(c => !TIMESTAMP_COLS.has(c.name)).map(annotate);
+  const orderedColumns = [...orderFields(mainColumns), ...timestampColumns];
+  const orderedNames = orderedColumns.map(c => c.name);
+
+  const property_docs = orderedColumns.map(c => {
     const pad = Math.max(1, 16 - c.name.length);
     return `${c.php_type} $${c.name}${' '.repeat(pad)}${c.description || ''}`.trimEnd();
   });
@@ -202,10 +257,14 @@ function main() {
     eloquent_call: eloquentCall(r),
   }));
 
-  const validation_rules = Object.entries(input.validation_rules || {}).map(([column, rules]) => ({
-    column,
-    rules: rulesToPhp(rules),
-  }));
+  // Every merged section renders in the SAME canonical order as @property.
+  const validation_rules = orderByColumn(
+    Object.entries(input.validation_rules || {}), ([column]) => column, orderedNames,
+  ).map(([column, rules]) => ({ column, rules: rulesToPhp(rules) }));
+
+  const fillable   = orderByColumn(input.fillable || [],   (c) => c,        orderedNames);
+  const attributes = orderByColumn(input.attributes || [], (a) => a.column, orderedNames);
+  const casts      = orderByColumn(input.casts || [],      (c) => c.column, orderedNames);
 
   const context = {
     package_namespace: input.package_namespace,
@@ -222,9 +281,9 @@ function main() {
     enum_imports,
     vo_imports,
     validation_rules,
-    fillable:           input.fillable || [],
-    attributes:         input.attributes || [],
-    casts:              input.casts || [],
+    fillable,
+    attributes,
+    casts,
     relationships,
     has_relationships:  relationships.length > 0,
     cross_subdomain_refs:             crossRefs,

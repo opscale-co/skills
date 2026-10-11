@@ -81,7 +81,7 @@ Types whose validation says "value from options source" (`city`, `state`, `gende
 | `opscale-ui` | Generate | the binding | A column typed `{slug}` renders as the binding's field with its config; the meaning becomes the help text |
 | `opscale-logic` | Generate | the binding | Inputs typed with a slug resolve to the binding's validation rules in `parameters()` |
 
-Plan artifacts (process.txt, dbml.dbml, bpmn.bpmn, SIPOCs) may only ever reference **slugs** — never a class name, framework field, or language-specific rule string. That keeps every Plan artifact valid for any implementation stack; only the binding is stack-specific.
+Plan artifacts (process.json, dbml.dbml, bpmn.bpmn, SIPOCs) may only ever reference **slugs** — never a class name, framework field, or language-specific rule string. That keeps every Plan artifact valid for any implementation stack; only the binding is stack-specific.
 
 ## Business type vs Enum vs external ref — pick one
 

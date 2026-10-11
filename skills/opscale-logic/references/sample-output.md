@@ -11,6 +11,14 @@ For the canonical specification of the format, see this skill's
 
 ## 1. SIPOC-complete Action (state gate, system supplier, system client)
 
+Assembled from the four section-agent contributions (identifier, parameters,
+outputs, translations) + the authored `handle()`/`canRun()` bodies. Note:
+`identifier()` is module-prefixed; `name()`, `description()`, every parameter and
+output description, and every `canRun()`/`fail()` message go through `__()` with
+namespaced keys `{prefix}.{id}.{name|desc|param.<p>|output.<o>|fail.<n>}`, seeded
+into **both** `lang/en.json` and `lang/es.json`; the `approver` id param is a
+Select via `options()`, never a free `Text`.
+
 ```php
 namespace Acme\Loans\Services\Actions;
 
@@ -22,25 +30,41 @@ use Acme\Loans\Models\Enums\ApplicationStatus;
 
 class ApproveApplication extends Action
 {
-    use EmitsEvent; // SIPOC declares an output → event('approve-application', [$outputs])
+    use EmitsEvent; // SIPOC declares an output → event('credits.approve-application', [$outputs])
 
-    public function identifier(): string { return 'approve-application'; }
-    public function name(): string       { return __('Approve application'); }
+    // identifier() = {MODULE_PREFIX}.{sipoc.id}; it is also the system-event name.
+    public function identifier(): string { return 'credits.approve-application'; }
+    public function name(): string       { return __('credits.approve-application.name'); }
 
     public function description(): string
     {
-        return 'Approves a pending application and notifies the applicant.';
+        return __('credits.approve-application.desc');
     }
 
     public function parameters(): array
     {
         return [
             [
-                'name'        => 'application',
-                'description' => 'The pending application to approve.',
+                'name'        => 'application',          // the prefilled, passed record
+                'description' => __('credits.approve-application.param.application'),
                 'type'        => Application::class,
                 'rules'       => ['required'],
             ],
+            [
+                'name'        => 'approver',             // an actor picked from the IAM module
+                'description' => __('credits.approve-application.param.approver'),
+                'type'        => 'string',
+                'rules'       => ['required', 'string', 'size:26', 'ulid'],
+            ],
+        ];
+    }
+
+    // Option/relation/id param → a Select, never free Text (the ApproveQuote.approver fix).
+    #[\Override]
+    public function options(): array
+    {
+        return [
+            'approver' => resolve(UsersContract::class)->options(),
         ];
     }
 
@@ -60,11 +84,11 @@ class ApproveApplication extends Action
         $application = $this->application($inputs);
 
         if (! $application instanceof Application) {
-            return 'Application not found.';
+            return __('credits.approve-application.fail.not_found');
         }
 
         if ($application->status !== ApplicationStatus::Pending) {
-            return 'Application is not pending (BR-01).';
+            return __('credits.approve-application.fail.not_pending');
         }
 
         return true;
@@ -75,11 +99,13 @@ class ApproveApplication extends Action
         $application = $this->application($inputs);
 
         if (! $application instanceof Application) {
-            return $this->fail('Application not found.');
+            return $this->fail(__('credits.approve-application.fail.not_found'));
         }
 
-        $application->status = ApplicationStatus::Approved;
-        $application->save();
+        $application->update([
+            'status'      => ApplicationStatus::Approved,
+            'approver_id' => $inputs['approver'],
+        ]);
 
         return $this->succeed(['application_id' => $application->id]);
     }
@@ -89,7 +115,7 @@ class ApproveApplication extends Action
         return [
             [
                 'name'        => 'application_id',
-                'description' => 'The approved application.',
+                'description' => __('credits.approve-application.output.application_id'),
                 'type'        => 'string',
                 'rules'       => ['required', 'string'],
             ],
@@ -160,26 +186,26 @@ describe('ApproveApplication', function (): void {
 
     // valid preconditions → expected effect
     it('positive: approves a pending application (BR-01)', function (): void {
-        Event::fake(['approve-application']);
+        Event::fake(['credits.approve-application']);
         $application = Application::factory()->create(['status' => ApplicationStatus::Pending]);
 
         $result = executeAction(ApproveApplication::class, ['application' => $application]);
 
         expect($result['success'])->toBeTrue();
         expect($application->fresh()->status)->toBe(ApplicationStatus::Approved);
-        Event::assertDispatched('approve-application');
+        Event::assertDispatched('credits.approve-application');
     });
 
     // invalid precondition → soft-fail, no state change, no event
     it('negative: soft-fails when not pending (BR-01)', function (): void {
-        Event::fake(['approve-application']);
+        Event::fake(['credits.approve-application']);
         $application = Application::factory()->create(['status' => ApplicationStatus::Approved]);
 
         $result = executeAction(ApproveApplication::class, ['application' => $application]);
 
         expect($result['success'])->toBeFalse();
         expect($application->fresh()->status)->toBe(ApplicationStatus::Approved);
-        Event::assertNotDispatched('approve-application');
+        Event::assertNotDispatched('credits.approve-application');
     });
 
     // looks valid, but a rule must still reject it

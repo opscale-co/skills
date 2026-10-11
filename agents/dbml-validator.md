@@ -1,9 +1,9 @@
 ---
 name: dbml-validator
 description: >
-  Validates a DBML data model file using @dbml/core. Parses the DBML,
-  checks syntax and quality rules. Returns structured pass/fail/warnings
-  result. Read-only — never modifies files.
+  Validates the module's dbml.json against its JSON Schema + semantic rules,
+  re-renders dbml.dbml and parses it with @dbml/core. The dbml specialization of
+  the Plan gate (see plan-validator). Read-only — never modifies files.
 tools: Read, Bash, Grep, Glob, memory
 model: sonnet
 maxTurns: 8
@@ -11,46 +11,35 @@ maxTurns: 8
 
 # DBML Validator
 
-You validate a DBML data model file against syntax and quality rules using
-the `@dbml/core` parser via a validation script.
+The dbml specialization of `plan-validator`. One script runs all three layers:
+JSON Schema (ajv) over `dbml.json`, semantic rules (field order by category,
+FK/enum/external-ref resolution, permission-predicate field resolution, no
+`tenant_id`, kebab-id Note stamp), and a parse of the rendered `dbml.dbml` via
+`@dbml/core` (`Parser.parse`). The data model's source of truth is `dbml.json`;
+`dbml.dbml` is a deterministic projection of it.
 
 ## Input
 
-You receive:
-- `dbml_content` — the assembled DBML markdown content to validate
+- `plan_dir` — the plan folder to validate (default `docs/plan`)
 
 ## Workflow
 
-1. Write the DBML content to a temp file
-2. Run the validation script:
-   ```bash
-   node validate-dbml.mjs /tmp/.dbml-validate.tmp.md
-   ```
-3. Interpret the exit code and output
+```bash
+node ~/.claude/skills/opscale-dbml/scripts/validate-dbml.mjs --dir=<plan_dir>
+```
+
+Relay every `PASS` / `REVIEW` / `FAIL` line.
 
 ## Exit Code Interpretation
 
-| Exit Code | Status | Action |
-|-----------|--------|--------|
-| `0` | PASS | Return success with validation output |
-| `1` | FAIL — syntax error | Return the exact error with line/column. Parent must fix and re-submit |
-| `2` | REVIEW — quality warnings | Return all warnings. Parent must fix and re-submit |
-
-## Output Format
-
-```
-STATUS: [PASS | FAIL | REVIEW]
-
-ERRORS (if any):
-- [line:col] [error description]
-
-WARNINGS (if any):
-- [table.column] [warning description]
-```
+| Exit | Status | Action |
+|---|---|---|
+| `0` | PASS | Return success |
+| `1` | FAIL — schema, semantic, or DBML parse error | Return every FAIL line. Parent fixes `dbml.json` and re-generates |
+| `2` | REVIEW — quality warnings | Return all warnings |
 
 ## Rules
 
-- Never modify the DBML content — only validate
-- Never write files to the project directory
-- Clean up temp files after validation
-- Report ALL errors/warnings, not just the first one
+- Read-only — never modify `dbml.json` or `dbml.dbml`.
+- Report ALL errors/warnings, not just the first.
+- Never hand-edit `dbml.dbml` to pass — fix `dbml.json` and re-render.

@@ -13,466 +13,175 @@ description: >
 
 ### Purpose
 
-Transform a validated business spec into a DBML data model that reflects the real business domain. The DBML is the authoritative source of truth for the module — the Generate phase derives every data-layer artifact from it.
+Transform a validated business spec into a DDD data model fit for a software system. The validated source of truth is **`docs/plan/dbml.json`**; the raw **`docs/plan/dbml.dbml`** (the ER diagram downstream skills read) is a deterministic projection of it — never hand-edited.
 
-`opscale-process` captured the module **as it runs today** — possibly with manual steps, ad-hoc names, and workarounds. `opscale-dbml` models the **systematized to-be**: a coherent schema fit for a software system. The two are not the same shape, and this skill is where the gap is reconciled — by aligning the spec against a domain standard when one applies, and limiting, renaming, merging, or reformulating entities and relationships accordingly.
+`opscale-process` captured the module **as it runs today** — manual steps, ad-hoc names, workarounds. `opscale-dbml` models the **systematized to-be**: a coherent schema. The two are not the same shape, and this skill reconciles the gap — aligning the spec to a domain standard when one applies, and limiting, renaming, merging, or reformulating entities and relationships accordingly.
 
-Outputs are written to `docs/plan/dbml.dbml` (raw DBML — the ER diagram), `docs/plan/dbml.txt` (plain entity list), and `docs/plan/context/external-refs.md` (external-ref index). Canonical paths: `references/artifact-paths.md`. **Entity ids are born here**: the final entities that survive the Phase 2 reconciliation each receive their **kebab-case entity id** (≡ the table name with dashes), stamped as the opening of the table's Note — the name lineage is embedded in the artifacts themselves and rendered by `opscale-ontology`.
+**Entity ids are born here.** The final entities that survive the Phase 2 reconciliation each receive their **kebab-case entity id** (the `code`, ≡ the table name with dashes). It opens the table's `Note` in the projection and the generated class's `@entity` docblock — the name lineage lives in the artifacts, rendered by `opscale-graph`.
+
+### The JSON contract
+
+`dbml.json` is validated against `schema/dbml.schema.json` (which `$ref`s the shared `common.schema.json`). The schema is a hard gate. Shape:
+
+```jsonc
+{
+  // NO `module` block — only process.json carries module (software/domain/subdomain);
+  // dbml derives the subdomain from the sibling process.json at render time.
+  "prefix": "ventas",                                  // MODULE_PREFIX — prepended downstream; never repeat it in entity codes
+  "standards": { "modeling": "...", "process": "...", "notes": "..." },   // modeling required; the analysis CONCLUSION only
+  "enums": [ { "code": "quote_status", "name": "...", "values": [ { "value": "draft", "description": "..." } ] } ],
+  "entities": [ {
+    "code": "quote-line",                   // = slugify(name); table name is the code with '-'→'_'
+    "name": "Quote line",
+    "description": "...",
+    "fields": [ {                           // order: pk first, then foreign/external refs, then the rest
+      "code": "quote_id", "description": "...", "nullable": false,
+      // EXACTLY ONE typing: type | enum | foreignKey | externalRef
+      "foreignKey": "quote"                 // intra-module → `identifier [ref: > quote.id]`
+    }, {
+      "code": "subtotal", "type": "money", "description": "...",
+      "calculated": true                    // derived by the system — never captured as input
+    } ],
+    "permissions": { "create": "true", "update": "status = draft", "delete": "false" },   // all three; predicate grammar
+    "relationships": [ { "type": "belongs_to", "target": "quote", "field": "quote_id", "description": "..." } ]  // ≥1
+  } ]
+}
+```
+
+Hard schema rules: `prefix` and `standards.modeling` present (there is **no `terminology` block** — name normalization is analysis that stays in `names.md`; `dbml.json` holds only the conclusion); every entity has `code`/`name`/`description`/`fields`/`permissions`/`relationships` (relationships **minItems 1**); `permissions` requires create+update+delete (predicate grammar); each field has **exactly one** of `type`/`enum`/`foreignKey`/`externalRef`; an optional `calculated: true` marks a derived field; `type` ∈ the business-type registry; each enum value has a `description`; **no audit codes** in fields (`created_at`/`updated_at`/`created_by`/`updated_by`/`deleted_at` are forbidden — the renderer appends `created_at`/`updated_at` automatically).
+
+Semantic rules the schema can't express (checked by the validator): fields ordered pk → foreign/external refs → the rest, with exactly one `pk` (the `id identifier`); a `calculated` field is never the pk (but may be a logic-set reference); `foreignKey`/`enum` refs resolve in-doc; `externalRef` slugs appear in `context/external-refs.md`; permission predicates reference real fields and real enum values; `code == slugify(name)`; no `tenant_id` anywhere.
+
+### Prerequisites
+
+| # | Requirement | If missing |
+|---|-------------|-----------|
+| 1 | `opscale-process` ran for this module (`docs/plan/process.json` present, passed) | Stop. Run `/opscale-process` first. |
+| 2 | Name normalization `docs/plan/context/names.md` exists | Return to `/opscale-process` to complete it. |
+
+Optional but recommended: `docs/plan/context/system.map.md` (from `opscale-map`) — the catalog of sibling modules to resolve external references against. Step 2 of Plan: run **after** `opscale-process`, **before** `opscale-bpmn`.
 
 ### Modes
 
-The mode depends on whether a writable project folder is available — not on which app is running. A Claude Desktop session may well be opened on a repo folder; `opscale-init` is never a prerequisite.
+- **Writable project folder:** write outputs directly to `docs/plan/`.
+- **Chat-only session:** produce the same files as downloadable outputs, each labeled with its destination path.
 
-- **Writable project folder (Claude Code, or Claude Desktop on a repo/folder):** write the outputs directly to `docs/plan/`.
-- **No folder access (chat-only session):** produce exactly the same files as downloadable outputs, each labeled with its destination path (`docs/plan/…`); the user drops them into the repo afterwards.
-- The Phase 8 validation gate is **mandatory in both modes** — both environments have console access to run the bundled validator.
+The agent-run validation gate (Phase 9) is mandatory in both.
 
-**Propose → approve → write → validate.** Nothing is assumed: every phase and sub-phase ends in an explicit user approval, and no artifact is written before the user approved its content in conversation. Validators run after writing; a failed gate is fixed and re-run, never silently patched.
+### How this skill runs — context, per-item questions, generate, validate
 
-### Prerequisites — must be satisfied (ordered)
+One hard rule: **nothing is generated until every piece is confirmed, and nothing advances past a phase whose gate has not passed.** The heavy, non-interactive work is delegated to sub-agents; only the interview stays in the main conversation:
 
-| # | Requirement | Check | If missing |
-|---|-------------|-------|-----------|
-| 1 | `opscale-process` has been run for this module | `docs/plan/process.txt` exists and passed its completeness gate (PASS) | Stop. Run `/opscale-process` first. |
-| 2 | The name normalization exists | `docs/plan/context/names.md` has the `| Canónico | ← alias |` table (input — no ids) | Return to `/opscale-process` to complete it. |
+- **Phase 0 — Load context (agent).** Read `docs/plan/` + `context/names.md` + `context/system.map.md`, return a compact summary.
+- **Phases 1–7 — Interview (main conversation, one item at a time).** Each phase ends in an explicit **"Wait for user approval before continuing."** Attributes and permissions are confirmed **one entity at a time** — never dump the whole model at once.
+- **Phase 8 — Generate (agent).** Author `dbml.json` and run `render-dbml.mjs` to project `dbml.dbml`.
+- **Phase 9 — Validate (agent).** Run `validate-dbml.mjs`. A failed gate is fixed and re-run, never silently patched.
 
-Optional but recommended: `docs/plan/context/system.map.md` (written by `opscale-map`) — without it, Phase 3 has no catalog of sibling modules to resolve external references against.
+### Language rule — structural keys English, content in the user's language
 
-This skill is **Step 2 of the Plan phase** and must run **AFTER `opscale-process`** and **BEFORE `opscale-bpmn`**. No skipping, no parallel runs with sibling Plan skills.
+JSON keys, entity `code`s, field `code`s, and enum `value`s are canonical English/ASCII snake/kebab. Everything the stakeholder reads — `description`s, enum value descriptions, `standards.notes` — follows the input language.
 
 ### Subdomain name is an implicit prefix
 
-**Terminology:** in the Opscale ontology, **subdomain = module** — one business process, one spec directory. Do not confuse it with a **subprocess**, which is a wait-bounded segment *inside* the module's flow (see `docs/plan/process.txt`). This skill uses "subdomain" only in the module sense.
-
-The subdomain name (the module's slug — `loans`, `kyc`, `credits`, `loyalty`, …) is **automatically prepended** by the Generate phase to every table and generated artifact name downstream. Entity names declared here in DBML must therefore never include the subdomain stem.
-
-| Subdomain | DBML entity | Generated table | Verdict |
-|---|---|---|---|
-| `credits` | `application` | `credits_application` | Correct |
-| `credits` | `credit_application` | `credits_credit_application` | Redundant — `credit` is already implicit |
-| `loans` | `loan` | `loans_loan` | Redundant |
-| `loans` | `disbursement` | `loans_disbursement` | Correct |
-| `kyc` | `verification` | `kyc_verification` | Correct |
-
-**Why:** when developers add the subdomain stem to entity names as a "collision-avoidance" hack, the hack leaks into business naming everywhere downstream — the canonical name propagates to every generated class and artifact, so the DBML is harder to read, generated names double up the noun, and stakeholders reviewing the spec see `credit_credit_application` in generated artifacts. The subdomain prefix is structural; the entity name is business — keep them separate.
-
-When the spec from `opscale-process` proposes an entity name that already contains the subdomain stem, strip it and **confirm with the user** before locking the name in Phase 2.
-
-### Operating principle — validate every step, never assume
-
-This is an **interactive** skill. The workflow advances **one phase at a time**, and each phase ends with a confirmation gate. You never:
-
-- Pick a canonical name without checking the project standard
-- Introduce an enum, relationship, attribute, type, nullability, or default without it being traceable to the spec **or** confirmed by the user
-- Roll multiple phases into one prompt
-
-When something is missing, ambiguous, or would require a guess — **stop and ask**, then integrate the answer.
-
-### Industry-standard naming — the per-entity rule for attribute presentation
-
-The reconciliation in Phase 2 is not a lookup against a file in the project — it is a judgment call against **general industry conventions** for the domain at hand. A few rules of thumb to anchor it:
-
-- Prefer the term a developer familiar with the domain (banking, retail, healthcare, ...) would expect to see in a schema.
-- Separate **auth identity** (`User`) from **business actor** (`Customer`, `Member`, `Employee`). Same row sometimes, different concepts always.
-- Identifiers are not interchangeable: `…Id` (surrogate PK), `…Number` (human-issued sequence), `…Code` (short symbolic key), `…Reference` (external system handle).
-- Money: `amount` + `currency`, not `value`. Counts: `quantity`, not `count` (column).
-- Time: `…_at` for timestamps, `…_on` for dates, `…_date` only when truly a date label.
-- Lifecycle states: prefer `status` (one current state) over scattered booleans (`is_active`, `is_approved`, `is_cancelled`).
-
-When the spec's name is a localized term with no widely-used equivalent (e.g. `Jornada`, `Vale`, `Asiento`), keep it — that's signal, not noise. Just confirm with the user that mixing languages in the schema is intentional.
-
-When in doubt, **ask**. The cost of one extra question is far lower than the cost of an entity named `User` that turns out to mean three different things.
-
-**Attribute presentation rule:** Phase 6 processes **one entity at a time** — presenting attributes for many entities at once collapses user attention. The user confirms by reflex instead of actually reviewing. Stop-gate: do not advance to the next entity until the current entity's attributes are confirmed.
-
-### Output Location
-
-```
-docs/plan/
-├── dbml.dbml                  ← the canonical, raw DBML (downstream skills read this; renders as the ER diagram)
-├── dbml.txt                     ← plain list: one entity per line
-└── context/
-    └── external-refs.md         ← external-ref index, fenced external-refs block
-```
-
-**Three artifacts, three purposes:**
-- `docs/plan/dbml.dbml` — **raw DBML**, no markdown wrapper, no narrative, no Data Dictionary table. Parseable directly by `@dbml/core`. This is the live model the Generate-phase skills read.
-- `docs/plan/context/external-refs.md` — companion index emitted in Phase 9; structured list of cross-subdomain columns grouped by contract slug, in a fenced `external-refs` block. The Generate phase reads this file to generate the cross-module contract and the virtual relation to the owning module.
-- `docs/plan/dbml.txt` — the plain, parseable entity list: one DBML entity name per line (un-prefixed, in DBML declaration order), nothing else — no headers, no markdown, no external references. **Why:** gates and downstream tooling diff this file cheaply to verify entity coverage (spec ↔ DBML ↔ generated data layer) without parsing DBML.
-
-**Name lineage lives in the artifacts, not in a separate file.** The Phase 2 reconciliation must not evaporate when the run ends, and it doesn't: each table's `Note` opens with the entity's **kebab-case id** (`{kebab} — {description}`, where the kebab is the table name with dashes — e.g. table `cash_session` → id `cash-session`), assigned here on the FINAL entities (the ones that survive merge/drop/rename; `names.md` is only the input proposal). Grep the kebab id and you get the DBML table and (after Generate) the class that carries the same id in its `@entity` docblock. `opscale-ontology` renders this lineage as diagram metadata; no skill maintains it by hand.
+**subdomain = module.** The `prefix` (the module slug — `ventas`, `loans`, `kyc`) is **prepended by the Generate phase** to every table. Entity `code`s must never include the prefix stem (`credits` + `application` → table `credits_application`; never `credit_application`). When the spec proposes a name that already carries the stem, strip it and confirm before locking in Phase 2.
 
 ### DDD Scope — what belongs in the domain model
 
-**Include ONLY:**
-- Business entities — real-world nouns the business cares about (Customer, Order, Contract)
-- Domain concepts with lifecycle — things that are created, modified, and queried (Payment, Shipment)
-- Actors and roles when they have business data beyond authentication (Employee, Supplier)
-- Business documents that persist (Receipt, Certificate, Report record)
-- Domain events as entities only when they carry business value that must be stored (Approval, Rejection)
+**Include only:** business entities (real-world nouns), domain concepts with a lifecycle, actors/roles with business data beyond auth, business documents that persist, domain events that must be stored.
 
-**Exclude always:**
-- Technical infrastructure: API, Endpoint, Request, Response, Webhook, Queue, Job, Cache, Log, Session
-- Configuration: Setting, Config, Parameter, FeatureFlag
-- UI/UX: Screen, Page, Form, Button, Modal
-- Security infrastructure: Token, Permission (unless Role is a genuine business concept)
-- Audit artifacts: AuditLog, ChangeHistory (unless explicitly required by a business rule in the spec)
+**Exclude always:** technical infrastructure (API, Request, Webhook, Queue, Job, Cache, Log, Session), configuration (Setting, Config, FeatureFlag), UI/UX (Screen, Form, Button), security infra (Token, Permission unless Role is genuine business), audit artifacts (AuditLog unless a business rule requires it).
 
-If an element from the spec is ambiguous — could be technical or business — ask the user:
-> *"Is [Element] a business concept users interact with, or a technical component? This determines whether it becomes an entity in the data model."*
+If an element is ambiguous (business vs technical), ask: *"Is [Element] a business concept users interact with, or a technical component?"*
 
-### Domain Rules
+### Modeling standards — the reconciliation anchor
 
-1. **Metadata everywhere** — the `Project` block, every `Table`, and every field carry a `Note` describing its business meaning. A table or column with no note fails review. Every table `Note` **opens with the entity id**: `{kebab} — {business meaning}`, where the kebab id is exactly the table name with dashes (`cash_session` → `cash-session`). One table per id, one id per table — the validator enforces the format and the id ↔ table match. **When the final entity name differs from its `names.md` canonical** (renamed/merged in the Phase 2 reconciliation), close the Note with ` (spec: {original canonical})` — otherwise the spec→final mapping evaporates with the run, and `opscale-ontology` cannot assemble the alias lineage for renamed entities. Junction tables born in Phase 4 get their id the same way (their table name in kebab) — `names.md` is not touched (it carries no ids).
+Phase 1 decides whether to align the model to a known domain standard (BIAN/ISO 20022 for banking; ARTS/GS1 for retail; HL7 FHIR for healthcare; SCOR/GS1 EPCIS for logistics; SCIM for IAM; REA/double-entry for accounting; schema.org Order for e-commerce; HR-XML/HROpen for HR; IMS/OneRoster for education; ACORD for insurance). The choice governs Phases 2–6 and is recorded in `standards.modeling` — downstream skills read it to align. If no standard applies, fall back to general industry-naming heuristics (separate auth `User` from business actor; `…Id`/`…Number`/`…Code`/`…Reference` are distinct; `amount`+`currency` not `value`; `status` over scattered booleans; `…_at`/`…_on` time conventions). When a spec term is a localized domain-native word with no standard equivalent, keep it — that is signal, not noise — and confirm mixing languages is intentional.
 
-2. **Domain only** — every table must trace to a business entity in `docs/plan/process.txt`. If it cannot be traced, it does not belong here.
+### Field typing — the business type IS the column type
 
-3. **No technical columns** — reject any column driven by UI, config, or infrastructure:
-   - bad: `is_visible`, `ui_order`, `display_config`, `cache_key`, `sync_token`
-   - good: `status`, `amount`, `issued_date`, `approved_by`, `reference_number`
+Every field resolves to **exactly one** typing key:
+- `type` — a **business-type slug** from the registry (`email`, `money`, `name`, `date`, `identifier`, …), written directly. No technical storage types (`varchar`, `int`, `json`) ever. The registry (`shared/plan-contract/business-types.md`, copied to `docs/plan/context/business-types.md`) is the single source; if a concept has no slug, extend the registry first.
+- `enum` — an `enum` `code` declared in this doc (closed, module-owned value set).
+- `foreignKey` — an entity `code` in this doc → renders `identifier [ref: > target.id]` (or `ref: - ` when the relationship is 1:1).
+- `externalRef` — a cross-module contract slug → renders `identifier` + a `// external_ref:{slug} | …` note (no FK constraint). Name the column by its **role** in this module (`requested_by`, `applicant_id`), never `{entity}_id`.
 
-4. **Enums over strings** — any column with a finite set of values is an Enum block. A `varchar` typed status or category field is a violation.
+The pk is always `id` typed `identifier`. The renderer appends `created_at`/`updated_at` as `timestamp` — never author them. Single-tenant: no `tenant_id`.
 
-5. **ULID always** — every `id`/FK is an `identifier` (ULID, generated at the application layer; the binding stores it as `varchar(26)`). No auto-increment integers.
+### Output
 
-6. **Logical cross-subdomain references** — store the ID, never the FK constraint. The column note must follow the structured form `// external_ref:{contract_slug} | {subdomain}.{table}` (e.g. `// external_ref:users | auth.users`, `// external_ref:agencies | crm.agencies`). The Generate phase parses `external_ref:{slug}` to generate the cross-module contract and the virtual relation to the owning module. The free-text portion after `|` is for human reference only.
-
-   **Name external-ref columns by their ROLE in this module — never `{entity}_id`.** The external entity's real name is not known with certainty (it lives in another module and may be renamed there); what IS certain is the role the reference plays here. `requested_by`, `approved_by`, `assigned_to`, `applicant_id`, `origin_branch_id` — not `user_id`, `party_id`, `employee_id`. The role name also survives pointing the same contract at a different owner later, and yields readable generated relation methods (`requested_by → requestedBy`). Two references to the same contract in one table are naturally distinguished by role (`opened_by` / `closed_by`).
-
-7. **DBML is the source of truth** — the generated schema must match the DBML exactly. If the generated schema needs a column not in the DBML, update the DBML first.
-
-8. **Never invent** — do not add entities or columns that cannot be traced to the spec. If something seems missing, ask the user before adding it.
-
-9. **The business type IS the column type** — technical storage types (`varchar`, `text`, `int`, `decimal`, `json`, …) never appear in the DBML. Every column's declared type resolves to **exactly one** of, in precedence order: an **Enum** (closed, module-owned value set, typed with the Enum name) > a **business type slug** from the central **language-agnostic registry** (`docs/plan/context/business-types.md`; if the project copy does not exist yet, copy it there from this skill's `references/business-types.md` first) — written directly as the type: `contact_email email [not null, note: '…']`, `total money`, `legal_name name`. `id`, every FK column, and every external-ref column are typed `identifier` (external-ref columns additionally keep their `// external_ref:{slug}` note). The only exempt columns are the structural timestamps `created_at` / `updated_at` / `deleted_at`, typed `timestamp`. Column notes carry **only the business meaning** — no `// type:` marker. If no registry type matches a column, **extend the project registry first** (see the registry's *Extending the registry* section) — never fall back to a technical type. **Why:** the DBML is a business artifact — `email` says what the value is; `varchar(255)` says how a particular stack stores it. The storage mapping lives in the registry and is applied by the Generate phase through the stack binding (`business-types.php`); `@dbml/core` parses the slugs as type names without issue. The validator enforces this rule (every column type ∈ Enums ∪ registry slugs; technical types rejected).
-
-### Output templates
-
-`docs/plan/dbml.dbml` is raw DBML — no markdown fence, no narrative wrapper, no Data Dictionary table. The Project block's `Note:` carries **only** the subdomain description, the modeling standard, and the bounded-context info. It does NOT carry business rules (those are defined by `opscale-sipoc` in each Action's *Business Rules enforced*), a relationship summary (relationships are formal `Ref:` lines), or entity-source traceability. `docs/plan/context/external-refs.md` is a fenced `external-refs` block listing each contract slug and its columns.
-
-For the verbatim DBML skeleton (Project block, Enum block, Table block with intra-subdomain FK + cross-subdomain logical ref + indexes + Note, junction table) and the `external-refs.md` fenced block shape, see `references/output-templates.md`. **The bounded-context info goes into the Project block's Note — NOT into a separate `Note model { }` block** (current `@dbml/core` rejects it).
-
-For the validator run details, see `references/validator.md`. DBML data types, constraint syntax, and naming conventions live in `references/dbml-syntax.md` — consult it during Phases 5–7 when you need exact syntax.
+```
+docs/plan/
+├── dbml.json                   ← validated source of truth (authored here)
+├── dbml.dbml                   ← deterministic projection: raw DBML (ER diagram; downstream reads this)
+└── context/
+    ├── names.md                ← name-normalization input (from opscale-process; analysis only, not copied into dbml.json)
+    └── external-refs.md        ← external-ref index (cross-checked against the field externalRefs)
+```
 
 ## Steps
 
-### Phase 1 — Choose modeling standard (authorization gate)
+### Phase 0 — Load context (agent)
 
-The spec from `opscale-process` describes the **as-is** — how the area works today, often with manual steps and the operator's own vocabulary. The DBML must describe the **to-be systematized** model. Before touching the entity list, decide whether to align it to a known domain standard. The choice made here governs Phases 2–6: entities, external references, relationships, enums, and attributes from the spec will be **limited, renamed, merged, or reformulated** to fit it.
+Spawn the context-loader agent. It returns a compact summary of any existing `docs/plan/` artifacts, `context/names.md`, and `context/system.map.md` (software/domain/module names + sibling modules for external refs). If `system.map.md` is missing, warn and recommend `/opscale-map`, but continue.
 
-Examples of standards by domain (use only as orientation — the right one depends on the module):
+### Phase 1 — Prefix and modeling standard (authorization gate)
 
-| Domain | Common standards / reference models |
-|---|---|
-| Banking, payments | BIAN, ISO 20022 |
-| Retail | ARTS, GS1 |
-| Healthcare | HL7 FHIR |
-| Supply chain, logistics | SCOR, GS1 EPCIS |
-| Identity / IAM | SCIM |
-| Accounting | REA, double-entry, IFRS chart-of-accounts |
-| E-commerce orders | schema.org Order vocabulary |
-| HR | HR-XML / HROpen |
-| Education | IMS, OneRoster |
-| Insurance | ACORD |
-
-Ask the user:
-
-```
-The process spec describes how this module works today — possibly with manual
-steps and informal names. The DBML must model the systematized version.
-
-Should I align the data model to a known domain standard?
-
-- Yes, use [standard]  → I will reconcile entities, names, relationships,
-  enums, and attributes against it. Entities outside its scope will need
-  a decision (drop, keep as module-specific extension, or fold into a
-  standard entity).
-- No                   → fall back to general industry naming conventions
-  (judgment per concept, current behavior).
-
-Which standard, or none?
-```
-
-Record the chosen standard (or "none") in two places:
-
-1. **Working notes** for the rest of this run — it governs phases 2–6.
-2. **`docs/plan/dbml.dbml` Project block Note**, on a line of its own at the top:
-   `Modeling standard: [name, e.g. "BIAN" / "HL7 FHIR" / "schema.org Order"] — or "none"`.
-   This is the source of truth that `opscale-bpmn` will read in its Phase 2 to reconcile the as-is subprocesses against the same standard. Without it, downstream skills cannot align.
-
-| If the user chose… | Phases 2–6 must… |
-|---|---|
-| A specific standard | Reconcile against that standard's vocabulary, relationships, code lists, and attributes. Any spec entity with no counterpart in the standard requires an explicit decision (drop / extend / fold). Deviations from the standard require justification. |
-| No standard | Apply the general industry-naming heuristics (judgment per concept, ask on ambiguity). |
+Confirm the **module prefix** (the subdomain slug the Generate phase prepends — e.g. `ventas`). Then decide the modeling standard: present the candidate for this domain (or "none"), explain it governs Phases 2–6 (entities, external refs, relationships, enums, attributes are reconciled against it), and record the answer in `standards.modeling`. Capture the bounded-context narrative for `standards.notes` and any reference behavior for `standards.process`.
 
 **Wait for user approval before continuing.**
 
-### Phase 2 — Identify entities (reconciled against the chosen standard)
+### Phase 2 — Identify entities (reconciled against the standard)
 
-The name normalization in `docs/plan/context/names.md` is the module-local proposal — the names the business itself uses. It is **input only**: the reconciliation below may rename, merge, or drop entities, and only the FINAL list receives ids — each confirmed entity gets its **kebab-case entity id** (= its table name with dashes), presented in the same confirmation. Before locking the names as table names, compare each one against the standard chosen in Phase 1 (or, if none was chosen, against **industry-standard / domain best-practice naming** for the same concept). Examples:
-
-- Banking / payments: `Customer`, `Account`, `Transaction`, `Ledger`, `Statement`, `Beneficiary`
-- Identity: `User` (auth-only) vs `Member` / `Customer` (business actor with data of its own)
-- Inventory: `Product`, `SKU`, `StockItem`, `Warehouse`, `Lot`
-- Orders: `Order`, `LineItem`, `Shipment`, `Fulfillment`
-- Accounting: `JournalEntry`, `Posting`, `ChartOfAccount`
-- Identifiers: `…Id`, `…Number`, `…Code`, `…Reference` — each carries a different meaning, don't conflate
-
-When the spec proposes a name that diverges from the industry standard for the same concept, **do not silently override either side** — surface the divergence and ask. The business name may be the right one (it preserves the operator's language), or the industry standard may be (it makes the model legible to anyone coming from the same domain). The user decides.
-
-**1a — Read the spec proposal:**
-
-```bash
-cat docs/plan/context/names.md   # → the normalization table
-```
-
-**1b — Classify each proposed canonical against the chosen standard (or industry conventions if none):**
-
-| Case | What it means | Action |
-|---|---|---|
-| **Matches the standard** | Spec name == the standard's term for this concept | Use it; carry on |
-| **Synonym / informal variant of a standard term** | Spec proposes `Client` where the standard says `Customer`, or `User` where it's actually a `Member` / `Party` | **Ask**: "Spec uses `Client`; the standard's term for this concept is `Customer`. Which should the data model use?" — apply the answer |
-| **Overloaded / ambiguous** | Spec uses `User` for a business actor (which the standard separates from auth `User`) | **Ask** which concept it is, and which name to use |
-| **Outside the standard's scope** | Spec proposes an entity the standard does not cover (manual workaround, ad-hoc artifact, side-process record) | **Ask**: drop it (was an as-is artifact, not needed in the systematized model), keep it as a module-specific extension, or fold it into a standard entity? |
-| **Domain-specific term with no standard equivalent** | Spec proposes a domain-native name (e.g. `JornadaDeCaja`, `Vale`) and the standard says nothing about it | Keep it, but **ask** for a standardized equivalent if the codebase mixes languages |
-
-Then filter the reconciled list through the **DDD Scope**: keep business entities, drop technical / config / UI. **Ask before dropping** anything that looks ambiguous (business vs technical).
-
-Present the result:
-
-```
-## Entities (reconciled against industry-standard naming)
-
-1. **Customer** (id: `customer`)  ← spec: Client (industry-standard term in this domain)
-   [One sentence — the business concept]
-2. **CashSession** (id: `cash-session`)  ← spec: CashSession (kept; no widely-used industry standard for this concept)
-   [One sentence]
-3. **Member** (id: `member`)  ← spec: User (User reserved for auth; Member is the business actor)
-   [One sentence]
-…
-
-Each id is the entity's kebab-case ontology id (= its table name with dashes) — it will open the table's Note and the generated class's @entity docblock.
-
-Confirm the entity list (names + ids)? Yes / No / edit
-```
+Read the `names.md` proposal (input only). Reconcile each canonical against the Phase 1 standard (or industry conventions): matches, synonyms, overloaded/ambiguous, outside-scope, or domain-native with no equivalent — **ask** on every divergence, never silently override. Filter through the DDD Scope; ask before dropping anything ambiguous. Strip any prefix stem from names. Present the final list with each entity's **kebab `code`** (= `slugify(name)`) and a one-line description. The reconciliation itself is analysis — it stays in `names.md`; only the resulting entity list is carried into `dbml.json` (there is no `terminology` block).
 
 **Wait for user approval before continuing.**
 
 ### Phase 3 — Identify external references (virtual models)
 
-Before mapping relationships between the entities locked in Phase 2, surface every entity this module needs to **reference but does NOT own**. These are **virtual models** — they live in another subdomain / package / external system, are never declared as `Table` blocks here, and never get a real FK constraint. The host application binds the actual implementation at runtime through a contract.
-
-Classic examples: `User` (lives in the auth/IAM package), `Agency` / `Branch` (lives in the corporate CRM), `Country` (lives in a shared geo catalog), `Currency` (FX package). The local domain stores only the ID; the consuming app resolves it.
-
-If `docs/plan/context/system.map.md` exists (written by `opscale-map`, which runs first as Step 1 and is re-run before each new module), read its **Domains** and **Cross-module references** tables first: they list **what other modules exist** and which one owns each contract slug. Point every virtual reference at a real sibling module from that catalog instead of inventing an owner. If the map is missing or stale, ask the user to run `/opscale-map` before continuing. New slugs declared here must be reported back to `opscale-map` on its next run.
-
-**Ask the user explicitly** — do not infer from Phase 2 entities:
-
-```
-Which entities does this module need to REFERENCE but NOT own?
-
-These are records that live in another subdomain / package / external system.
-The module will store their ID in cross-subdomain columns; the host application
-binds the contract at runtime. Examples: User (auth), Agency (CRM), Country (geo),
-Currency (FX).
-
-For each external reference, give me:
-- A canonical singular name (StudlyCase, business name, e.g. User, Agency, Country)
-- A contract slug (kebab-case plural, e.g. users, agencies, countries) — becomes
-  the `external_ref:{slug}` token on every column that references it AND names
-  the cross-module contract the Generate phase emits
-- The owning subdomain + table it maps to in the source system (e.g. auth.users,
-  crm.agencies) — for documentation only; no FK is generated
-
-Or: "none" if this module references no external entities.
-```
-
-Present the result:
-
-```
-## External references (virtual models)
-
-1. **User**  → contract slug `users`  → maps to `auth.users`
-   [One sentence — what role this external concept plays in the module]
-2. **Agency**  → contract slug `agencies`  → maps to `crm.agencies`
-   [One sentence]
-3. **Country**  → contract slug `countries`  → maps to `geo.countries`
-   [One sentence]
-…
-
-Confirm the external-reference list? Yes / No / edit
-```
-
-The confirmed list governs everything downstream:
-
-- **Phase 4 (relationships)** — any pair where one side is in this list is **cross-subdomain** (logical reference, no FK constraint). Pairs where both sides are in the Phase 2 entity list are intra-subdomain (real FK).
-- **Phase 6 (attributes)** — any column that points at an external reference must carry the structured note `// external_ref:{slug} | {subdomain}.{table}` using the slug confirmed here, and is **named by its role in this module** (`requested_by`, `assigned_to`, `applicant_id`), never `{external-entity}_id` — the external name is not known with certainty; the role is (Domain Rule 6). The skill rejects any new contract slug invented during Phase 6 — go back and amend Phase 3 if a missing reference shows up.
-- **Phase 9 (emit external-ref index)** — `docs/plan/context/external-refs.md` is built directly from this list cross-checked against the actual columns that ended up using each slug. A slug declared here with zero referencing columns is flagged (likely a typo or a forgotten attribute); a column with a slug not declared here fails validation.
+Surface every entity this module **references but does not own** (lives in another module/package/system — `User`, `Agency`, `Country`, …). If `context/system.map.md` exists, point each at a real sibling module; otherwise ask to run `/opscale-map`. For each: a canonical name, a **contract slug** (kebab plural — becomes the `externalRef` token), and the owning `module.entity` (documentation only). Confirmed slugs govern Phase 6 (any field pointing at one uses `externalRef` + the role-based column name) and the `context/external-refs.md` index.
 
 **Wait for user approval before continuing.**
 
-### Phase 4 — Identify relationships between entities
+### Phase 4 — Identify relationships
 
-Now that the entity list is locked, list how those entities relate. For each pair of related entities, determine:
-
-- Is the relationship 1:1, 1:N, or N:M?
-- Does the relationship cross subdomain boundaries (→ logical reference, no FK)?
-- Does a Business Rule in the spec constrain this relationship?
-
-Trace each relationship to a source in the flow (`docs/plan/process.txt` steps, or what the user confirmed in conversation). **Ask** when cardinality or ownership is ambiguous — do not assume.
-
-Present:
-
-```
-## Entity Relationships
-
-1. **[EntityA] → [EntityB]** (1:N) [SPEC: Relations]
-   [Business justification — e.g. "one cash session has many transactions"]
-2. **[EntityC] ↔ [EntityD]** (N:M) [SPEC: process.txt, steps 4–7]
-   Junction table: `[entity_c_entity_d]`
-3. **[EntityE] → [OtherSubdomain.EntityF]** (logical reference)
-   Cross-subdomain — no FK constraint
-
-Confirm relationships and cardinalities? Yes / No / edit
-```
-
-Cross-subdomain rows must reference an entity confirmed in Phase 3. If a candidate cross-subdomain target is not in that list, stop and go back to Phase 3 to add it.
+For each related pair, determine cardinality (1:1 / 1:N / N:M), whether it crosses a module boundary (external ref, no FK), and the spec source. **Every entity ends with ≥1 relationship** (the schema enforces it) — a pure catalog still declares the relationship it participates in. Record them as `relationships` entries (`belongs_to`/`has_one`/`has_many`/`many_to_many`, `target`, `field`, `description`). A `has_one` back from the target is what makes the owning side's FK render as a 1:1 `ref: - `. Ask when cardinality or ownership is ambiguous.
 
 **Wait for user approval before continuing.**
 
 ### Phase 5 — Identify enums
 
-Only after entities and relationships are locked. **This is where enum values are defined — `opscale-process` deliberately does not enumerate them** (its life stages were only scaffolding for subprocess boundaries). Surface every column with a **fixed set of possible values** in any of the entities:
-
-- Status fields — the lifecycle stages of each entity, elicited here with the user (the subprocess triggers/waits in `docs/plan/process.txt` hint at the transitions)
-- Type / category fields the flow or the user mentions
-- Branch decisions from the flow (`… — Yes → N` questions often imply a status)
-
-Do **not** guess values. Elicit the complete closed set with the user.
-
-Present per enum:
-
-```
-## Proposed Enums
-
-1. **[EnumName]** — for [entity].[column]
-   Source: [process.txt step/branch, or user statement]
-   Values proposed: [list]
-   Missing values? Default value? Please confirm or provide the complete set.
-
-Confirm enums and values? Yes / No / edit
-```
+Only now are enum **values** defined (`opscale-process` deliberately did not enumerate them). Surface every column with a fixed, closed value set — lifecycle statuses, type/category fields, branch decisions. Do **not** guess values: elicit the complete closed set, and **every value gets a one-line description** (the schema requires it). Record as `enums` entries with `code`, `name`, `values`.
 
 **Wait for user approval before continuing.**
 
-### Phase 6 — Identify attributes per entity (one entity at a time)
+### Phase 6 — Attributes per entity (ONE ENTITY AT A TIME — hard stop-gate)
 
-Only after entities, relationships, and enums are locked. Process **one entity at a time**. For each entity, present the full attribute set, justify each non-standard column from the spec, and **wait for confirmation** before moving to the next. Do not infer types, nullability, or defaults — when not explicit in the spec, ask.
+Process **one entity at a time**. For each entity present the full field set — each with its single typing key (`type` business slug / `enum` / `foreignKey` / `externalRef`), `nullable`, `default`, and `calculated: true` when the value is derived rather than captured — justify every non-standard column from the spec, and **wait for confirmation before the next entity**.
 
-**Why one entity at a time:** presenting attributes for many entities at once collapses user attention — they confirm by reflex instead of actually reviewing. A table of 60 columns across 8 entities gets a "looks good" the same way a table of 6 columns across 1 entity gets a careful read. Attribute decisions (nullability, defaults, enum values, FK direction) are the highest-leverage decisions in the whole skill — they materialize one-for-one into the generated data layer — so they earn the user's full attention, entity by entity.
+**Why one at a time:** presenting many entities at once collapses attention — the user confirms by reflex. Attribute decisions materialize one-for-one into the generated data layer, so they earn full attention, entity by entity. **Stop-gate: do not advance until the current entity's fields are confirmed.** If the user says "they all look fine, move on," push back and present them one at a time anyway.
 
-**Stop-gate: do not advance to the next entity until the current entity's attributes are confirmed.** If the user says "all of them look fine, move on" mid-Phase 6, push back: present them one at a time anyway. The cost of one extra prompt round is far lower than the cost of regenerating the data layer because column types drifted.
+Resolve each type in precedence: `externalRef` → `foreignKey` → `enum` → `type` (business slug). No technical-type fallback — extend the registry first if nothing matches. The pk is `id`/`identifier`; never author `created_at`/`updated_at`/`tenant_id`. Order fields pk → foreign/external refs → the rest (recommended within "the rest": descriptive, operational, status, then date/time fields). Mark any field whose value is not user-entered — computed or written by a Logic Action — with `calculated: true` (never the pk; a logic-set reference like `approved_by_id` may be calculated).
 
-For each attribute, resolve its type in the Domain Rule 9 precedence order: external ref (`identifier` + `// external_ref:` note) → Enum → **business type slug written directly as the column type**. There is no technical-type fallback — every column must land on one of the three; if nothing matches, extend the project registry first. Present the chosen business type per attribute so the user sees what behavior it implies (validation semantics, UI intent).
+**Wait for user approval before continuing (per entity).**
 
-Apply standard columns automatically (`id identifier [pk]` first, `created_at`/`updated_at` as `timestamp` always, `deleted_at` only if spec requires recovery — the three timestamps are the only columns with a non-business type; FK columns are typed `identifier`). **Single-tenant deployment:** Opscale modules use one database per implementation — domain tables never carry a `tenant_id` column.
+### Phase 7 — Permissions per entity
 
-For the standard-columns table and the per-entity prompt template, see `references/attribute-taxonomy.md`.
+For each entity, elicit the three action gates — `create`, `update`, `delete` — as predicates in the shared grammar (`true` | `false` | `field op value [and|or …]`). Referenced fields must exist on the entity; enum-value comparisons must name a real value of that field's enum (the validator checks both). Confirm per entity (reuse the per-entity rhythm of Phase 6). Permissions live in `dbml.json` only — they are consumed downstream, not rendered into `dbml.dbml`.
 
-Repeat the per-entity prompt for each entity. Wait for confirmation after each.
+**Wait for user approval before continuing (per entity).**
 
-**Wait for user approval before continuing.**
+### Phase 8 — Generate (agent)
 
-### Phase 7 — Define indexes
+Spawn the dbml-generator agent with the confirmed structure. It writes `docs/plan/dbml.json` and runs `render-dbml.mjs --dir=docs/plan` to project `docs/plan/dbml.dbml`. Replace existing files. Never hand-edit the `.dbml`.
 
-Derive the index list following these rules:
+### Phase 9 — Validate (agent)
 
-- All enum/status/type columns — indexed
-- FK columns — indexed automatically by FK definition
-- Columns flagged in spec as frequent search targets — indexed
-- Composite indexes — only when a specific multi-column query pattern is evident from the spec
-
-Then **present the derived list to the user** — one line per index, per table, with the rule that motivated it — and wait for confirmation. Nothing derived is assumed:
-
-```
-## Proposed indexes
-
-| Table | Index | Why |
-|---|---|---|
-| {table} | {column(s)} | {enum/status column · FK · frequent search · composite pattern} |
-
-Confirm the index list? Yes / No / edit
-```
-
-**Wait for user approval before continuing.**
-
-### Phase 8 — Assemble and validate the DBML
-
-Assemble the complete raw DBML following the output structure (see `references/output-templates.md`) **in memory first — do not write the final file yet**. Write the candidate to a workspace temp file (`docs/plan/.dbml-validate.tmp.dbml`, deleted after validation) and run the bundled validator from the skill directory — the skill bundle already ships `node_modules` with `@dbml/core`, so there is never an install step and the script never gets copied to the project. Exit code `0` = pass, `1` = syntax error (fix & re-run), `2` = quality warnings (fix all & re-run). Do not proceed until exit code is `0`.
-
-For the verbatim run commands and exit-code handling, see `references/validator.md`.
-
-**Wait for user approval before continuing.**
-
-### Phase 9 — Emit external-ref index
-
-`docs/plan/dbml.dbml` is **raw DBML** and stays parser-clean. The external-ref index ships as a sibling markdown file: `docs/plan/context/external-refs.md`. Build it from the **Phase 3 declaration**, then cross-check against actual column notes: for every contract slug declared in Phase 3, list the columns whose DBML note carries `external_ref:{slug}`:
-
-````markdown
-# External references — [Module Name]
-
-```external-refs
-{contract_slug}: {column_a}, {column_b}, ...
-users:     opened_by, closed_by, witness_id, requested_by
-agencies:  origin_agency_id
-```
-````
-
-Rules:
-
-- Every slug listed here must have been declared in Phase 3 (no slug invented during Phase 6 sneaks in).
-- Every contract slug declared in Phase 3 SHOULD appear here — if a slug has zero referencing columns, flag it to the user (likely a typo or a forgotten attribute).
-- Every column with `external_ref:{slug}` in its DBML note must appear here.
-- Every column listed here must have `external_ref:{slug}` in its DBML note.
-- One line per slug; columns comma-separated; column order follows DBML order.
-
-This file is the **single source of truth** the Generate phase reads to generate the cross-module contracts and the virtual relations to the owning modules. Downstream skills do NOT re-scan the DBML notes — they read this file only.
-
-**Wait for user approval before continuing.**
-
-### Phase 10 — Write output and close gate
-
-Only reached after the validator exits with code `0`.
-
-Create the output directory if it doesn't exist, then write all three artifacts (in Claude Desktop, produce the same three files as downloadable outputs labeled with these destination paths):
-
-```bash
-mkdir -p docs/plan
-```
-
-1. **`docs/plan/dbml.dbml`** — the validated raw DBML (no markdown wrapper, no narrative, no Data Dictionary). Parseable directly by `@dbml/core`.
-2. **`docs/plan/context/external-refs.md`** — the external-refs index from Phase 9.
-3. **`docs/plan/dbml.txt`** — one entity name per line, exactly the `Table` blocks declared in `dbml.dbml`, same order:
-
-   ```
-   application
-   verification
-   decision
-   ```
-
-All three files are replaced if they exist. `dbml.txt` must list exactly the `Table` blocks in `dbml.dbml` — no more, no fewer. Junction tables born in Phase 4 exist only in the DBML; `context/names.md` is never touched by this skill (it carries no ids and remains the spec-side input — Domain Rule 1). The validation script stays in the skill bundle — never copied to the project.
-
-Then verify the full semantic gate (things the script cannot check automatically). For the full checklist (modeling-standard recorded, external-refs declared, script exit `0`, all three files written, every spec entity reconciled, every table stamped with its kebab id, no `tenant_id`, etc.), see `references/validator.md`. The skill must walk it item-by-item before declaring PASS — `opscale-bpmn` only proceeds on PASS.
-
-**Wait for user approval before continuing.**
-
-## Sample
-
-Excerpt of `docs/plan/dbml.dbml` and a full reference `docs/plan/dbml.txt` (Proveedores module — supplier master lifecycle, shared across the five Plan skills so the lists chain) — see `references/sample-output.md`.
+Spawn the dbml-validator agent. It runs `validate-dbml.mjs --dir=docs/plan`: schema + semantic rules, then renders the DBML and parses it with `@dbml/core` (a parse throw is a FAIL), and confirms the on-disk `dbml.dbml` matches the projection. If it fails, fix the JSON and regenerate — never patch the `.dbml`. The skill does not close until it passes. `opscale-bpmn` only proceeds on PASS.
 
 ## Success condition
 
 ```bash
-node {SKILL_DIR}/scripts/validate-dbml.mjs docs/plan/dbml.dbml
+node scripts/validate-dbml.mjs --dir=docs/plan
 ```
 
-Exit code 0 = pass.
+Exit code 0 = pass (1 = fail, 2 = review warnings).

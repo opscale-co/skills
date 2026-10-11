@@ -10,7 +10,7 @@
 //   resultLine(key, value)      - format a RESULT line for the skill to parse
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 
 // --- Template renderer ----------------------------------------------------
 //
@@ -241,4 +241,44 @@ export function resultLine(key, value) { return `${key}: ${value}`; }
 
 export function loadTemplate(templatePath) {
   return readFileSync(templatePath, 'utf8');
+}
+
+// --- Translation seeding (BOTH locales) ----------------------------------
+//
+// Append translation keys to `{langDir}/{locale}.json` without clobbering
+// existing translations. Creates the file (and parent directories) as `{}`
+// if missing; skips keys already present (idempotent across reruns). Mirrors
+// the opscale-ui seeder so an Action's `__(key)` call has a value in both
+// `lang/en.json` AND `lang/es.json` immediately after generation.
+//
+// `entries` is an iterable of strings (the key IS the placeholder value) or
+// of `[key, value]` pairs (or a Map, whose entries are [key, value]).
+//
+// Returns: { path, added: string[], skipped: string[] }
+
+export function seedTranslations(langDir, locale, entries) {
+  const filePath = join(langDir, `${locale}.json`);
+  let json = {};
+  if (existsSync(filePath)) {
+    try { json = JSON.parse(readFileSync(filePath, 'utf8')); }
+    catch (_) { json = {}; }
+  } else {
+    mkdirSync(langDir, { recursive: true });
+  }
+  const added = [];
+  const skipped = [];
+  for (const entry of entries) {
+    const [key, value] = Array.isArray(entry) ? entry : [entry, entry];
+    if (key == null || key === '') continue;
+    if (Object.prototype.hasOwnProperty.call(json, key)) {
+      skipped.push(key);
+      continue;
+    }
+    json[key] = value;
+    added.push(key);
+  }
+  if (added.length > 0 || !existsSync(filePath)) {
+    writeFileSync(filePath, JSON.stringify(json, null, 4) + '\n');
+  }
+  return { path: filePath, added, skipped };
 }

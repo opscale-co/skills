@@ -3,10 +3,10 @@
 Reference example — the **Proveedores** module (supplier master lifecycle in
 the Compras domain of `Dominio ERP`, project `compras/proveedores`). The same
 real module is used across the Plan skills so the artifacts chain: every step
-here appears in `docs/plan/bpmn.txt` with its operations, every logic id there
-has a block in `sipoc.txt` and a file in `sipoc/`, every entity operated on
-exists in `dbml.txt`, and `ontology.mmd` renders the whole hierarchy. The full
-set passes every Plan validator.
+here appears in `docs/plan/bpmn.json` with its operations, every logic id there
+has an entry in `sipoc.json` and a rendered file in `sipoc/`, every entity
+operated on exists in `dbml.json`, and `graph.json`/`graph.html` render the whole
+hierarchy. The full set passes every Plan validator.
 
 The content is in **Spanish** on purpose: it demonstrates the language rule —
 structural keywords (`Trigger:`, `Ends with:`) stay English (validators parse
@@ -32,9 +32,12 @@ them literally); step lines and entity names follow the user's language.
 | Empleado | quien registra el alta, área solicitante, área usuaria, responsable del área — vive en el módulo expediente (RRHH) |
 ```
 
-## Sample docs/plan/process.txt
+## Sample docs/plan/process.json (readable summary of the subprocess flow)
 
-Eight wait-bounded subprocesses covering the whole supplier lifecycle
+`process.json` is the schema-validated source of truth; the outline below
+summarizes its subprocesses and steps in readable form (each step carries a
+≤25-char title + a description in the JSON). Eight wait-bounded subprocesses
+covering the whole supplier lifecycle
 (registro → validación → activación → vida activa → baja). Note the branch
 lines (`… — Sí → 07 · No → 06`), the loop back (`retomar → 01`), and how
 notifications stay internal steps while every boundary is a wait.
@@ -107,7 +110,7 @@ Ends with: —
 
 ## Sample docs/plan/process.mmd (excerpt — first three subprocesses)
 
-Same flow as `process.txt`, as the self-contained flowchart. Node ids are the
+Same flow as `process.json`, rendered as the self-contained flowchart. Node ids are the
 parseable contract (`sXX_YY` = step SP-XX-YY, `spXX` = subprocess, `t0`/`wXX` =
 trigger/waits); labels are free text in the user's language. Branch steps use
 the gateway shape and their edges carry the branch labels (`-- Sí -->`).

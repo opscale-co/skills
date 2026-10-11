@@ -1,12 +1,12 @@
 # Sample output — opscale-sipoc
 
 One full SIPOC (`docs/plan/sipoc/activate-supplier.md`) and the
-`docs/plan/sipoc.txt` composition list from the **Proveedores** module
+`docs/plan/sipoc.json` composition list from the **Proveedores** module
 (supplier master lifecycle, `Dominio ERP`, project `compras/proveedores`) —
 the same real module used across the Plan skills so the artifacts chain: this
 Logic is a `businessRuleTask` in `bpmn.bpmn` (its Process is imported from
 that task's `"composed"` array, never re-elaborated), its entities exist in
-`dbml.txt`, and its BR is part of the module-unique registry the SIPOCs
+`dbml.json`, and its BR is part of the module-unique registry the SIPOCs
 define. The full set (15 SIPOCs) passes `validate-sipoc.mjs` and the smoke
 gate (15 = 15 = 15).
 
@@ -20,10 +20,6 @@ language-neutral because `opscale-logic` parses them literally.
 # SIPOC — Activar proveedor
 
 **Identifier:** `activate-supplier`
-**Operation:** `SP-03-03-L01`
-**BPMN task:** Activar proveedor
-**Subprocess:** SP-03 Activación de proveedor
-**Step:** Activar al proveedor habilitando compras y pagos
 **Business Rules:** BR-06
 **Composes:** none
 
@@ -33,34 +29,33 @@ Transita el proveedor a estado activo cuando el veredicto de cumplimiento fue ap
 
 | Suppliers | Inputs | Process | Outputs | Customers |
 |---|---|---|---|---|
-| 💻 | proveedor | crud: update supplier | success | All callers |
-|  |  | output: aviso de alta al área solicitante y al proveedor | estado | 👤 |
-|  |  |  |  | 💻 |
+| System | proveedor | SP-03-03-L01-C01 | success | All callers |
+|  |  | SP-03-03-L01-O01 | estado | System |
 
 ## Suppliers
-- 💻 System — provee el proveedor con veredicto aprobado
+- System — provee el proveedor con veredicto aprobado
 
 ## Inputs
-| Input | Source | Cómo se obtiene | Type | Validation rules | Description |
-|-------|--------|-----------------|------|------------------|-------------|
-| proveedor | 💻 | registro pasado desde el flujo | supplier | required | Proveedor con veredicto de cumplimiento aprobado |
+| Input | Source | Type | Validation rules | Description |
+|-------|--------|------|------------------|-------------|
+| proveedor | System | supplier | required | Proveedor con veredicto de cumplimiento aprobado |
 
 ## Process
-1. update supplier.status → active (verifica que el veredicto vino aprobado) (BR-06)
-2. output aviso de alta al área solicitante y al proveedor (BR-06)
+1. `SP-03-03-L01-C01` update supplier.status → active (verifica que el veredicto vino aprobado) (BR-06)
+2. `SP-03-03-L01-O01` output aviso de alta al área solicitante y al proveedor (BR-06)
 3. return result
 
 ## Outputs
-| Output key | Type | Description | Consumers |
-|------------|------|-------------|-----------|
-| success | bool | Si la operación tuvo éxito | Todos los llamadores |
-| estado | supplier_status | Nuevo estado del proveedor (active) | 💻 |
+| Output | Consumer | Type | Description |
+|--------|----------|------|-------------|
+| success | All callers | bool | Si la operación tuvo éxito |
+| estado | System | supplier_status | Nuevo estado del proveedor (active) |
 
 ## Customers
-- 👤 User — el área solicitante y el proveedor que reciben el aviso de alta
-- 💻 System — los módulos de compras y pagos que ya pueden operar con el proveedor
+- User — el área solicitante y el proveedor que reciben el aviso de alta
+- System — los módulos de compras y pagos que ya pueden operar con el proveedor
 
-## Business Rules enforced
+## Business Rules
 - **BR-06** — El veredicto de cumplimiento debe venir aprobado para activar; la transición pasa el proveedor de en revisión a activo y desde ese momento habilita contratos, facturas y pagos.
 
 ## Failure modes
@@ -68,18 +63,24 @@ Transita el proveedor a estado activo cuando el veredicto de cumplimiento fue ap
 - **Hard failure** (throws): el proveedor no está en estado en revisión
 ```
 
-Notes on the SHAPE: the `## SIPOC` summary table is filled independently per
-column (blank cells when a column has fewer elements); its Process column
-carries this Logic's composed members prefixed `crud:` / `logic:` / `output:`.
-Types resolve to a business-type slug (`supplier_status` is a DBML Enum,
-`supplier` a DBML entity) — never free scalars; only `success: bool` is
-exempt. Suppliers/Customers carry the actor tag only (👤/💻), no identity.
+Notes on the SHAPE: the header carries only `Identifier` / `Business Rules` /
+`Composes` — operation/subprocess/step are NOT stored (they are derived by
+matching the `id` to the BPMN logic op); the one-sentence intro is the SIPOC's
+`description`. The `## SIPOC` summary table is filled independently per column
+(blank cells when a column has fewer elements); its Process column carries the
+composed-op `code`s this Logic orchestrates (each a `read`/`update`/`delete`
+CRUD, a composed `L` logic reference, or an `O` output), and the `## Process`
+list restates each as its `code` + description + `(BR-NN)`. Types resolve to a
+business-type slug (`supplier_status` is a DBML Enum, `supplier` a DBML entity)
+— never free scalars; only `success: bool` is exempt. Suppliers/Customers,
+input `source`, and output `consumer` carry a plain-text actor label
+(`User`/`System`, or `All callers` for `success`), no identity.
 
-## Sample docs/plan/sipoc.txt (full)
+## Sample docs/plan/sipoc.json (full)
 
 One block per `businessRuleTask` — `{Name} ({kebab-id})` then the composing
 operations — matching each SIPOC's Process section (minus `return result`).
-Gates compare it against `bpmn.txt`/the XML by unique logic ids and
+Gates compare it against `bpmn.json`/the XML by unique logic ids and
 composed-member counts (15 blocks = 15 unique logic ids = 15 SIPOC files).
 
 ```

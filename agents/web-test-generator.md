@@ -3,7 +3,7 @@ name: web-test-generator
 description: >
   Generates a Laravel Dusk browser test file that EXECUTES a complete subprocess
   through the Nova UI. Spawned by opscale-ui — one instance per subprocess block in
-  docs/plan/process.txt (one subprocess = one flow). The generated test creates the
+  docs/plan/process.json (one subprocess = one flow). The generated test creates the
   trigger record through the real form, runs each Action of the subprocess from the
   detail toolbar, and asserts both the user-visible transition and the persisted DB
   post-condition.
@@ -88,8 +88,8 @@ use PHPUnit\Framework\Attributes\Test;
 /**
  * Browser flow test for "{Flow Name}".
  *
- * Source: docs/plan/process.txt subprocess "{Flow Name}"
- * (operations per step: docs/plan/bpmn.txt).
+ * Source: docs/plan/process.json subprocess "{Flow Name}"
+ * (operations per step: docs/plan/bpmn.json).
  * One method per flow path (happy + branches + visible failures). Each method
  * CREATES via the form, RUNS the subprocess Actions, and asserts transition + DB.
  */

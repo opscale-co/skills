@@ -96,14 +96,22 @@ For each entry in `has_many_relationships`:
 
 ```json
 {
-  "name": "quotas",
-  "label_en": "Quotas",
-  "label_es": "Cupos",
-  "related_resource": "Quota",
+  "name": "quotes",
+  "label": "ventas.opportunity.tab.quotes",
+  "label_en": "Quotes",
+  "label_es": "Propuestas",
+  "related_resource": "Quote",
   "creatable_from_ui": true,
-  "count_column": "quotas_count"
+  "count_column": "quotes_count"
 }
 ```
+
+`label` is the i18n KEY the template wraps in `__()`; `label_en`/`label_es` are
+the values seeded into the lang files. `creatable_from_ui` is derived by
+`resource-tabs-generator` from the CHILD entity's `permissions.create` (any value
+other than `"false"` ⇒ creatable, tab always visible; `"false"` ⇒ system-only,
+count-gated). Legacy callers may omit `label` and pass only `label_en`/`label_es`
+— the English string then doubles as the key.
 
 When `creatable_from_ui` is `false`, the generator wraps the tab in
 `->canSee(fn () => ($this->resource->{count_column} ?? 0) > 0)`. Otherwise

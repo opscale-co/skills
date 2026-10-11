@@ -21,8 +21,19 @@ JSON payload from the parent skill, schema at the top of
 `~/.claude/skills/opscale-logic/scripts/generate-action.mjs`.
 
 Required: `action_class_name`, `identifier`, `name`, `description`,
-`package_namespace`, `output_dir`, `handle_body`.
-Optional: `parameters`, `entities`, `dependencies`.
+`package_namespace`, `output_dir`, `handle_body`, `outputs`.
+Optional: `prefix` (prepends `identifier()` → `{prefix}.{identifier}`),
+`parameters` (each may carry `requires_options`), `options_entries`, `entities`,
+`dependencies`, `entity_param`, `emits_event`, `can_run_body`, `process`
+(no-create assertion), `translations` (EN/ES values for the namespaced `__()`
+keys, seeded into both `lang/en.json` and `lang/es.json`).
+
+You run the merged input from the opscale-logic section-agent fleet
+(identifier / parameters / outputs / translations) plus the authored
+`handle_body` / `can_run_body`. The script prefixes the identifier, wraps
+name/description/params/outputs/messages in namespaced `__()` keys, seeds both
+locales, enforces the option/relation/id → `options()`/`exists:` rule, and
+asserts no `create` op in `process[]`.
 
 The script:
 - Resolves entity imports against `{Namespace}\Models\{Entity}` and dependency
