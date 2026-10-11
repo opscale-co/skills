@@ -1,0 +1,14 @@
+{
+  "name": "@opscale/plan-contract",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Plan-phase contract: JSON schemas, business-type registry, validation + render tooling. Vendored into each skill bundle at package time.",
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "@dbml/core": "^3.9.5",
+    "bpmn-moddle": "^9.0.1",
+    "bpmn-auto-layout": "^0.4.0"
+  }
+}

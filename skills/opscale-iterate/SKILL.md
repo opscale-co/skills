@@ -28,7 +28,7 @@ The output is a **commit on the current branch** (or on a new feature branch the
 | 2 | Current directory is a git repo | `git rev-parse --is-inside-work-tree` | Stop. `git init` (or move to the right directory). |
 | 3 | Git tree is clean | `git status --porcelain` returns empty | Stop. Commit or stash before iterating. |
 | 4 | `specify --version` resolves | Run the command | Re-run `/opscale-init` to install spec-kit. |
-| 5 | **Plan phase complete** for at least one module | `docs/plan/process.txt`, `docs/plan/dbml.dbml`, `docs/plan/bpmn.bpmn` all exist and PASS | Stop. Run `/opscale-process` → `/opscale-dbml` → `/opscale-bpmn` first. |
+| 5 | **Plan phase complete** for at least one module | `docs/plan/process.json`, `docs/plan/dbml.dbml`, `docs/plan/bpmn.bpmn` all exist and PASS | Stop. Run `/opscale-process` → `/opscale-dbml` → `/opscale-bpmn` first. |
 | 6 | **Generate phase complete** for that module | `src/Models/` populated AND `src/Services/Actions/` populated AND `src/Nova/` populated (BPMN-driven modules) | Stop. Run `/opscale-domain` → `/opscale-logic` → `/opscale-ui`. |
 | 7 | **Zero pending tasks** in the module's `tasks.md` | `grep -E '^\s*-\s*\[ \]' .specify/specs/{NNN}-{slug}/tasks.md` returns nothing | Stop. Finish the open tasks before iterating. |
 
@@ -38,7 +38,7 @@ test -f .specify/memory/constitution.md                            && echo "1. i
 git rev-parse --is-inside-work-tree >/dev/null 2>&1                && echo "2. git repo  OK"
 [ -z "$(git status --porcelain)" ]                                 && echo "3. clean     OK"
 specify --version >/dev/null 2>&1                                  && echo "4. spec-kit  OK"
-test -f docs/plan/process.txt                                       && echo "5a. process  OK"
+test -f docs/plan/process.json                                       && echo "5a. process  OK"
 test -f docs/plan/dbml.dbml                                      && echo "5b. dbml     OK"
 test -f docs/plan/bpmn.bpmn                                     && echo "5c. bpmn     OK"
 ls src/Models/*.php                  >/dev/null 2>&1               && echo "6a. domain   OK"
@@ -58,7 +58,7 @@ Iterations are captured in **user-story format**. This is the contract — do no
 **User story template:**
 
 ```
-As a   [actor / persona — must match an actor from docs/plan/process.txt when possible]
+As a   [actor / persona — must match an actor from docs/plan/process.json when possible]
 I want [capability — what they can do that they cannot do today]
 So that [outcome — the business value, in their words]
 
@@ -101,8 +101,8 @@ Iteration ≠ full sequence. Only invoke the skills the diff actually requires:
 
 | Task touches | Skill to invoke |
 |--------------|-----------------|
-| New/changed business rules, actors, steps | `opscale-process` (updates `docs/plan/process.txt` + `process.mmd`) |
-| New/changed process flow, task types, operations | `opscale-bpmn` (updates `docs/plan/bpmn.bpmn` + `bpmn.txt`) |
+| New/changed business rules, actors, steps | `opscale-process` (updates `docs/plan/process.json` + `process.mmd`) |
+| New/changed process flow, task types, operations | `opscale-bpmn` (updates `docs/plan/bpmn.bpmn` + `bpmn.json`) |
 | New/changed Logic detail (inputs, rules, process) | `opscale-sipoc` (updates `docs/plan/sipoc/`) |
 | New/changed entities, columns, enums, relationships | `opscale-dbml` then `opscale-domain` |
 | New/changed Eloquent models, migrations, VOs, repos | `opscale-domain` (also updates its Unit tests + factories) |
@@ -110,7 +110,7 @@ Iteration ≠ full sequence. Only invoke the skills the diff actually requires:
 | New/changed Nova resources, fields, relation tabs | `opscale-ui` (also updates its Browser/flow tests) |
 | New/changed demo data, menu, or walkthrough | `opscale-showcase` |
 
-**Keep the final Plan artifacts in sync with the flow.** When the diff changes flow logic (anything that touches `process.txt`, `bpmn.bpmn`, or the SIPOCs), re-run the owning Plan skill above **and then re-run `opscale-ontology`** so `docs/plan/ontology.mmd` + `ontology.txt` — the Generate-phase build manifest — reflect the change. The Generate skills read the ontology as their summary, so a stale ontology mis-generates code.
+**Keep the final Plan artifacts in sync with the flow.** When the diff changes flow logic (anything that touches `process.json`, `bpmn.bpmn`, or the SIPOCs), re-run the owning Plan skill above **and then re-run `opscale-graph`** so `docs/plan/graph.json` + `graph.html` — the Generate-phase build manifest — reflect the change. The Generate skills read the ontology as their summary, so a stale ontology mis-generates code.
 
 Each Generate skill now produces its own tests, so there is no separate test step — invoking `opscale-domain`/`opscale-logic`/`opscale-ui` for a change also refreshes the affected Unit/Feature/Browser tests.
 
@@ -149,7 +149,7 @@ After completing this skill, the project contains:
 
 | Question | Purpose | Required |
 |----------|---------|----------|
-| Who is the actor? | First line of the story; should match an actor in docs/plan/process.txt | Yes |
+| Who is the actor? | First line of the story; should match an actor in docs/plan/process.json | Yes |
 | What capability do they need? | The "I want" — be specific | Yes |
 | Why — what business outcome? | The "so that" — drives the commit body | Yes |
 | Acceptance criteria (Given/When/Then) | Defines done for `/speckit.specify` | Yes — at least one |

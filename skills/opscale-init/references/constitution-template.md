@@ -37,7 +37,7 @@ Per-skill applicability matrix: `README.md` (Skills → Development Sequence). J
 
 ## I. Design Methodology — sequence constraints
 
-Follow the skill sequence strictly. Each skill declares its own prerequisites and outputs in its `SKILL.md`. Canonical artifact paths: `skills/opscale-init/references/artifact-paths.md`. The constitution only enforces the **per-step constraint** that downstream skills (and reviewers) rely on:
+Follow the skill sequence strictly. Each skill declares its own prerequisites and outputs in its `SKILL.md`. Canonical artifact paths: `skills/opscale-init/shared/plan-contract/artifact-paths.md`. The constitution only enforces the **per-step constraint** that downstream skills (and reviewers) rely on:
 
 | Phase | Skill | Constitutional constraint |
 |-------|-------|---------------------------|
@@ -45,7 +45,7 @@ Follow the skill sequence strictly. Each skill declares its own prerequisites an
 | Plan | `opscale-dbml` | Business entities only; the DBML is the authoritative source — all code generates from it, never the reverse. |
 | Plan | `opscale-bpmn` | Every task references a DBML entity; no new domain concepts may be introduced. Every task classified as exactly one of `crud` / `action` / `output`. |
 | Plan | `opscale-sipoc` | One SIPOC per BPMN `businessRuleTask`; the SIPOC re-states what's in spec+DBML+BPMN — never invents. |
-| Plan | `opscale-ontology` | Generated from the other Plan artifacts, never hand-edited; it is the read-only build manifest the Generate phase reads. Regenerated (never edited) whenever a Plan artifact changes. |
+| Plan | `opscale-graph` | Generated from the other Plan artifacts, never hand-edited; it is the read-only build manifest the Generate phase reads. Regenerated (never edited) whenever a Plan artifact changes. |
 | Generate | `opscale-init` | First step of Generate. Debug tooling (logs, Xdebug, Telescope/Ray) configured for local + staging only — nothing in debug config affects production. Test tasks always precede implementation tasks in `tasks.md`. Opens `001-mvp`. |
 | Generate | `opscale-domain` | One migration per entity. No Eloquent calls outside Repositories. Every domain component ships a Unit test. |
 | Generate | `opscale-logic` | One BPMN `action` task = one Opscale Action class. No exceptions. Every Action ships a Feature test (positive / negative / false-positive / false-negative). |
@@ -53,7 +53,7 @@ Follow the skill sequence strictly. Each skill declares its own prerequisites an
 | Review | `opscale-release` | All §VIII quality gates wired into the CI pipeline. |
 | Presentation | `opscale-showcase` | Connected demo seed + process-driven Nova menu + guided Dusk walkthrough. Demo data only, never production data. |
 
-Spec-kit checkpoints: `/speckit.clarify` after `opscale-bpmn`, `/speckit.analyze` after `opscale-ontology`, `/speckit.tasks` when `opscale-init` opens `001-mvp`, `/speckit.implement` across `opscale-domain`/`opscale-logic`/`opscale-ui`, before `opscale-release`.
+Spec-kit checkpoints: `/speckit.clarify` after `opscale-bpmn`, `/speckit.analyze` after `opscale-graph`, `/speckit.tasks` when `opscale-init` opens `001-mvp`, `/speckit.implement` across `opscale-domain`/`opscale-logic`/`opscale-ui`, before `opscale-release`.
 
 ### Independent — Installer Skill → `opscale-ai`
 
@@ -247,7 +247,7 @@ No feature branch merges without passing all of the following:
 
 ## IX. Spec-Driven Development Sequence
 
-Canonical sequence + artifact paths: `skills/opscale-init/references/artifact-paths.md`. Prose summary: `README.md`. Per-step constraints: §I of this document.
+Canonical sequence + artifact paths: `skills/opscale-init/shared/plan-contract/artifact-paths.md`. Prose summary: `README.md`. Per-step constraints: §I of this document.
 
 No implementation task starts without a completed, validated spec and plan.
 

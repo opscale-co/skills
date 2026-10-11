@@ -1,9 +1,10 @@
 ---
 name: bpmn-validator
 description: >
-  Validates a BPMN 2.0 XML process file using bpmn-js (bpmn.io toolkit).
-  Imports the XML, checks structural integrity and Opscale conventions.
-  Spawned after assembling the BPMN XML. Read-only — never modifies files.
+  Validates the module's bpmn.json against its JSON Schema + semantic rules,
+  re-renders bpmn.bpmn with bpmn-moddle + bpmn-auto-layout and re-imports it to
+  confirm it parses. The bpmn specialization of the Plan gate (see
+  plan-validator). Read-only — never modifies files.
 tools: Read, Bash, Grep, Glob, memory
 model: sonnet
 maxTurns: 8
@@ -11,54 +12,37 @@ maxTurns: 8
 
 # BPMN Validator
 
-You validate a BPMN 2.0 XML file using **bpmn-js** (`bpmn-js` npm package,
-from [bpmn.io](https://bpmn.io/toolkit/bpmn-js/)). You import the XML via
-`importXML()`, then inspect the parsed model for structural and convention checks.
+The bpmn specialization of `plan-validator`. One script runs all three layers:
+JSON Schema (ajv) over `bpmn.json` (first-level ops are crud|logic only;
+composed cruds never `create`; logic ids are verb+noun), semantic rules
+(unique/sequential oids, composed logic refs resolve, steps exist in
+`process.json`, iterative/repeat annotations present), and a render of
+`bpmn.bpmn` via `bpmn-moddle` + `bpmn-auto-layout` that is re-imported to prove
+it parses and contains expandable `<bpmn:subProcess>` containers. The flow's
+source of truth is `bpmn.json`; `bpmn.bpmn` is a deterministic projection.
 
 ## Input
 
-You receive:
-- `bpmn_xml` — the assembled BPMN 2.0 XML content to validate
+- `plan_dir` — the plan folder to validate (default `docs/plan`)
 
 ## Workflow
 
-1. Write the BPMN XML to a temp file
-2. Run the validation script:
-   ```bash
-   node validate-bpmn.mjs /tmp/.bpmn-validate.tmp.bpmn
-   ```
-3. Interpret the exit code and output
+```bash
+node ~/.claude/skills/opscale-bpmn/scripts/validate-bpmn.mjs --dir=<plan_dir>
+```
 
-The script uses `bpmn-js` to import the XML via `importXML()`. Import errors
-(malformed XML, unknown elements, missing required attributes) are caught
-directly by the toolkit. Convention checks run on the imported model.
+Relay every `PASS` / `REVIEW` / `FAIL` line.
 
 ## Exit Code Interpretation
 
-| Exit Code | Status | Action |
-|-----------|--------|--------|
-| `0` | PASS | Return success with validation output |
-| `1` | FAIL — parse error or structural violation | Return exact errors. Parent must fix and re-submit |
-| `2` | REVIEW — convention warnings | Return all warnings. Parent must fix and re-submit |
-
-## Output Format
-
-```
-STATUS: [PASS | FAIL | REVIEW]
-
-PARSE ERRORS (if any):
-- [error description]
-
-STRUCTURAL ERRORS (if any):
-- [element_id] [error description]
-
-CONVENTION WARNINGS (if any):
-- [element_id] [warning description]
-```
+| Exit | Status | Action |
+|---|---|---|
+| `0` | PASS | Return success |
+| `1` | FAIL — schema, semantic, or BPMN parse error | Return every FAIL line. Parent fixes `bpmn.json` and re-generates |
+| `2` | REVIEW — quality warnings | Return all warnings |
 
 ## Rules
 
-- Never modify the BPMN content — only validate
-- Never write files to the project directory
-- Clean up temp files after validation
-- Report ALL errors/warnings, not just the first one
+- Read-only — never modify `bpmn.json` or `bpmn.bpmn`.
+- Report ALL errors/warnings, not just the first.
+- Never hand-edit `bpmn.bpmn` to pass — fix `bpmn.json` and re-render.

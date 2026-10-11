@@ -12,7 +12,7 @@
     "should_trigger": true
   },
   {
-    "query": "create the process diagram from docs/plan/process.txt and docs/plan/dbml.dbml",
+    "query": "create the process diagram from docs/plan/process.json and docs/plan/dbml.dbml",
     "should_trigger": true
   },
   {

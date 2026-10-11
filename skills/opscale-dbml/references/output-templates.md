@@ -14,7 +14,7 @@ Project [SubdomainName] {
 
   Note: '''
   # Subdomain: [Subdomain Name]
-  Source spec: docs/plan/process.txt
+  Source spec: docs/plan/process.json
   Modeling standard: [name, e.g. "BIAN" / "HL7 FHIR" / "schema.org Order"] — or "none"
 
   [3–5 sentences describing what this subdomain owns, what processes it covers,

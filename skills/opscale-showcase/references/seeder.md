@@ -47,7 +47,7 @@ order:
    the happy path. Add one pending record only if the module has a UI
    specifically for resolving pending items.
 6. **One complete flow per process** — for each subprocess in
-   `docs/plan/process.txt`, seed the connected records needed to walk it from
+   `docs/plan/process.json`, seed the connected records needed to walk it from
    trigger to final outcome. If a process cannot be walked end to end on the
    seed, the seed is incomplete.
 
@@ -129,5 +129,5 @@ vendor/bin/testbench db:seed --class='Workbench\Database\Seeders\DatabaseSeeder'
 ```
 
 Then confirm at least one record per aggregate root (tinker `::count()`), and
-that every subprocess in `docs/plan/process.txt` can be walked end to end on the
+that every subprocess in `docs/plan/process.json` can be walked end to end on the
 seeded data. If any aggregate ends with 0 records, the seeder is missing it.

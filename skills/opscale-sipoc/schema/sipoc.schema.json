@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opscale.co/plan-contract/sipoc.schema.json",
+  "title": "opscale-sipoc — sipoc.json",
+  "description": "Validated source of truth for the module's SIPOCs — exactly one per BPMN first-level logic operation. The rendered sipoc/<id>.md files are a deterministic projection of this file. The SIPOC↔bpmn link is purely by id: the derivable fields (operation/subprocess/step) live on the matching bpmn logic op, and process[] references that op's composed operation codes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sipocs"],
+  "properties": {
+    "sipocs": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One SIPOC per BPMN first-level `type:\"logic\"` operation (semantic rule enforces the 1:1).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id", "title", "description",
+          "businessRules", "composes",
+          "suppliers", "inputs", "process", "outputs", "customers",
+          "failureModes"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/logicId",
+            "description": "== the BPMN logic op id; the sipoc/<id>.md filename. The only link to bpmn.json — operation/subprocess/step are derived by matching this id to the logic op."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Short action title in the source language — rendered as the H1 (`# SIPOC — <title>`)."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "description": "One-sentence description of what the Action does — the paragraph under the header block; becomes the generated Action's description."
+          },
+
+          "businessRules": {
+            "type": "array",
+            "minItems": 1,
+            "description": "The module's canonical BR registry — each rule defined once (module-unique), with its `code` and full `text`. The header lists the codes; the `## Business Rules` section lists code — text. `process[].rule` resolves against these codes.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["code", "text"],
+              "properties": {
+                "code": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/ruleCode" },
+                "text": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "composes": {
+            "type": "array",
+            "items": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/logicId" },
+            "description": "Leaf logic ids this one invokes; may be []."
+          },
+
+          "suppliers": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/actor" }
+          },
+
+          "inputs": {
+            "type": "array",
+            "minItems": 1,
+            "description": "ATOMIC — each input is a single scalar value with a business-type `type` from sipocInputType.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "source", "type", "description"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "source": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Plain-text actor that provides the input (e.g. \"User\", \"System\")."
+                },
+                "type": {
+                  "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/sipocInputType",
+                  "description": "Business type — NEVER an ambiguous type (snippet, metadata, …). sipocInputType is businessType minus those."
+                },
+                "validation": { "type": "string" },
+                "description": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+
+          "process": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Ordered steps — each REFERENCES a composed operation of the matching bpmn logic op (by its composed op `code`). render appends the final `return result`.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["operation", "rule"],
+              "properties": {
+                "operation": {
+                  "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/composedOpCode",
+                  "description": "A composed op `code` from the matching bpmn logic op's `operations[]` (e.g. SP-01-02-L01-C01). Semantic checks membership."
+                },
+                "description": { "type": "string", "minLength": 1 },
+                "rule": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/ruleCode" }
+              }
+            }
+          },
+
+          "outputs": {
+            "type": "array",
+            "minItems": 1,
+            "description": "ATOMIC — each output is a single scalar value. `type` = businessType slug | 'bool' | entity code (resolved in semantic).",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "consumer", "type", "description"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "consumer": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Plain-text actor that consumes the output (e.g. \"User\", \"System\", \"All callers\")."
+                },
+                "type": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-zA-Z0-9-]*$",
+                  "description": "A businessType slug, the literal 'bool', or a kebab entity code. Membership is checked in the semantic pass against common businessTypes + sibling dbml.json."
+                },
+                "description": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+
+          "customers": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/actor" }
+          },
+
+          "failureModes": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["soft", "hard"],
+            "properties": {
+              "soft": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "hard": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor", "description"],
+      "properties": {
+        "actor": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Plain-text actor label (e.g. \"User\", \"System\")."
+        },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

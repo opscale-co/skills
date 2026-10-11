@@ -25,7 +25,7 @@ Software (app)
     └── Subdomain = a module — one business process, one docs/plan/ folder   id: {domain-slug}/{module-slug}
 ```
 
-This skill also assigns the top two **ontology ids**: each domain gets a kebab-case project slug (`finance`) and each subdomain the composed project id `{domain}/{module}` (`finance/billing`). Downstream, `opscale-ontology` carries them in its `%% module:` metadata. Ids are stable — renaming a business line's display name does not change its slug without an explicit decision.
+This skill also assigns the top two **ontology ids**: each domain gets a kebab-case project slug (`finance`) and each subdomain the composed project id `{domain}/{module}` (`finance/billing`). Downstream, `opscale-graph` carries them in its `%% module:` metadata. Ids are stable — renaming a business line's display name does not change its slug without an explicit decision.
 
 Every other Opscale skill works **inside** one module. Nothing else records which business line a module belongs to, which modules exist or are planned, or which module owns the entities that other modules reference virtually. This skill writes that record: `docs/plan/context/system.map.md`. One module per `docs/plan/` — multi-module apps keep one `docs/plan/` per module repo, and this map is the shared app-level view each module's plan folder carries a copy of, maintained by this skill.
 
@@ -58,7 +58,7 @@ The mode depends on whether a writable project folder is available — not on wh
 
 ### Output
 
-One artifact, app-level (canonical paths: `references/artifact-paths.md`):
+One artifact, app-level (canonical paths: `shared/plan-contract/artifact-paths.md`):
 
 ```
 docs/plan/context/system.map.md
@@ -88,7 +88,7 @@ Updated: {ISO-8601 date}
 | {slug} | {contract-slug} | {module}.{table} — or "external system" | {optional} |
 ```
 
-**Software header (mandatory):** the `> {one line: what the software does}` purpose line right under the title is the SOFTWARE HEADER the Plan phase depends on — `opscale-ontology` parses it for the top hierarchy level. In repo mode, derive the app name and purpose from `.specify/memory/constitution.md` if it exists; otherwise (Claude Desktop, or init not run) ask the user once for the software name and purpose.
+**Software header (mandatory):** the `> {one line: what the software does}` purpose line right under the title is the SOFTWARE HEADER the Plan phase depends on — `opscale-graph` parses it for the top hierarchy level. In repo mode, derive the app name and purpose from `.specify/memory/constitution.md` if it exists; otherwise (Claude Desktop, or init not run) ask the user once for the software name and purpose.
 
 `Location` is the module's repo or plan folder (e.g. `{repo}/docs/plan/`, or just `docs/plan/` for a single-repo app).
 
@@ -110,7 +110,7 @@ Inventory what exists before asking. Read, if present: the current `docs/plan/co
 
 ```
 Current map: [exists — last updated {date} | none yet]
-Current module plan artifacts: [process.txt / dbml.dbml / bpmn.bpmn / sipoc/] → status {…}
+Current module plan artifacts: [process.json / dbml.dbml / bpmn.bpmn / sipoc/] → status {…}
 Known modules (from the map): {slug — location — reachable? — external-refs read?}
 Contract slugs declared across reachable modules: {slug list, with consumer module each}
 ```

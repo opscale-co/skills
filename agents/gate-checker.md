@@ -27,50 +27,52 @@ You receive:
 
 ## Gate Definitions
 
+> Each Plan skill ships a `validate-<skill>.mjs` gate (schema + semantic rules) that
+> already runs against its JSON. The checks below are the artifact-driven gate on the
+> **JSON source of truth** (not the rendered `.dbml`/`.bpmn`/`.html`/`.md` projections).
+> Prefer running the skill's `validate-<skill>.mjs` when available; fall back to the
+> structural checks here.
+
 ### opscale-process Gate
-- [ ] `process.txt` exists in plan_dir (plain text, no markdown, no emojis)
-- [ ] Every subprocess block (blocks separated by a blank line) has a name line, a `Trigger:` line, and an `Ends with:` line (`—` allowed on the final block)
-- [ ] Every block opens with its `SP-XX {name}` id line; every block has at least one `YY)` step, numbered locally (two digits, restarting at 01 per subprocess; branch destinations local)
-- [ ] `context/names.md` exists with the normalization table (`| Canónico | ← alias |`, ≥2 data rows, no id column)
+- [ ] `process.json` exists in plan_dir and PASSES `validate-process.mjs` (schema-valid)
+- [ ] `module` header present (process.json is the SINGLE source of `module` — software/domain/subdomain; dbml/bpmn/sipoc/graph carry none and derive it from here); `subprocesses[]` non-empty
+- [ ] Every subprocess has a `code` (`SP-XX`), a `name`, a `trigger`, and an `endsWith` (`—` allowed on the final subprocess)
+- [ ] Every subprocess has at least one `steps[]` entry; every step has a `code` (`SP-XX-YY`), a `title` (≤25 chars), and a `description`
 
 *Requires: plan_dir*
 
 ### opscale-dbml Gate
-- [ ] `dbml.dbml` exists in plan_dir (raw DBML, no markdown wrapper)
-- [ ] DBML parses cleanly via `@dbml/core`
-- [ ] Every entity in `dbml.txt` has its table in `dbml.dbml`, its Note opening with the kebab id (= table name with dashes)
-- [ ] `dbml.txt` exists and lists exactly the DBML tables, one per line
-- [ ] Every column's declared type is a business-type slug or an Enum (`identifier` for id/FK/external-ref columns; no technical types)
-- [ ] No technical/UI/config entities present
-- [ ] No `tenant_id` columns anywhere (Opscale is single-tenant)
-- [ ] All intra-subdomain relationships have FK constraints
-- [ ] Cross-subdomain references are logical only (no FK)
-- [ ] `context/external-refs.md` present and consistent (only if ≥1 external-ref slug)
-- [ ] Project block Note present
+- [ ] `dbml.json` exists in plan_dir and PASSES `validate-dbml.mjs` (schema-valid; re-renders `dbml.dbml` and parses with `@dbml/core`)
+- [ ] `prefix`, `standards`, `enums[]`, `entities[]` present (no `terminology` block — name normalization stays in `names.md`; no `module` block — the subdomain is derived from `process.json` at render)
+- [ ] Every entity has a kebab `code`, an EN `name`, a `description`, and `fields[]`
+- [ ] Every field carries **exactly one** of `type` (business-type slug) / `enum` (enum code) / `foreignKey` (sibling entity code) / `externalRef` (cross-subdomain slug) — no raw technical types; derived fields may set `calculated: true` (never a pk or reference)
+- [ ] No audit fields in the JSON (`created_at`/`updated_at` are projection-only)
+- [ ] No `tenant_id` field anywhere (Opscale is single-tenant)
+- [ ] Every `foreignKey` targets an entity `code` present in `entities[]`; every `enum` targets an `enums[]` `code`
+- [ ] Every entity carries a `permissions` block (`create`/`update`/`delete` predicate strings)
+- [ ] `context/external-refs.md` present and consistent (only if ≥1 `externalRef` slug)
 
 *Requires: plan_dir*
 
 ### opscale-bpmn Gate
-- [ ] `bpmn.bpmn` exists in plan_dir (raw BPMN 2.0 XML, no markdown wrapper)
-- [ ] BPMN XML is well-formed and parses via bpmn-moddle
-- [ ] Only serviceTask + businessRuleTask nodes used (no sendTask — Outputs are composed inside a Logic)
-- [ ] The `<bpmn:process>` `<bpmn:documentation>` carries the `{"module","standard"}` JSON
-- [ ] Every task carries a `<bpmn:documentation>` JSON — crud/output: `{"type","entity","action","step","subprocess"}`; logic: `{"type":"logic","id","step","subprocess","rules":[…],"composed":[…]}`
-- [ ] Every crud serviceTask JSON `entity` exists in `dbml.txt`
-- [ ] Every businessRuleTask JSON `id` is kebab-case (nodes reusing an id carry identical JSON)
-- [ ] Start event and at least one end event present
-- [ ] Every task has incoming and outgoing flows
-- [ ] Complete BPMNDiagram section with shapes and edges
-- [ ] `bpmn.txt` exists — per subprocess: name line, business step lines with `- {category}: ` operations, composed CRUDs indented under each `- logic:`
+- [ ] `bpmn.json` exists in plan_dir and PASSES `validate-bpmn.mjs` (schema-valid; re-renders `bpmn.bpmn` with bpmn-moddle + bpmn-auto-layout and re-imports it)
+- [ ] Top-level keys are just `operations`, `gateways`, `events` (no `module` block — module + standard are derived at render from `process.json` + `dbml.json`); `operations` map non-empty
+- [ ] `operations` is a nested map keyed by subprocess code (`SP-XX`) → step code (`SP-XX-YY`) → ordered op array; both keys exist in `process.json`
+- [ ] Every first-level operation is `crud` or `logic`; `crud` carries `entity` (kebab code) + `action`; `logic` carries `id` (verb-noun kebab), `rules[]` (BR-NN; MAY be empty), and `operations[]`
+- [ ] Every operation carries a `code` and a `position` (restarts at 1 within its step array, equals the 1-based index)
+- [ ] Every `crud` `entity` (first-level and inside each logic's `operations[]`) exists as an entity in `dbml.json`
+- [ ] A Logic's child operations are `crud` (no `create`), `logic` (ref to another op), or `output`
+- [ ] `events[]` include a `start` and at least one `end`; `gateways[]` branch destinations reference valid operation codes
+- [ ] Every logic `id` is kebab-case and unique (operations reusing an id carry identical shape)
 
 *Requires: plan_dir*
 
 ### opscale-domain Gate
 
 **When plan_dir is available:**
-- [ ] Migration exists for every DBML table
-- [ ] Model exists for every DBML table
-- [ ] Enum exists for every DBML enum
+- [ ] Migration exists for every `dbml.json` entity
+- [ ] Model exists for every `dbml.json` entity
+- [ ] Enum exists for every `dbml.json` enum
 
 **Always (structural checks):**
 - [ ] Repository trait exists for every model
@@ -82,7 +84,7 @@ You receive:
 ### opscale-ui Gate
 
 **When plan_dir is available:**
-- [ ] Resource exists for every aggregate root in DBML
+- [ ] Resource exists for every entity in `dbml.json` (one Resource per entity, not only aggregate roots)
 
 **Always (structural checks):**
 - [ ] Repeatable exists only for strongly-composed value collections (NOT one per aggregate)
@@ -94,8 +96,8 @@ You receive:
 ### opscale-logic Gate
 
 **When plan_dir is available:**
-- [ ] Action exists for every distinct businessRuleTask logic id in `bpmn.bpmn`
-- [ ] Every Action's identifier() matches its BPMN logic `id`
+- [ ] Action exists for every distinct first-level `logic` operation `id` in `bpmn.json` (equivalently, every first-level `logic` operation in the `graph.json` hierarchy)
+- [ ] Every Action's identifier() matches its `bpmn.json` logic `id`
 
 **Always (structural checks):**
 - [ ] Every Action extends Opscale\Actions\Action
@@ -113,7 +115,7 @@ You receive:
 Verify test *content*, not just file presence — grep the bodies for the behavioral markers below.
 - [ ] **Unit** (opscale-domain): a test file for every domain component (model, enum, VO, repo) plus a `tests/Unit/Database/{Table}SchemaTest.php` per table. Behavioral markers present: schema tests use `getForeignKeys` + a `QueryException` negative-integrity insert; enum tests assert the full `canTransitionTo` matrix + `label()`; model tests call `->validate()` explicitly (positive + negative); guarded repositories test the `HttpException` transition guard. Model factories generated; Duster + PHPStan pass
 - [ ] **Feature** (opscale-logic): a test for every Action naming all four cases (`it('positive:…')` / `negative` / `false-positive` / `false-negative`), invoked via `executeAction()` against the real DB, asserting `->fresh()` state + `Event::assert*`; Duster + PHPStan pass
-- [ ] **Browser** (opscale-ui): a flow test for every subprocess block in `process.txt` (one flow per block); each EXECUTES the subprocess — runs Actions from the detail toolbar (`data-action-id` / `runAction(`), asserts the transition (`waitForAnywhere(`) and a DB post-condition (`->fresh()`), not just a visible button; Duster + PHPStan pass
+- [ ] **Browser** (opscale-ui): a flow test for every subprocess in `process.json` (`subprocesses[]`, one flow per entry); each EXECUTES the subprocess — runs Actions from the detail toolbar (`data-action-id` / `runAction(`), asserts the transition (`waitForAnywhere(`) and a DB post-condition (`->fresh()`), not just a visible button; Duster + PHPStan pass
 
 ### opscale-release Gate
 - [ ] .releaserc.json present

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opscale.co/plan-contract/process.schema.json",
+  "title": "opscale-process — process.json",
+  "description": "Validated source of truth for the module's subprocess/step flow. The rendered process.mmd is a deterministic projection of this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["module", "subprocesses"],
+  "properties": {
+    "module": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/module" },
+    "subprocesses": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "description": "At most 5 wait-bounded subprocesses.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "name", "trigger", "endsWith", "steps"],
+        "properties": {
+          "code": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/subprocessCode" },
+          "name": { "type": "string", "minLength": 1 },
+          "trigger": { "type": "string", "minLength": 1, "description": "What starts this subprocess." },
+          "endsWith": { "type": "string", "minLength": 1, "description": "The closing wait event; '—' only on the last subprocess." },
+          "steps": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 5,
+            "description": "Between 2 and 5 business steps.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["code", "title", "description"],
+              "properties": {
+                "code": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/stepCode" },
+                "title": { "type": "string", "minLength": 1, "maxLength": 25, "description": "Short business label, at most 25 characters." },
+                "description": { "type": "string", "minLength": 1, "description": "Brief explanation of what the step does." }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

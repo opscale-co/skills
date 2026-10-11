@@ -21,9 +21,9 @@ The constitution is the single most important file in the project. Every subsequ
 
 **Init owns environment configuration, not test generation.** It configures the debug stack (Phase 4e) and the test harness (Phase 4f) so the tooling is ready on day 1; the actual test files are authored later by the Generate skills that own each layer (`opscale-domain`, `opscale-logic`, `opscale-ui`) — init only lays the tracks.
 
-Init also creates the **Plan intake folder** `docs/plan/` (with its manifest `README.md` and `context/`): the flat, exportable home of every Plan-phase artifact — written directly by the Plan skills in Claude Code, or dropped in from a Claude Desktop planning session. Layout: `references/artifact-paths.md`.
+Init also creates the **Plan intake folder** `docs/plan/` (with its manifest `README.md` and `context/`): the flat, exportable home of every Plan-phase artifact — written directly by the Plan skills in Claude Code, or dropped in from a Claude Desktop planning session. Layout: `shared/plan-contract/artifact-paths.md`.
 
-**Init is NOT a prerequisite of the Plan phase.** The Plan skills (`opscale-map`, `opscale-process`, `opscale-dbml`, `opscale-bpmn`, `opscale-sipoc`, `opscale-ontology`) create and populate `docs/plan/` on their own, in Claude Code or Claude Desktop, with or without a repo — a Desktop session may well be running on a repo folder and write there directly. Init IS the mandatory first step of **Generate** and everything after it (Review / Presentation) — the whole Laravel side. When init runs on a project whose `docs/plan/` already has Plan artifacts, that is the normal flow, not an anomaly — Phase 6b below adopts them as-is.
+**Init is NOT a prerequisite of the Plan phase.** The Plan skills (`opscale-map`, `opscale-process`, `opscale-dbml`, `opscale-bpmn`, `opscale-sipoc`, `opscale-graph`) create and populate `docs/plan/` on their own, in Claude Code or Claude Desktop, with or without a repo — a Desktop session may well be running on a repo folder and write there directly. Init IS the mandatory first step of **Generate** and everything after it (Review / Presentation) — the whole Laravel side. When init runs on a project whose `docs/plan/` already has Plan artifacts, that is the normal flow, not an anomaly — Phase 6b below adopts them as-is.
 
 ### Prerequisites — project context (MUST be a Laravel/PHP project)
 
@@ -341,7 +341,7 @@ The following commands must be available:
 
 ### Phase 6 — Create the Plan intake folder (`docs/plan/`)
 
-Plan-phase artifacts live in a **flat, exportable `docs/plan/` folder** — plain documents, stack-agnostic, one module per `docs/plan/` (multi-module apps keep one per module repo). Spec-kit keeps only its own files under `.specify/` (constitution, `business-types.php`, `plan.md` / `tasks.md`, scripts, templates). Canonical layout and per-file formats: `references/artifact-paths.md`.
+Plan-phase artifacts live in a **flat, exportable `docs/plan/` folder** — plain documents, stack-agnostic, one module per `docs/plan/` (multi-module apps keep one per module repo). Spec-kit keeps only its own files under `.specify/` (constitution, `business-types.php`, `plan.md` / `tasks.md`, scripts, templates). Canonical layout and per-file formats: `shared/plan-contract/artifact-paths.md`.
 
 **6a. Create the intake folder and its manifest:**
 
@@ -355,11 +355,11 @@ cp references/plan-readme.md docs/plan/README.md   # skip if it already exists
 | # | Skill | Produces (under `docs/plan/`) |
 |---|-------|-------------------------------|
 | 1 | `opscale-map` | `context/system.map.md` |
-| 2 | `opscale-process` | `process.mmd` + `process.txt` (+ `context/names.md`) |
-| 3 | `opscale-dbml` | `dbml.dbml` + `dbml.txt` + `context/external-refs.md` |
-| 4 | `opscale-bpmn` | `bpmn.bpmn` + `bpmn.txt` |
-| 5 | `opscale-sipoc` | `sipoc/{kebab-id}.md` (one per Logic) + `sipoc.txt` |
-| 6 | `opscale-ontology` | `ontology.mmd` + `ontology.txt` (Plan closer) |
+| 2 | `opscale-process` | `process.mmd` + `process.json` (+ `context/names.md`) |
+| 3 | `opscale-dbml` | `dbml.dbml` + `dbml.json` + `context/external-refs.md` |
+| 4 | `opscale-bpmn` | `bpmn.bpmn` + `bpmn.json` |
+| 5 | `opscale-sipoc` | `sipoc/{kebab-id}.md` (one per Logic) + `sipoc.json` |
+| 6 | `opscale-graph` | `graph.json` + `graph.html` (Plan closer) |
 
 Do not pre-create `sipoc/` or empty artifact files — the Plan skills create them when they run.
 
@@ -368,11 +368,11 @@ Do not pre-create `sipoc/` or empty artifact files — the Plan skills create th
 ```
 Plan intake — docs/plan/ already contains artifacts:
   [x] opscale-map      — context/system.map.md
-  [x] opscale-process  — context/names.md + process.txt
+  [x] opscale-process  — context/names.md + process.json
   [ ] opscale-dbml     — missing
   [ ] opscale-bpmn     — missing
   [ ] opscale-sipoc    — missing
-  [ ] opscale-ontology — missing
+  [ ] opscale-graph — missing
 
 Plan steps 1–2 satisfied. Resume the pipeline at opscale-dbml.
 ```
@@ -411,11 +411,11 @@ OPSCALE SKILL           → ARTIFACT
 ─────────────────────────────────────────────────────────────────────────
 # Plan phase — no init required; writes flat, exportable docs/plan/
 opscale-map             → docs/plan/context/system.map.md (app-level; re-run before each new module)
-opscale-process         → docs/plan/process.mmd + process.txt (+ context/names.md)
-opscale-dbml            → docs/plan/dbml.dbml (+ dbml.txt, context/external-refs.md)
-opscale-bpmn            → docs/plan/bpmn.bpmn (+ bpmn.txt)
-opscale-sipoc           → docs/plan/sipoc/{kebab-id}.md (+ sipoc.txt)
-opscale-ontology        → docs/plan/ontology.mmd (+ ontology.txt) (Plan closer)
+opscale-process         → docs/plan/process.mmd + process.json (+ context/names.md)
+opscale-dbml            → docs/plan/dbml.dbml (+ dbml.json, context/external-refs.md)
+opscale-bpmn            → docs/plan/bpmn.bpmn (+ bpmn.json)
+opscale-sipoc           → docs/plan/sipoc/{kebab-id}.md (+ sipoc.json)
+opscale-graph           → docs/plan/graph.json (+ graph.html) (Plan closer)
                           /speckit.clarify   ← validate before planning
 # Generate phase — builds the MVP feature .specify/specs/001-mvp/
 opscale-init (THIS)     → env + test/debug harness + .specify/specs/001-mvp/spec.md
@@ -433,7 +433,7 @@ opscale-iterate         → next features .specify/specs/002-…, 003-…
 opscale-ai              → .claude/skills/{slug}-setup.md (installer skill for consumers)
 ```
 
-Debug and test tooling are no longer separate configuration steps — init configures both (Phases 4e / 4f); the Generate skills author the test files for the layer they own. Plan artifacts live flat in `docs/plan/` (one per module repo — see `references/artifact-paths.md`). The initial build lives under `.specify/specs/001-mvp/`; `opscale-iterate` opens the higher-numbered folders (`002-…`, `003-…`) for later changes. Each holds only spec-kit's own `spec.md` / `plan.md` / `tasks.md`, written by the `/speckit.*` commands.
+Debug and test tooling are no longer separate configuration steps — init configures both (Phases 4e / 4f); the Generate skills author the test files for the layer they own. Plan artifacts live flat in `docs/plan/` (one per module repo — see `shared/plan-contract/artifact-paths.md`). The initial build lives under `.specify/specs/001-mvp/`; `opscale-iterate` opens the higher-numbered folders (`002-…`, `003-…`) for later changes. Each holds only spec-kit's own `spec.md` / `plan.md` / `tasks.md`, written by the `/speckit.*` commands.
 
 **Wait for user approval before continuing.**
 

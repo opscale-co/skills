@@ -40,7 +40,7 @@ If `.specify/` does NOT exist (rare — package was never run through
 `opscale-init`), skip this phase and proceed to Phase 4 directly. Otherwise:
 
 **3a. Build a synthetic spec folder for this Action batch.** Standalone mode
-has no `docs/plan/bpmn.bpmn`, so create a minimal `.specify/specs/{NNN}-actions-{date}/`
+has no `docs/plan/bpmn.json`, so create a minimal `.specify/specs/{NNN}-actions-{date}/`
 folder and seed it with the Action definitions the user provided.
 
 **3b. Run `/speckit.plan`** with the same payload structure as the BPMN-driven
@@ -90,7 +90,7 @@ Phase 4 (Action file, Test file, Class, id, Task ID, Rules) to
 always-on Check #0 (every Action has a Feature test present, with all four named
 cases + `->fresh()` + `Event::assert`) followed by linters +
 `composer test --testsuite=Feature` green. The Check #0 test-presence loop is NOT
-gated on `bpmn.bpmn`, so it runs for standalone modules too; only the SIPOC check
+gated on `bpmn.json`, so it runs for standalone modules too; only the SIPOC check
 inside it is skipped. Otherwise skip the plan append and just run the gate.
 
 ---

@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opscale.co/plan-contract/bpmn.schema.json",
+  "title": "opscale-bpmn — bpmn.json",
+  "description": "Validated source of truth for the module's process flow. The rendered bpmn.bpmn (BPMN 2.0 XML, one expandable subProcess per subprocess) is a deterministic projection of this file. Also consumed by opscale-sipoc and opscale-graph.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["operations"],
+  "properties": {
+    "operations": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Nested map keyed by subprocess code → step code → ordered operation array. The subprocess and step keys are REFERENCES to process.json (they are not reproduced here — no subprocess names). First-level operation type is crud or logic ONLY — never output (an Output is always composed inside a Logic). `position` restarts at 1 within each step array and equals the 1-based array index.",
+      "propertyNames": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/subprocessCode" },
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "description": "Steps of one subprocess, keyed by step code (a reference to process.json).",
+        "propertyNames": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/stepCode" },
+        "additionalProperties": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Ordered first-level operations of one step.",
+          "items": {
+            "type": "object",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "required": ["code", "position", "type", "entity", "action", "description"],
+                "properties": {
+                  "type": { "const": "crud" },
+                  "code": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/opCode" },
+                  "position": { "type": "integer", "minimum": 1 },
+                  "entity": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/entitySlug" },
+                  "action": { "type": "string", "enum": ["create", "read", "update", "delete"] },
+                  "description": { "type": "string", "minLength": 1 },
+                  "iterative": { "type": "boolean" },
+                  "iterationNote": { "type": "string" },
+                  "repeatReason": { "type": "string" }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "required": ["iterative"],
+                      "properties": { "iterative": { "const": true } }
+                    },
+                    "then": {
+                      "required": ["iterationNote"],
+                      "properties": { "iterationNote": { "type": "string", "minLength": 1 } }
+                    }
+                  }
+                ]
+              },
+              {
+                "additionalProperties": false,
+                "required": ["code", "position", "type", "id", "rules", "description", "operations"],
+                "properties": {
+                  "type": { "const": "logic" },
+                  "code": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/opCode" },
+                  "position": { "type": "integer", "minimum": 1 },
+                  "id": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/logicId" },
+                  "rules": {
+                    "type": "array",
+                    "description": "BR-NN codes this Logic enforces. MAY be empty ([]) — business rules are numbered later by opscale-sipoc.",
+                    "items": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/ruleCode" }
+                  },
+                  "description": { "type": "string", "minLength": 1 },
+                  "operations": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": "Child operations of this Logic: crud (read|update|delete only — never create), logic reference, or output.",
+                    "items": {
+                      "type": "object",
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "required": ["code", "type", "entity", "action", "description"],
+                          "properties": {
+                            "type": { "const": "crud" },
+                            "code": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/composedOpCode" },
+                            "entity": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/entitySlug" },
+                            "action": { "type": "string", "enum": ["read", "update", "delete"], "description": "NO create — creation is always a standalone first-level crud; a Logic only reads/updates/deletes/outputs." },
+                            "description": { "type": "string", "minLength": 1 }
+                          }
+                        },
+                        {
+                          "additionalProperties": false,
+                          "required": ["code", "type", "ref", "description"],
+                          "properties": {
+                            "type": { "const": "logic" },
+                            "code": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/composedOpCode" },
+                            "ref": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/logicId" },
+                            "description": { "type": "string", "minLength": 1 }
+                          }
+                        },
+                        {
+                          "additionalProperties": false,
+                          "required": ["code", "type", "content", "description"],
+                          "properties": {
+                            "type": { "const": "output" },
+                            "code": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/composedOpCode" },
+                            "content": { "type": "string", "minLength": 1 },
+                            "description": { "type": "string", "minLength": 1 }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "gateways": {
+      "type": "array",
+      "description": "Decision points. Branches target an operation code.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "step", "question", "branches"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "step": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/stepCode" },
+          "question": { "type": "string", "minLength": 1 },
+          "branches": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "to"],
+              "properties": {
+                "label": { "type": "string", "minLength": 1 },
+                "to": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/opCode" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "description": "start/end bound the whole process; each catch is a subprocess-closing wait (the spec's endsWith).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "name"],
+        "properties": {
+          "type": { "type": "string", "enum": ["start", "end", "catch"] },
+          "subprocess": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/subprocessCode" },
+          "name": { "type": "string", "minLength": 1 }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "type": { "const": "catch" } }, "required": ["type"] },
+            "then": { "required": ["subprocess"] }
+          }
+        ]
+      }
+    }
+  }
+}

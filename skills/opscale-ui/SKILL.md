@@ -1,12 +1,13 @@
 ---
 name: opscale-ui
 description: >
-  Generates Laravel Nova Resource classes (one per DBML entity) from the
-  ontology manifest + DBML + BPMN, registers each Action on its Resource, and
-  authors the Browser/flow tests. Last step of Generate, after opscale-logic.
-  Trigger: "generate the Nova resources", "create the admin panel", "build the
-  UI layer".
-  Use it whenever Nova Resource/admin-panel classes must be generated, even if just "build the admin". Not for the domain layer (opscale-domain) or Action logic (opscale-logic).
+  Generates Laravel Nova Resource classes (one per DBML entity) from the graph
+  manifest (graph.json) + dbml.json + bpmn.json, registers each Action on its
+  Resource, and authors the Browser/flow tests. Last step of Generate, after
+  opscale-logic. Trigger: "generate the Nova resources", "create the admin
+  panel", "build the UI layer". Use it whenever Nova Resource/admin-panel classes
+  must be generated. Not for the domain layer (opscale-domain) or Action logic
+  (opscale-logic).
 ---
 
 # opscale-ui
@@ -15,7 +16,7 @@ description: >
 
 ### Purpose
 
-Generate Laravel Nova Resource classes that expose **every** domain entity in the admin panel, register each generated Action on its Resource, and author the Browser/flow tests that exercise the module through Nova. Every field, relationship, and authorization rule is derived directly from the ontology manifest + DBML + BPMN — nothing is invented. Output files are written to `src/Nova/` (+ `tests/Browser/`) and listed in `.specify/specs/001-mvp/plan.md` (Nova section).
+Generate Laravel Nova Resource classes that expose **every** domain entity in the admin panel, register each generated Action on its Resource, and author the Browser/flow tests that exercise the module through Nova. Every field, relationship, and authorization rule is derived directly from `dbml.json` (the entity list + detail) + `bpmn.json` (the Actions) within the module's `graph.json` hierarchy — nothing is invented. Read those JSON sources of truth directly; the rendered `.dbml`/`.bpmn`/`graph.html` files are projections. Output files are written to `src/Nova/` (+ `tests/Browser/`) and listed in `.specify/specs/001-mvp/plan.md` (Nova section).
 
 This is the **last skill in the pipeline that touches the module**: the domain (`src/Models/`) and the logic (`src/Services/Actions/`) already exist. UI is where the operator-facing surface, the Action wiring, and the end-to-end flow tests all come together.
 
@@ -24,11 +25,11 @@ This is the **last skill in the pipeline that touches the module**: the domain (
 | # | Requirement | Check | If missing |
 |---|-------------|-------|-----------|
 | 1 | `opscale-init` has been run | `.specify/memory/constitution.md` exists | Stop. Run `/opscale-init`. |
-| 2 | `opscale-process` has been run | `docs/plan/process.txt` exists and PASS | Stop. Run `/opscale-process`. |
-| 3 | `opscale-dbml` has been run | `docs/plan/dbml.dbml` + `docs/plan/dbml.txt` exist and PASS | Stop. Run `/opscale-dbml`. |
-| 4 | `opscale-bpmn` has been run | `docs/plan/bpmn.bpmn` + `docs/plan/bpmn.txt` exist and PASS | Stop. Run `/opscale-bpmn`. |
-| 5 | `opscale-ontology` has been run | `docs/plan/ontology.mmd` + `docs/plan/ontology.txt` exist (the Plan manifest) | Stop. Run `/opscale-ontology`. |
-| 6 | `opscale-domain` has been run | `src/Models/` contains one model per DBML entity | Stop. Run `/opscale-domain`. |
+| 2 | `opscale-process` has been run | `docs/plan/process.json` exists and PASS (`validate-process.mjs`) | Stop. Run `/opscale-process`. |
+| 3 | `opscale-dbml` has been run | `docs/plan/dbml.json` exists and PASS (`validate-dbml.mjs`) | Stop. Run `/opscale-dbml`. |
+| 4 | `opscale-bpmn` has been run | `docs/plan/bpmn.json` exists and PASS (`validate-bpmn.mjs`) | Stop. Run `/opscale-bpmn`. |
+| 5 | The Plan graph has been generated | `docs/plan/graph.json` exists and PASS (`validate-graph.mjs`) — the module's hierarchy manifest | Stop. Generate the graph. |
+| 6 | `opscale-domain` has been run | `src/Models/` contains one model per `dbml.json` entity | Stop. Run `/opscale-domain`. |
 | 7 | `opscale-logic` has been run | `src/Services/Actions/` is populated (one Action per BPMN `businessRuleTask`) | Stop. Run `/opscale-logic`. |
 | 8 | `tasks.md` entries for all domain + logic bundles marked complete | Check `tasks.md` for unchecked `Implement …` items | Finish pending domain/logic tasks before starting UI. |
 
@@ -45,7 +46,7 @@ Rule: run the generator first, then read each generated Resource and complete it
 
 ### One Resource per entity (major change)
 
-Every table listed in `docs/plan/dbml.txt` gets its **own navigable Nova Resource** — not only the aggregate roots. A child entity is no longer buried as an inline Repeatable inside its parent with no page of its own; it has a Resource you can open, filter, and link to. **Each Resource exposes its own `has-many` / `has-one` relations as tabs** (via `Tab::group`), so navigation works from any entity, not only from the root.
+Every entity in `docs/plan/dbml.json` (`entities[]`, mirrored by the `entity` nodes in `graph.json`) gets its **own navigable Nova Resource** — not only the aggregate roots. A child entity is no longer buried as an inline Repeatable inside its parent with no page of its own; it has a Resource you can open, filter, and link to. **Each Resource exposes its own `has-many` / `has-one` relations as tabs** (via `Tab::group`), so navigation works from any entity, not only from the root.
 
 Inline `Repeatable`s are **kept only for strongly-composed value collections** — child rows that are meaningless outside their parent and are always edited together in the parent's form (line items, contact methods, channels). Even then the child entity still gets its own Resource: the Repeatable is an editing convenience on the parent, the Resource is the navigable surface. See `references/repeatables.md` for the "Repeatable AND Resource" reconciliation.
 
@@ -88,7 +89,7 @@ For the full i18n contract — the three sources of translation values, the URI+
 
 ### After-create redirect, authorization patterns
 
-Non-root aggregate resources emit `redirectAfterCreate()` so the operator lands on the parent's detail URL with the new child visible in its tab. Authorization has two layers: a hard floor set per resource (`can_create` / `can_update` / `can_delete` answers emit `authorizedTo*` returning `false`) and state-conditional overrides added in the customization pass. For verbatim code, see `references/resource-anatomy.md`.
+Non-root aggregate resources emit `redirectAfterCreate()` so the operator lands on the parent's detail URL with the new child visible in its tab. Authorization has two layers: a hard floor set per resource (`can_create` / `can_update` / `can_delete` answers emit `authorizedTo*` returning `false`) and state-conditional overrides added in the customization pass. **Both layers are seeded from the entity's `permissions` block in `docs/plan/dbml.json`** (`{ "create": <predicate>, "update": <predicate>, "delete": <predicate> }`, predicate strings over the entity's own fields): a literal `"false"` predicate → the hard floor (`authorizedTo*` returns `false`); a literal `"true"` → allowed; a field predicate such as `"status = draft"` or `"status != won and status != lost"` → a **state-conditional** `authorizedToUpdate`/`authorizedToDelete` translating the predicate against the model's status enum. These are the Phase 3 defaults the user then confirms. For verbatim code, see `references/resource-anatomy.md`.
 
 ### Relation tabs on EVERY Resource (mandatory)
 
@@ -133,7 +134,7 @@ public function actions(NovaRequest $request): array
 ```
 
 - Single permitted state → `->status?->is(...)`; multiple → `in_array($request->findModel()?->status, [...], strict: true)`; role → `$request->user()?->can('...')`; no precondition → register without `canSee`.
-- The entity an Action operates on comes from the Action's SIPOC "Target resource(s)" line (or its primary model parameter) — read `docs/plan/sipoc/{id}.md` and the Action's `parameters()`.
+- The entity an Action operates on comes from the Action's `sipoc.json` object (the `inputs[]` record with `source:"System"` + `type:"identifier"` — the passed record — or the BPMN logic operation's primary `operations[]` `crud` entity) and the Action's `parameters()`.
 - `canSee` is a UI affordance, not security — the Action's `handle()`/`canRun()` remains the authoritative guard.
 
 The full pattern catalogue is copied from logic into `references/canSee-patterns.md`. This registration happens in its own phase (see Steps → "Register Actions on Resources").
@@ -155,7 +156,7 @@ The JSON contract for each is documented at the top of the matching `scripts/gen
 ### Domain Rules
 
 1. **One entity = one bundle task in `tasks.md`** — Resource (+ Repeatable only for strongly-composed collections) ships as a single tracked task. Each Nova bundle task `depends_on` its corresponding `opscale-domain` bundle task.
-2. **One Resource per DBML entity** — every table in `docs/plan/dbml.txt` gets its own navigable Resource, parent or child. Each Resource renders its own has-many/has-one relations as tabs. Repeatables are an inline-editing convenience on the parent, never a replacement for the child's Resource.
+2. **One Resource per DBML entity** — every entity in `docs/plan/dbml.json` (`entities[]`) gets its own navigable Resource, parent or child. Each Resource renders its own has-many/has-one relations as tabs. Repeatables are an inline-editing convenience on the parent, never a replacement for the child's Resource.
 3. **No business logic** — Nova Resources are pure UI. No calculations, no service calls, no Eloquent queries inline.
 4. **All strings translatable — zero exceptions** — every user-visible string must be wrapped in `__()`. Only technical identifiers stay untranslated.
 5. **Never expose `id` as a Nova field, and `$title` is never `id`** — no `ID::make()`, no `Text::make('ID', 'id')`; `$title` is a descriptive business column (the generator rejects `title_column: "id"`). Human-meaningful business identifiers live in their own column.
@@ -175,16 +176,16 @@ The JSON contract for each is documented at the top of the matching `scripts/gen
 19. **Every Resource renders its own relations as tabs.** Tab visibility follows the creatable-from-UI rule. Counts are loaded via Nova `$with` / `indexQuery()` withCount on the **Resource**, never on the Eloquent model.
 20. **Child-entity Resources must emit `redirectAfterCreate()`.** The generator emits this method automatically when the JSON contract carries `child_of: { parent_uri, foreign_key }`, landing the operator on the parent's detail page.
 21. **Cross-subdomain logical refs render as Select, never Text** — `Select::make(...)->options(fn () => app({Repo}::class)->forSelect())->searchable()->filterable()->displayUsingLabels()`. Text + `->help('Logical reference…')` is no longer accepted. **Drivability caveat:** `->searchable()` renders a custom typeahead a Dusk `select()` cannot set. Any column a Browser flow test must set on the **create form** must be a **native `Select`** (no `->searchable()` on that field) — or the flow seeds the record and selects a seeded option (see Rule 23).
-22. **Browser/flow tests EXECUTE the subprocess** — one `tests/Browser/{Flow}FlowTest.php` per subprocess of `docs/plan/process.txt`. Each drives the real flow (create via form → run each Action from the detail toolbar) and asserts **both** the user-visible transition (`->refresh()->waitForAnywhere('<new state>')`, plus no error toast after every submit) **and** the persisted DB post-condition (`->fresh()->status`, counts — reads the shared workbench SQLite). Generated by the `web-test-generator` agent.
+22. **Browser/flow tests EXECUTE the subprocess** — one `tests/Browser/{Flow}FlowTest.php` per subprocess of `docs/plan/process.json` (`subprocesses[]`). Each drives the real flow (create via form → run each Action from the detail toolbar) and asserts **both** the user-visible transition (`->refresh()->waitForAnywhere('<new state>')`, plus no error toast after every submit) **and** the persisted DB post-condition (`->fresh()->status`, counts — reads the shared workbench SQLite). Generated by the `web-test-generator` agent.
 23. **Flow-test drivability gotchas (confirmed).** (a) Only native Nova `Select`/Text inputs are Dusk-drivable; `->searchable()` and `BelongsTo` render custom components `select()` can't set, and two `BelongsTo` to the same resource share a `dusk` id (ambiguous) → use a `Select` per column for anything the test drives. (b) Standalone actions on the **index** toolbar are not drivable (`NovaActionDecorator` doesn't propagate `$standalone`) → register every driven Action on the **detail** toolbar. (c) Fake external-ref IDs typed into forms must be valid ULIDs (Crockford — no `i/l/o/u`) or the `ulid` rule rejects them. Details in `references/flow-test-gotchas.md`.
 
 ## Steps
 
-### Phase 1 — Inventory every entity (ontology manifest first)
+### Phase 1 — Inventory every entity (data model first)
 
-Read `docs/plan/ontology.txt` / `ontology.mmd` as the **manifest** — the authoritative list of what the module contains and how it hangs together (Software → Domain → Module → Subprocess → Business Step → Operation, plus the stamped entities in the `%% entity:` lines). Then read `docs/plan/dbml.dbml` + `docs/plan/dbml.txt` and `docs/plan/bpmn.bpmn` + `docs/plan/bpmn.txt` as the **detail**: `dbml.txt` is the definitive per-entity list (one entity per line), `dbml.dbml` gives each entity's columns and relations, and the BPMN gives the Actions (`businessRuleTask`) that operate on each entity.
+Read `docs/plan/dbml.json` as the definitive per-entity list: `entities[]`, each with its `fields[]`, `relationships[]`, and `permissions`. Read `docs/plan/graph.json` as the module's **hierarchy manifest** — a nested `module` → `subprocesses[]` → `steps[]` → `operations[]` tree of `{id, ref}` nodes (no entity/enum nodes; those live in `dbml.json`) — to see the process/step structure and which Actions (first-level `logic` operations) exist. Read `docs/plan/bpmn.json` `operations[]` for the Actions (first-level `logic`) and which entity each one writes (via its `composed[]` CRUDs — each a `crud` with its `entity`+`action`).
 
-Build the inventory with **one Resource per entity** — every line of `dbml.txt`, not only aggregate roots. Cross-reference `src/Models/` to confirm each entity has a model. For each entity note its has-many/has-one relations (→ tabs) and which BPMN Actions target it (→ `actions()` registration in a later phase):
+Build the inventory with **one Resource per entity** — every `entities[]` entry in `dbml.json`, not only aggregate roots. Cross-reference `src/Models/` to confirm each entity has a model. For each entity note its has-many/has-one relations (from `relationships[]` → tabs) and which BPMN Actions target it (from `bpmn.json` logic ops' `composed[]` CRUDs → `actions()` registration in a later phase):
 
 ```
 Nova UI inventory for [Module Name]:
@@ -194,7 +195,7 @@ Entities ([N] — one Resource each):
   2. [EntityB]  →  Resource (+ Repeatable, strongly composed in [EntityA])
   ...
 
-Flows (from process.txt subprocesses — one Browser test each):
+Flows (from process.json subprocesses[] — one Browser test each):
   SP-01 [Flow name]
   SP-02 [Flow name]
   ...
@@ -209,14 +210,14 @@ Like `opscale-domain`, the UI layer formalizes its plan through spec-kit so each
 **2a. Run `/speckit.plan`** with the entity + flow list:
 
 ```
-/speckit.plan "Nova UI layer for {module-name}: [N] entities from docs/plan/dbml.txt.
+/speckit.plan "Nova UI layer for {module-name}: [N] entities from docs/plan/dbml.json.
 Generate one task per entity, each covering its full Nova bundle:
   - 1 Resource at src/Nova/{ModelName}.php (fields inline, fields() + fieldsForIndex())
   - 1 Repeatable at src/Nova/Repeatables/{ModelName}.php (only for strongly-composed value collections)
 
 Plus:
   - 1 task 'Register Actions on Resources' — wire every src/Services/Actions/ Action onto its Resource's actions() with canSee.
-  - 1 task per subprocess in docs/plan/process.txt — a Browser flow test at tests/Browser/{Flow}FlowTest.php.
+  - 1 task per subprocess in docs/plan/process.json — a Browser flow test at tests/Browser/{Flow}FlowTest.php.
   - 1 task per Nova Menu / Dashboard / shared Filter (only if defined in spec)."
 ```
 
@@ -242,10 +243,10 @@ Plus the two cross-cutting tasks:
 **Verify `tasks.md`:**
 
 ```
-[ ] One bundle task per entity — count matches dbml.txt line count
+[ ] One bundle task per entity — count matches dbml.json entities[] count
 [ ] Each task lists Resource (+ Repeatable when applicable) in Outputs
 [ ] One 'Register Actions on Resources' task
-[ ] One 'Browser flow test' task per process.txt subprocess
+[ ] One 'Browser flow test' task per process.json subprocess
 [ ] Each task depends_on its domain bundle counterpart
 [ ] Resource/Repeatable never split across tasks
 ```
@@ -256,15 +257,15 @@ If any check fails, regenerate `tasks.md` before continuing.
 
 ### Phase 3 — Per-resource authorization confirmation
 
-For each entity in the inventory, **ask the user** which CRUD operations the Resource should expose in Nova. The defaults are not assumed — the skill must prompt explicitly:
+For each entity in the inventory, **pre-fill the CRUD defaults from the entity's `permissions` block in `docs/plan/dbml.json`**, then **ask the user to confirm** which operations the Resource should expose in Nova. Map each `permissions` predicate to a default answer: `"false"` → `n`, `"true"` → `Y`, a field predicate (e.g. `"status = draft"`) → `Y` **plus a state-conditional guard** carrying the predicate. Present the default alongside the prompt rather than asking blind:
 
 ```
-For each aggregate, confirm Nova CRUD access:
+For each aggregate, confirm Nova CRUD access (default from dbml.json permissions):
 
-  [ModelA]
-    can create? (Y/n)
-    can update? (Y/n)
-    can delete? (Y/n)
+  [ModelA]   permissions: { create: true, update: "status != won and status != lost", delete: false }
+    can create? (Y/n)   [default Y]
+    can update? (Y/n)   [default Y — state-locked: status != won and status != lost]
+    can delete? (Y/n)   [default n]
 
   [ModelB]
     can create? (Y/n)
@@ -273,9 +274,9 @@ For each aggregate, confirm Nova CRUD access:
   ...
 ```
 
-The answers map directly to the JSON contract of `generate-resource.mjs`: `can_create`, `can_update`, `can_delete`. When any flag is `false`, the generated Resource emits the corresponding `authorizedTo*` method returning `false`. When all three are `true`, no overrides are emitted.
+The answers map directly to the JSON contract of `generate-resource.mjs`: `can_create`, `can_update`, `can_delete`. When any flag is `false` (a `"false"` predicate or an operator `n`), the generated Resource emits the corresponding `authorizedTo*` method returning `false`. When all three are `true` with no field predicate, no overrides are emitted. A field predicate becomes the state-conditional `authorizedToUpdate`/`authorizedToDelete` added in the customization pass.
 
-Read-only / system-generated resources answer `n / n / n`. State-locked resources answer `Y` here and get a custom guard added in the customization pass.
+Read-only / system-generated resources (all-`false` permissions) answer `n / n / n`. State-locked resources (field predicate) answer `Y` here and get the predicate's guard added in the customization pass.
 
 Do not proceed to generation until every entity has all three answers recorded.
 
@@ -302,9 +303,9 @@ The Resource and any Repeatable for an entity render in parallel; there is no fi
 
 The JSON contract for each script lives in its header comment. The skill is responsible for picking the right Nova field per column (`Text` / `Select` / `BelongsTo` / `Boolean` / `Number` / `DateTime` …) and building the `fields` array (each entry flagged `on_index` when it belongs on the index), plus the `status_badge` map, `has_many_relationships`, and `has_one_relationships` lists — the script does not look at the Eloquent model. Every entity's has-many/has-one relations become tabs on **its own** Resource (`child_of` is set on child entities so `redirectAfterCreate()` is emitted). The generator rejects `title_column: "id"` and rejects any relationship field flagged `on_index`.
 
-> **Generator contract — one Resource per entity + relation tabs.** `generate-resource.mjs` renders one Resource per invocation; producing one-per-entity is a matter of invoking it once per `dbml.txt` line. It already emits `has_many_relationships` as tabs and `child_of` → `redirectAfterCreate()`. `has_one_relationships` renders as `HasOne` tabs the same way as `has_many` (mirror the `has_many` handling). **TODO (acotado):** if `has_one_relationships` is not yet wired in `scripts/generate-resource.mjs` + `templates/resource.php.tmpl`, add it mirroring `has_many_relationships` (import `HasOne`, one `Tab::make` per relation, `->onlyOnDetail()` on the `HasOne` field). Do NOT hand-write Resource PHP — extend the template/script.
+> **Generator contract — one Resource per entity + relation tabs.** `generate-resource.mjs` renders one Resource per invocation; producing one-per-entity is a matter of invoking it once per `dbml.json` `entities[]` entry. It already emits `has_many_relationships` as tabs and `child_of` → `redirectAfterCreate()`. `has_one_relationships` renders as `HasOne` tabs the same way as `has_many` (mirror the `has_many` handling). **TODO (acotado):** if `has_one_relationships` is not yet wired in `scripts/generate-resource.mjs` + `templates/resource.php.tmpl`, add it mirroring `has_many_relationships` (import `HasOne`, one `Tab::make` per relation, `->onlyOnDetail()` on the `HasOne` field). Do NOT hand-write Resource PHP — extend the template/script.
 
-**Business types drive field selection.** Before picking a field heuristically, check the column's DBML **type**: the business-type slug IS the declared column type (`contact_email email`), and the field, its `config`, and its `->help()` hint come from the Laravel/Nova **binding** (`.specify/memory/business-types.php`; canonical slugs in `docs/plan/context/business-types.md`) — an `email` column renders `Email::make`, a `money` column renders `Currency::make` with its currency config, never a bare `Text::make`. Heuristics apply only to Enum-typed columns (they render as the Enum's select). **Why:** the registry is what guarantees the same business type looks and validates identically across every module.
+**Business types drive field selection.** Before picking a field heuristically, check the field's `dbml.json` **`type`**: the business-type slug IS the declared field type (`{ "code": "contact_email", "type": "email" }`), and the Nova field, its `config`, and its `->help()` hint come from the Laravel/Nova **binding** (`.specify/memory/business-types.php`; canonical slugs in `docs/plan/context/business-types.md`) — an `email` field renders `Email::make`, a `money` field renders `Currency::make` with its currency config, never a bare `Text::make`. Heuristics apply only to `enum`-typed fields (field carries `enum:"<code>"` → the Enum's select) and to `fk` fields (`foreignKey` → `BelongsTo`, `externalRef` → virtual `Select`). **Why:** the registry is what guarantees the same business type looks and validates identically across every module.
 
 **Three invariants the JSON normalization must enforce** (the scripts assume they hold):
 
@@ -322,8 +323,8 @@ After generation, append the Nova layer table to `.specify/specs/001-mvp/plan.md
 
 For each Action:
 
-1. **Find its target Resource.** Read the Action's SIPOC (`docs/plan/sipoc/{id}.md`, "Target resource(s)" line) and its `parameters()` primary model — that entity's Resource is where the Action registers.
-2. **Determine the `canSee` guard** from the SIPOC's Business Rules / Process preconditions, using `references/canSee-patterns.md`:
+1. **Find its target Resource.** Read the Action's `sipoc.json` object (`sipocs[]` where `id` == the Action identifier) — the `inputs[]` record with `source:"System"` + `type:"identifier"` (the passed record), or the BPMN logic operation's primary `operations[]` `crud` entity, names the entity — and its `parameters()` primary model. That entity's Resource is where the Action registers.
+2. **Determine the `canSee` guard** from the SIPOC's `businessRules[]` / `process[]` preconditions and the entity's `dbml.json` `permissions.update` predicate, using `references/canSee-patterns.md`:
    - single state → `->canSee(fn ($request) => $request->findModel()?->status?->is({Enum}::{State}))`
    - multiple states → `in_array($request->findModel()?->status, [...], strict: true)`
    - role → `$request->user()?->can('{permission}')`
@@ -337,12 +338,12 @@ Every Action lands in exactly **one** Resource's `actions()`; no Action is left 
 
 ### Phase 6 — Generate Browser/flow tests
 
-Author the end-to-end Browser tests that drive the module through Nova — this responsibility **moved here from `opscale-test`**. **One flow = one subprocess** of `docs/plan/process.txt`.
+Author the end-to-end Browser tests that drive the module through Nova — this responsibility **moved here from `opscale-test`**. **One flow = one subprocess** of `docs/plan/process.json` (`subprocesses[]`).
 
-For each subprocess block in `process.txt`, spawn the `web-test-generator` agent with:
+For each `subprocesses[]` entry in `process.json`, spawn the `web-test-generator` agent with:
 
-- `flow_name` / `flow_id` — from the subprocess header (`SP-XX {name}`)
-- `steps` — the subprocess's ordered steps, mapped to Nova interactions; read `docs/plan/bpmn.txt` for the operations under each step (CRUD → form submit; Logic → Action modal)
+- `flow_name` / `flow_id` — from the subprocess `name` / `code` (`SP-XX`)
+- `steps` — the subprocess's ordered `steps[]`, mapped to Nova interactions; read `docs/plan/bpmn.json` `operations[]` (match on `step`) for the operations under each step (`crud` → form submit; `logic` → Action modal)
 - `resources_involved` — the Resources (URI keys) the flow touches
 - `actions_triggered` — the Action identifiers invoked in the flow
 - `package_namespace`, `output_dir: tests/Browser/`
@@ -364,10 +365,12 @@ The module is feature-complete only when the UI compiles, boots, and the flows p
 
    ```bash
    set -e
-   # A flow test file per subprocess block in process.txt (blocks separated by a blank line).
-   count=$(awk 'BEGIN{RS="";} NF{c++} END{print c}' docs/plan/process.txt)
+   # A flow test file per subprocess in process.json (one per subprocesses[] entry).
+   # Subprocess codes are "SP-NN" (steps are "SP-NN-NN"); the closing quote after two digits
+   # matches only subprocess codes.
+   count=$(grep -Eo '"code"[[:space:]]*:[[:space:]]*"SP-[0-9]{2}"' docs/plan/process.json | wc -l | tr -d ' ')
    files=$(ls tests/Browser/*FlowTest.php 2>/dev/null | wc -l | tr -d ' ')
-   [ "$files" -ge "$count" ] || { echo "Flow tests ($files) < subprocess blocks ($count)"; exit 1; }
+   [ "$files" -ge "$count" ] || { echo "Flow tests ($files) < subprocesses ($count)"; exit 1; }
    # Each flow test executes the subprocess and asserts the effect (UI + DB).
    for t in tests/Browser/*FlowTest.php; do
      grep -q 'data-action-id\|runAction('     "$t" || { echo "$t: does not run any Action from the detail toolbar"; exit 1; }

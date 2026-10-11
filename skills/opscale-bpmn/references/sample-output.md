@@ -1,17 +1,17 @@
 # Sample output — opscale-bpmn
 
-Excerpt of `docs/plan/bpmn.bpmn` and the full `docs/plan/bpmn.txt` from the
+Excerpt of `docs/plan/bpmn.bpmn` and the full `docs/plan/bpmn.json` from the
 **Proveedores** module (supplier master lifecycle, `Dominio ERP`, project
 `compras/proveedores`) — the same real module used across the Plan skills so
-the artifacts chain: every business step below appears in `process.txt`, every
-logic id has a file in `sipoc/` and a block in `sipoc.txt`, every entity
-exists in `dbml.txt`. The full set passes every Plan validator.
+the artifacts chain: every business step below appears in `process.json`, every
+logic id has a file in `sipoc/` and a block in `sipoc.json`, every entity
+exists in `dbml.json`. The full set passes every Plan validator.
 
 ---
 
 The XML is **self-contained**: the `<bpmn:process>` documentation carries the
 module + modeling standard, and every task's documentation JSON carries its
-`oid`, business step, and subprocess — Logics also carry their governing rules
+`code`, business step, and subprocess name — Logics also carry their governing rules
 (prose; BR-NN numbering is assigned later by `opscale-sipoc`) and composed
 members (CRUDs and Outputs; a composed Logic reference `{"oid","id"}` is also
 possible when an Action reuses another). There are no sendTask nodes: Outputs
@@ -29,15 +29,15 @@ live inside their Logic. No companion file is needed to interpret the diagram.
 
     <!-- Standalone CRUD step — the central entity's birth with its initial status -->
     <bpmn:serviceTask id="t_create_supplier" name="create supplier">
-      <bpmn:documentation>{"type":"crud","oid":"SP-01-01-C01","entity":"supplier","action":"create","step":"Registrar al proveedor como pendiente, sin habilitar compras ni pagos","subprocess":"SP-01 Registro de proveedor"}</bpmn:documentation>
+      <bpmn:documentation>{"type":"crud","code":"SP-01-01-C01","entity":"supplier","action":"create","step":"Registrar al proveedor como pendiente, sin habilitar compras ni pagos","subprocess":"SP-01 Registro de proveedor"}</bpmn:documentation>
       <bpmn:incoming>flow_001</bpmn:incoming>
       <bpmn:outgoing>flow_002</bpmn:outgoing>
     </bpmn:serviceTask>
 
-    <!-- Logic — backed 1:1 by an Action with the same kebab id. Its composed
+    <!-- Logic — backed 1:1 by an Action with the same kebab id. Its operations
          array mixes a CRUD and an Output (the request sent to the supplier). -->
     <bpmn:businessRuleTask id="t_build_file" name="Preparar expediente requerido">
-      <bpmn:documentation>{"type":"logic","oid":"SP-01-02-L01","id":"build-required-file","step":"Determinar el papeleo requerido según su tipo (empresa o persona natural)","subprocess":"SP-01 Registro de proveedor","rules":["El papeleo requerido depende del tipo de proveedor (empresa o persona natural); el conjunto de documentos exigidos se crea en estado pendiente."],"composed":[{"oid":"SP-01-02-L01-C01","entity":"legal_document","action":"create"},{"oid":"SP-01-02-L01-O01","content":"solicitud de papeleo al proveedor"}]}</bpmn:documentation>
+      <bpmn:documentation>{"type":"logic","code":"SP-01-02-L01","id":"build-required-file","step":"Determinar el papeleo requerido según su tipo (empresa o persona natural)","subprocess":"SP-01 Registro de proveedor","rules":["El papeleo requerido depende del tipo de proveedor (empresa o persona natural): se lee el tipo del proveedor y se le solicita el conjunto de documentos exigido."],"operations":[{"code":"SP-01-02-L01-C01","entity":"supplier","action":"read"},{"code":"SP-01-02-L01-O01","content":"solicitud de papeleo al proveedor"}]}</bpmn:documentation>
       <bpmn:incoming>flow_002</bpmn:incoming>
       <bpmn:outgoing>flow_003</bpmn:outgoing>
     </bpmn:businessRuleTask>
@@ -58,7 +58,7 @@ live inside their Logic. No companion file is needed to interpret the diagram.
     <!-- Lifecycle transition — always a Logic, never a lone CRUD: activating
          requires verifying the verdict first, and dispatches the notice. -->
     <bpmn:businessRuleTask id="t_activate_supplier" name="Activar proveedor">
-      <bpmn:documentation>{"type":"logic","oid":"SP-03-03-L01","id":"activate-supplier","step":"Activar al proveedor habilitando compras y pagos","subprocess":"SP-03 Activación de proveedor","rules":["El veredicto de cumplimiento debe venir aprobado para activar; desde ese momento se habilitan contratos, facturas y pagos."],"composed":[{"oid":"SP-03-03-L01-C01","entity":"supplier","action":"update"},{"oid":"SP-03-03-L01-O01","content":"aviso de alta al área solicitante y al proveedor"}]}</bpmn:documentation>
+      <bpmn:documentation>{"type":"logic","code":"SP-03-03-L01","id":"activate-supplier","step":"Activar al proveedor habilitando compras y pagos","subprocess":"SP-03 Activación de proveedor","rules":["El veredicto de cumplimiento debe venir aprobado para activar; desde ese momento se habilitan contratos, facturas y pagos."],"operations":[{"code":"SP-03-03-L01-C01","entity":"supplier","action":"update"},{"code":"SP-03-03-L01-O01","content":"aviso de alta al área solicitante y al proveedor"}]}</bpmn:documentation>
       <bpmn:incoming>flow_verdict_yes</bpmn:incoming>
       <bpmn:outgoing>flow_011</bpmn:outgoing>
     </bpmn:businessRuleTask>
@@ -68,14 +68,14 @@ live inside their Logic. No companion file is needed to interpret the diagram.
 ```
 
 
-## Sample docs/plan/bpmn.txt (full)
+## Sample docs/plan/bpmn.json (full)
 
-One section per subprocess block of `process.txt` (same count, order, ids,
+One section per subprocess block of `process.json` (same count, order, ids,
 names), separated by a blank line: the `SP-XX {name}` line, then each business
 step with its operations. Top-level lines are only standalone crud
-(`- {oid} crud: {action} {entity}`) and logic (`- {oid} logic: {kebab-id}`).
+(`- {code} crud: {action} {entity}`) and logic (`- {code} logic: {kebab-id}`).
 Under each logic, its composed members are indented two extra spaces with the
-nested oid `{parent}-[C|L|O]AA` — CRUDs, Logic references, **and Outputs**.
+nested code `{parent}-[C|L|O]AA` — CRUDs, Logic references, **and Outputs**.
 **Outputs only ever appear composed inside a Logic, never as a top-level
 line** (a notification is the effect of a rule resolving). Lines are concise:
 crud = `{action} {entity}`, logic = bare kebab Action id, output = brief
@@ -87,7 +87,7 @@ Registrar al proveedor como pendiente, sin habilitar compras ni pagos
 - SP-01-01-C01 crud: create supplier
 Determinar el papeleo requerido según su tipo (empresa o persona natural)
 - SP-01-02-L01 logic: build-required-file
-  - SP-01-02-L01-C01 crud: create legal_document
+  - SP-01-02-L01-C01 crud: read supplier
   - SP-01-02-L01-O01 output: solicitud de papeleo al proveedor
 
 SP-02 Validación de proveedor

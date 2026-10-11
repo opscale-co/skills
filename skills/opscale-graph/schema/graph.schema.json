@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opscale.co/plan-contract/graph.schema.json",
+  "title": "opscale-graph — graph.json",
+  "description": "Deterministically BUILT (never authored) traceability graph: the whole module as a NESTED HIERARCHY of lightweight {id, ref} nodes — module → subprocesses → steps → operations → composed operations. Every element carries its ontology id plus a JSON Pointer `ref` into the file that owns its content (process/dbml/bpmn/sipoc); no titles, names, or bodies are duplicated — all are derivable by dereferencing `ref`. The interactive graph.html is a deterministic projection of this file with the source content inlined at render time. The island-free guarantee is now 'every ref resolves to something real', checked semantically.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["module", "subprocesses"],
+  "properties": {
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref"],
+      "properties": {
+        "ref": {
+          "type": "string",
+          "pattern": "^process\\.json#/module$",
+          "description": "A REFERENCE into process.json — module (software/domain/subdomain) is never duplicated here."
+        }
+      }
+    },
+    "subprocesses": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/subprocess" }
+    }
+  },
+  "$defs": {
+    "subprocess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ref", "steps"],
+      "properties": {
+        "id": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/subprocessCode" },
+        "ref": {
+          "type": "string",
+          "pattern": "^process\\.json#/.+$",
+          "description": "JSON Pointer into process.json for this subprocess."
+        },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/step" }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ref", "operations"],
+      "properties": {
+        "id": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/stepCode" },
+        "ref": {
+          "type": "string",
+          "pattern": "^process\\.json#/.+$",
+          "description": "JSON Pointer into process.json for this step."
+        },
+        "operations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/operation" }
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ref"],
+      "properties": {
+        "id": {
+          "anyOf": [
+            { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/opCode" },
+            { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/composedOpCode" }
+          ],
+          "description": "First-level operations use opCode (SP-XX-YY-[CL]ZZ); composed children use composedOpCode (…-[CLO]AA)."
+        },
+        "ref": {
+          "type": "string",
+          "pattern": "^bpmn\\.json#/.+$",
+          "description": "JSON Pointer into bpmn.json: first-level ops at /operations/{SP}/{step}/{idx}; composed ops append /operations/{j}."
+        },
+        "operations": {
+          "type": "array",
+          "description": "Composed child operations of a logic op (recursive, logic ops only). Absent/empty for crud and output ops.",
+          "items": { "$ref": "#/$defs/operation" }
+        }
+      }
+    }
+  }
+}
