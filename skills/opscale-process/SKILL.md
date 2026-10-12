@@ -19,17 +19,18 @@ description: >
 Model a **whole module** as one connected flow — subprocesses bounded by waits, each decomposed into business steps. The validated source of truth is **`docs/plan/process.json`**; the diagram **`docs/plan/process.mmd`** is a deterministic projection of it (never hand-edited). Deliver:
 
 1. **Name normalization** — fold every synonym for one real thing into a single readable canonical name (`client / customer / user → Member`), persisted to `docs/plan/context/names.md`. This table is **input** for `opscale-dbml`, which folds it into `dbml.json`'s terminology block and assigns the final entity ids — no ids are assigned here beyond the subprocess/step codes.
-2. **Flow** — subprocesses (`SP-01`…, **at most 5**) each with a `trigger`, a closing wait (`endsWith`, `—` on the last), and **2–5 business steps**. Each step has a `code` (`SP-XX-YY`), a **title of at most 25 characters**, and a one-line **description**.
+2. **Flow** — subprocesses (`SP-01`…, **at most 5**) each with a one-line **description**, a `trigger`, a closing wait (`endsWith`, `—` on the last), and **2–5 business steps**. Each step has a `code` (`SP-XX-YY`), a **title of at most 25 characters**, and a one-line **description**.
 
 ### The JSON contract
 
-`process.json` is validated against `schema/process.schema.json` (which `$ref`s the shared `common.schema.json`). The schema is a hard gate — it rejects more than 5 subprocesses, fewer than 2 or more than 5 steps, titles over 25 chars, missing descriptions, and malformed codes. Shape:
+`process.json` is validated against `schema/process.schema.json` (which `$ref`s the shared `common.schema.json`). The schema is a hard gate — it rejects more than 5 subprocesses, a subprocess with no `description`, fewer than 2 or more than 5 steps, titles over 25 chars, missing descriptions, and malformed codes. Shape:
 
 ```jsonc
 {
   "module": { "software": "...", "domain": "...", "subdomain": "comercial/ventas" },
   "subprocesses": [{                       // ≤ 5
     "code": "SP-01", "name": "Registro y calificación",
+    "description": "Capta y califica la oportunidad hasta dejarla lista para ofertar.",   // one line
     "trigger": "un vendedor descubre un negocio...",
     "endsWith": "el cliente... entendimiento para ofertar",   // "—" only on the last
     "steps": [{                            // 2–5 per subprocess
@@ -121,7 +122,7 @@ Identify the central entity and walk its life stages in plain words — only to 
 
 ### Phase 4 — Propose subprocesses (authorization gate)
 
-From the confirmed boundaries, propose **at most 5** subprocesses, each with its `trigger` and `endsWith` wait. If the flow seems to need more than 5, that usually means two should merge or a boundary is not really a wait — push back and reconcile. Confirm the breakdown; it is the contract for Phase 5.
+From the confirmed boundaries, propose **at most 5** subprocesses, each with a one-line `description`, its `trigger` and its `endsWith` wait. If the flow seems to need more than 5, that usually means two should merge or a boundary is not really a wait — push back and reconcile. Confirm the breakdown; it is the contract for Phase 5.
 
 **Wait for user approval before continuing.**
 

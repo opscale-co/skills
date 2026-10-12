@@ -16,10 +16,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["code", "name", "trigger", "endsWith", "steps"],
+        "required": ["code", "name", "description", "trigger", "endsWith", "steps"],
         "properties": {
           "code": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/subprocessCode" },
           "name": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1, "description": "One-line explanation of what this subprocess does (shown as the subprocess card description)." },
           "trigger": { "type": "string", "minLength": 1, "description": "What starts this subprocess." },
           "endsWith": { "type": "string", "minLength": 1, "description": "The closing wait event; '—' only on the last subprocess." },
           "steps": {

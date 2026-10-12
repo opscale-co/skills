@@ -59,7 +59,8 @@ function buildData(graphJson, docs) {
       out.entityName = entityName.get(op.entity) || op.entity || '';
       out.table = op.entity ? tableName(op.entity) : '';
     } else if (op.type === 'logic') {
-      out.logicId = op.id || '';
+      out.logicId = op.id || op.ref || '';
+      out.isRef = !op.id && !!op.ref;
       out.rules = op.rules || [];
       out.composed = (opNode.operations || []).map(buildOp);
     } else if (op.type === 'output') {
@@ -73,6 +74,7 @@ function buildData(graphJson, docs) {
     return {
       id: spNode.id,
       title: sp.name || spNode.id,
+      description: sp.description || '',
       trigger: sp.trigger || '',
       endsWith: sp.endsWith || '',
       steps: (spNode.steps || []).map((stNode) => {
@@ -281,6 +283,14 @@ function opCard(op, data) {
   if (op.type === 'crud')
     return card('op-crud', head(op.id, `${op.action} ${op.table}`, op.description, 'crud'), entityCard(op.entity, data));
   if (op.type === 'logic') {
+    if (op.isRef) {
+      // composed reference to another first-level logic — shown as a reference, never re-expanded
+      const s = data.logics[op.logicId];
+      const title = s ? s.title || op.logicId : op.logicId;
+      const text = op.description || (s ? s.description : '');
+      return card('op-logic', head(op.id, title, `↪ ${op.logicId}`, 'logic'),
+        `<div class="detail"><p>${esc(text)}</p></div>`);
+    }
     const children =
       logicCard(op.logicId, data) + (op.composed || []).map((c) => opCard(c, data)).join('');
     const rules = op.rules && op.rules.length ? `[${op.rules.join(', ')}]` : '';
@@ -294,8 +304,10 @@ function stepCard(st, data) {
   return card('card-step', head(st.id, st.title, st.description, 'step'), children);
 }
 function subCard(sp, data) {
-  const children = sp.steps.map((st) => stepCard(st, data)).join('');
-  const sub = sp.endsWith ? `⟶ ${sp.endsWith}` : '';
+  const sub = sp.endsWith && sp.endsWith !== '—' ? `⟶ ${sp.endsWith}` : '';
+  const text = sp.description || sp.trigger;
+  const intro = text ? `<div class="detail"><p>${esc(text)}</p></div>` : '';
+  const children = intro + sp.steps.map((st) => stepCard(st, data)).join('');
   return card('card-subprocess', head(sp.id, sp.title, sub, 'subprocess'), children);
 }
 function moduleCard(data) {
