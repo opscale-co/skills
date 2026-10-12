@@ -34,8 +34,7 @@ BPMN COMPLETENESS GATE
 [ ] docs/plan/process.json updated to match the to-be subprocess list (if reconciliation changed it)
 [ ] Every subprocess walked: rules (2.1) → atomic sequence (2.2) → grouped Logics (2.3) → detailed recap (2.4)
 [ ] Every first-level operation is crud or logic — never output; every Output composed inside a Logic
-[ ] Creation is always a standalone first-level crud — no composed crud has action:"create"
-[ ] Every Logic carries rules (BR-NN) + composed (crud read|update|delete / logic ref / output)
+[ ] Every Logic carries rules (BR-NN) + composed (crud create|read|update|delete / logic ref / output)
 [ ] Every lifecycle status transition lives inside a Logic (no standalone update-status crud)
 [ ] Every approval modeled two-outcome (approve-x / reject-x) with its gateway
 [ ] Every crud entity exists in docs/plan/dbml.dbml; every gateway branch targets a real oid

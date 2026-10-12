@@ -68,7 +68,7 @@
                   "operations": {
                     "type": "array",
                     "minItems": 1,
-                    "description": "Child operations of this Logic: crud (read|update|delete only — never create), logic reference, or output.",
+                    "description": "Child operations of this Logic: crud (create|read|update|delete), logic reference, or output.",
                     "items": {
                       "type": "object",
                       "oneOf": [
@@ -79,7 +79,7 @@
                             "type": { "const": "crud" },
                             "code": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/composedOpCode" },
                             "entity": { "$ref": "https://opscale.co/plan-contract/common.schema.json#/$defs/entitySlug" },
-                            "action": { "type": "string", "enum": ["read", "update", "delete"], "description": "NO create — creation is always a standalone first-level crud; a Logic only reads/updates/deletes/outputs." },
+                            "action": { "type": "string", "enum": ["create", "read", "update", "delete"], "description": "A Logic may create/read/update/delete entities or output." },
                             "description": { "type": "string", "minLength": 1 }
                           }
                         },

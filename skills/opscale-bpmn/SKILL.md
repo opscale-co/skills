@@ -35,7 +35,7 @@ The BPMN authoritatively records **what gets implemented** — every operation m
         { "code": "SP-01-02-L01", "position": 1, "type": "logic",   // position restarts at 1 in each step array
           "id": "<logicId: verb-noun, 2–3 words>", "rules": ["BR-01"], "description": "...",   // rules MAY be []
           "operations": [                // child operations: crud | logic | output
-            { "code": "SP-01-02-L01-C01", "type": "crud", "entity": "...", "action": "read|update|delete", "description": "..." },  // NO create
+            { "code": "SP-01-02-L01-C01", "type": "crud", "entity": "...", "action": "create|read|update|delete", "description": "..." },
             { "code": "SP-01-02-L01-L01", "type": "logic", "ref": "<logicId defined at first level>", "description": "..." },
             { "code": "SP-01-02-L01-O01", "type": "output", "content": "...", "description": "..." }
           ] }
@@ -47,7 +47,7 @@ The BPMN authoritatively records **what gets implemented** — every operation m
 }
 ```
 
-Enforced by the schema: `operations` is a nested map whose keys (subprocess `SP-XX`, step `SP-XX-YY`) reference `process.json` — the subprocesses are **not** reproduced here; first-level operation `type` is `crud` or `logic` **only** (an Output is never standalone); a **composed crud `action` is `read|update|delete` — never `create`** (creation is always a standalone first-level crud; a Logic only validates / updates / reads / outputs); `logic.id` is `verb-noun` (2 words, 3 only when the noun is compound); `code` matches `SP-XX-YY-[C|L]ZZ` at first level and the nested `…-[C|L|O]AA` form when composed; `position` is an integer ≥ 1 that restarts per step and equals the 1-based array index; crud requires `entity`+`action`; logic requires `id`+`rules`+`operations` (its child-operations array). `rules` MAY be empty (`[]`) — business rules are numbered later by `opscale-sipoc`.
+Enforced by the schema: `operations` is a nested map whose keys (subprocess `SP-XX`, step `SP-XX-YY`) reference `process.json` — the subprocesses are **not** reproduced here; first-level operation `type` is `crud` or `logic` **only** (an Output is never standalone); a **composed crud `action` is `create|read|update|delete`** (a Logic may create / read / update / delete entities and output); `logic.id` is `verb-noun` (2 words, 3 only when the noun is compound); `code` matches `SP-XX-YY-[C|L]ZZ` at first level and the nested `…-[C|L|O]AA` form when composed; `position` is an integer ≥ 1 that restarts per step and equals the 1-based array index; crud requires `entity`+`action`; logic requires `id`+`rules`+`operations` (its child-operations array). `rules` MAY be empty (`[]`) — business rules are numbered later by `opscale-sipoc`.
 
 ### Prerequisites — MUST be satisfied (ordered)
 
@@ -86,7 +86,7 @@ Operations are the atomic, technical level a business step decomposes into. **On
 
 | Category | bpmn.json | BPMN element | What it is |
 |---|---|---|---|
-| **CRUD** | first-level `type:"crud"` | `serviceTask` | A single create/read/update/delete on one entity. No rules, no orchestration. **Creation is always a standalone crud.** |
+| **CRUD** | first-level `type:"crud"` | `serviceTask` | A single create/read/update/delete on one entity. No rules, no orchestration. |
 | **Logic** | first-level `type:"logic"` | `businessRuleTask` | An orchestrated bundle of CRUDs (+ its Outputs) driven by a business rule — sometimes plus an external lookup, approval, or calculation. A Logic with zero composed CRUDs is suspicious. |
 | **Output** | composed `type:"output"` | — (no node) | Something that leaves the system (notification, document, webhook). **Always inside the Logic that dispatches it** — never standalone, never a `sendTask`. Records only WHAT leaves (`content`); the channel is a Generate-phase decision. |
 | **Event** | `events[]` | `startEvent` / `endEvent` / `intermediateCatchEvent` | start/end bound the process; each `catch` is a subprocess-closing wait (the spec's `endsWith`). |
@@ -96,7 +96,7 @@ Operations are the atomic, technical level a business step decomposes into. **On
 
 #### Key modeling rules (preserved from the semantic playbook)
 
-- **No create inside a Logic.** A composed crud is `read`, `update`, or `delete` only. If a Logic "creates" something, that creation is a separate first-level `crud` operation, and the Logic reads/updates around it. (Schema-enforced.)
+- **Create inside a Logic is allowed.** A composed crud may be `create`, `read`, `update`, or `delete`. A Logic may create an entity as part of its orchestration (as well as read/update/delete around it). (Schema-enforced.)
 - **Logic = orchestrated CRUDs.** The classic shape is a guarded state transition: a record moves A→B only by also reading X, validating Y, updating Z. A standalone `update {entity}.status` on a lifecycle entity is a red flag — it belongs inside a Logic (the transition guard).
 - **Approvals are two-outcome.** A formal go/no-go implies both the approving Logic and its rejecting counterpart (`approve-x` / `reject-x`), separated by the gateway that carries the decision. Any acceptance the flow waits on can be declined — model the branch.
 - **Outputs are never loose.** A notification/document/webhook is the effect of a rule resolving; it attaches to the Logic whose outcome it communicates. If an Output has no Logic to attach to, the underlying state change is probably a loose CRUD that should be a Logic — surface the gap, don't emit a standalone output.
@@ -131,8 +131,8 @@ Read `docs/plan/process.json`, `docs/plan/dbml.dbml` (table names + the modeling
 For **each** subprocess, in order:
 
 - **2.1 Elicit business rules.** Status transitions that aren't free, external lookups that must succeed, approvals, calculations across entities, sequencing requirements, side effects that must accompany an action. The rules reveal where Logics live. Each rule becomes a `BR-NN` entry (numbered later by `opscale-sipoc`; reference them as `rules:["BR-01"]`).
-- **2.2 Atomic operation sequence (no Logic yet).** Walk the subprocess's steps from `process.json`; decompose each into atomic CRUD / Output / Event / Gateway, each shown individually, grouped under its step. Every crud entity must exist in `dbml.dbml`. Creation stays a standalone crud.
-- **2.3 Group CRUDs into Logics.** Collapse contiguous CRUDs (optionally with a lookup/approval/calculation) into named Logics (`verb-noun`). A Logic absorbs its read/update/delete CRUDs and its Outputs — **never a create** (a create stays a first-level crud). Every lifecycle `update status` ends up inside a Logic. Preserve 2.2's order.
+- **2.2 Atomic operation sequence (no Logic yet).** Walk the subprocess's steps from `process.json`; decompose each into atomic CRUD / Output / Event / Gateway, each shown individually, grouped under its step. Every crud entity must exist in `dbml.dbml`.
+- **2.3 Group CRUDs into Logics.** Collapse contiguous CRUDs (optionally with a lookup/approval/calculation) into named Logics (`verb-noun`). A Logic absorbs its create/read/update/delete CRUDs and its Outputs. Every lifecycle `update status` ends up inside a Logic. Preserve 2.2's order.
 - **2.4 Detailed recap.** Expand to the full per-operation detail the JSON needs: first-level operations (crud + logic) with positions, each Logic's `rules` + `operations` (crud/logic-ref/output), the gateways (question + branches to codes), and the subprocess-closing wait. Once confirmed, the subprocess is locked.
 
 Each sub-phase ends in a confirmation gate. **Do not skip ahead to generation while any subprocess is unwalked.**
