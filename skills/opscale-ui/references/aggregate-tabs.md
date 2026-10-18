@@ -66,7 +66,7 @@ class Application extends Resource
     public function fields(NovaRequest $request): array
     {
         return [
-            Tab::group(default: __('Details'), tabs: [
+            Tab::group(default: __('Details'), tabs: array_filter([
                 Tab::make(__('Details'), [
                     // own fields …
                 ]),
@@ -76,19 +76,21 @@ class Application extends Resource
                     HasMany::make(__('Quotas'), 'quotas', Quota::class),
                 ]),
 
-                // System-only child → hidden when count = 0.
-                Tab::make(__('Audit entries'), [
+                // System-only child → left out of the group while it has no rows.
+                $this->resource->auditEntries()->exists() ? Tab::make(__('Audit entries'), [
                     HasMany::make(__('Audit entries'), 'auditEntries', AuditEntry::class),
-                ])->canSee(fn () => ($this->resource->audit_entries_count ?? 0) > 0),
-            ]),
+                ]) : null,
+            ])),
         ];
     }
 }
 ```
 
-The `canSee` closure reads `{relation}_count` (the column `withCount` adds).
-The `?? 0` guard avoids a notice when `withCount` wasn't loaded for the
-current request (e.g. when an Action loads the model bare).
+Nova 5's `Tab` has **no** `canSee()` — calling it throws "Call to undefined method
+Laravel\Nova\Tabs\Tab::canSee()" and the detail page fails to load. A system-only tab
+is therefore added only when the relation has rows, and the group is wrapped in
+`array_filter([...])` to drop the `null`. The check is a direct `exists()` query because
+the `{relation}_count` column that `withCount` adds is only loaded on the index.
 
 ## JSON contract additions for the generator
 
@@ -113,9 +115,9 @@ other than `"false"` ⇒ creatable, tab always visible; `"false"` ⇒ system-onl
 count-gated). Legacy callers may omit `label` and pass only `label_en`/`label_es`
 — the English string then doubles as the key.
 
-When `creatable_from_ui` is `false`, the generator wraps the tab in
-`->canSee(fn () => ($this->resource->{count_column} ?? 0) > 0)`. Otherwise
-the tab is emitted without a `canSee` guard.
+When `creatable_from_ui` is `false`, the generator emits the tab as
+`$this->resource->{name}()->exists() ? Tab::make(...) : null` and wraps the group in
+`array_filter([...])`. Otherwise the tab is emitted unconditionally.
 
 The generator also adds the relation to `public static $with = [...]` (or
 `indexQuery()` withCount, configurable via `count_strategy` in the JSON).

@@ -17,6 +17,9 @@ use {{.}};
 {{#each dependency_imports}}
 use {{.}};
 {{/each}}
+{{#each extra_imports}}
+use {{.}};
+{{/each}}
 
 /**
  * {{description}}
@@ -86,6 +89,26 @@ class {{action_class_name}} extends Action
     public function canRun(array $inputs = []): bool|string
     {
         {{can_run_body}}
+    }
+
+{{/if}}
+{{#if array_params}}
+    /**
+     * Nova's MultiSelect submits array parameters as a JSON string.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    #[\Override]
+    public function fill(array $attributes): static
+    {
+{{#each array_params}}
+        if (is_string($attributes['{{.}}'] ?? null)) {
+            $decoded = json_decode($attributes['{{.}}'], true);
+            $attributes['{{.}}'] = is_array($decoded) ? $decoded : [];
+        }
+
+{{/each}}
+        return parent::fill($attributes);
     }
 
 {{/if}}

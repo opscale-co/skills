@@ -6,9 +6,9 @@ description: >
   the Action against a real database and cover the FOUR canonical cases (positive /
   negative / false-positive / false-negative), asserting persisted state and events,
   not just the return envelope.
-tools: Read, Write, Glob, sqlite, memory
+tools: Read, Write, Glob, Bash, sqlite, memory
 model: sonnet
-maxTurns: 6
+maxTurns: 30
 ---
 
 # Feature Test Generator
@@ -42,7 +42,7 @@ directly. Every Action gets the **four canonical cases**, each asserting the
 
 | Case | Meaning | Assert |
 |------|---------|--------|
-| **positive** | preconditions valid → the effect happens | `success: true`, the `->fresh()` state change, `Event::assertDispatched('{identifier}')` |
+| **positive** | preconditions valid → the effect happens | `success: true`, the `->fresh()` state change, `Event::assertDispatched('opscale.actions.{identifier}')` |
 | **negative** | a precondition is invalid → rejected / soft-fail | `success: false` with the `canRun()`/`fail()` reason, **no** state change, `Event::assertNotDispatched('{identifier}')` |
 | **false-positive** | inputs *look* valid but a BR must still reject | seed data that passes shape validation yet violates a BR (duplicate, out-of-window, over-limit) → rejected, no state change |
 | **false-negative** | inputs *look* invalid but the BR must allow | a boundary-equal / genuinely-idempotent edge that resembles a rejection → `success: true`, effect happens |
@@ -145,7 +145,7 @@ describe('{ActionName}', function () {
 1. Invoke via `executeAction({ActionName}::class, [...])` — never `handle()` directly.
 2. Use `expect()` — never `$this->assert*()`.
 3. Every case asserts persisted state with `->fresh()` AND (for state-changing actions) an event — not just `success`.
-4. Events assert on the **string identifier** (`Event::assertDispatched('{identifier}')`), matching `EmitsEvent`.
+4. Events assert on the **emitted event name** (`Event::assertDispatched('opscale.actions.{identifier}')`): `EmitsEvent` prefixes the Action identifier with `opscale.actions.`.
 5. `Event::fake([...])` only in the tests that assert events.
 6. One business concern per `it()`; seed the exact precondition each case needs via factories.
 7. All four canonical cases are present and named; add one `it()` per uncovered BR-NN.
@@ -163,3 +163,9 @@ TEST_CASES: {count}
 LOGIC_RULES_COVERED: {list of BR-NN}
 CASES: positive, negative, false-positive, false-negative{, + extra BR / composition it()s}
 ```
+
+## Run what you wrote
+
+Run `./vendor/bin/pest <your test file>` from the module root before returning and fix your own test until it passes
+(or report the src defect it reveals). A test file that was never run proves nothing:
+return the command and its observed result.

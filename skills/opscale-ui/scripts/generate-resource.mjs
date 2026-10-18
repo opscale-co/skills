@@ -36,6 +36,9 @@
 //         "on_index":  true,                   // optional — include in fieldsForIndex()
 //         "modifiers": [ "sortable", { "rules": "code" } ]
 //       },
+//       // A Select reads its options from `enum_class` (labels via the enum's label())
+//       // or from `options_expr`, a raw PHP expression for a configurable catalog:
+//       // { "field": "Select", ..., "attribute": "bank", "options_expr": "Catalog::options('bank')" }
 //       { "field": "Select", "label": "Type", "label_es": "Tipo", "attribute": "type",
 //         "enum_class": "OrderType", "modifiers": ["filterable", "displayUsingLabels"] },
 //       { "field": "BelongsTo", "label": "Customer", "label_es": "Cliente", "attribute": "customer",
@@ -51,6 +54,7 @@
 //     "status_enum":          "OrderStatus",
 //     "status_badge": {
 //       "map":    [{ "case": "Pending", "color": "warning" }, ...],
+//       // `label` (optional) is the KEY; without it the key is `{label minus ".label"}.status.{snake_case(case)}`
 //       "labels": [{ "case": "Pending", "label_en": "Pending", "label_es": "Pendiente" }, ...]
 //     },
 //     "has_many_relationships": [
@@ -60,7 +64,7 @@
 //         "label_es":          "Artículos",
 //         "related_resource":  "OrderItem",
 //         "creatable_from_ui": true,            // → tab always visible; otherwise hidden when count=0
-//         "count_column":      "items_count"    // optional; defaults to "{name}_count"
+//         "count_column":      "items_count"    // optional; defaults to "{snake_case(name)}_count"
 //       }
 //     ],
 //     "has_one_relationships": [                 // optional — rendered as HasOne tabs, same shape
@@ -168,8 +172,8 @@ function main() {
     if (!FIELD_NAMESPACE[f.field]) throw new Error(`Unsupported Nova field: ${f.field} (attribute '${f.attribute}')`);
     if (!f.label)    throw new Error(`Field for attribute '${f.attribute}' is missing label`);
     if (!f.label_es) throw new Error(`Field for attribute '${f.attribute}' is missing label_es (Spanish label)`);
-    if (f.field === 'Select' && !f.enum_class) {
-      throw new Error(`Select field for attribute '${f.attribute}' is missing enum_class`);
+    if (f.field === 'Select' && !f.enum_class && !f.options_expr) {
+      throw new Error(`Select field for attribute '${f.attribute}' needs enum_class or options_expr`);
     }
     if (f.field === 'VirtualSelect' && !f.contract_class) {
       throw new Error(`VirtualSelect field for attribute '${f.attribute}' is missing contract_class`);
@@ -183,6 +187,15 @@ function main() {
   // `ventas.opportunity.tab.quotes`); `label_en`/`label_es` are the values
   // seeded into the lang files. Legacy callers pass only `label_en`/`label_es`
   // (no key) — the English string then doubles as the key.
+  // Laravel's withCount() aliases a relation's count column as
+  // Str::snake($relation).'_count' — a camelCase relation name (e.g.
+  // `disciplinaryActions`) loads as `disciplinary_actions_count`, NOT
+  // `disciplinaryActions_count`. The canSee guard reads whatever
+  // $with/withCount actually populates, so the default must mirror that.
+  const snakeCase = (s) => s
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .toLowerCase();
   const normalizeRelation = (r) => {
     const en  = r.label_en || r.label || r.name;
     const es  = r.label_es || en;
@@ -194,13 +207,15 @@ function main() {
       label_es:          es,
       related_resource:  r.related_resource,
       creatable_from_ui: r.creatable_from_ui !== false, // default: creatable, always visible
-      count_column:      r.count_column || `${r.name}_count`,
+      count_column:      r.count_column || `${snakeCase(r.name)}_count`,
     };
   };
 
   const has_many = (input.has_many_relationships || []).map(normalizeRelation);
   const has_one  = (input.has_one_relationships  || []).map(normalizeRelation);
   const has_tabs = has_many.length > 0 || has_one.length > 0;
+  // Nova 5 Tab has no canSee(): system-only tabs are added only when the relation has rows.
+  const has_hidden_tabs = [...has_many, ...has_one].some(r => !r.creatable_from_ui);
 
   // Continuation indent for chained modifiers: 4 spaces deeper than the head.
   // Head sits at 20 spaces inside a Details tab, 12 spaces in a flat array.
@@ -250,7 +265,13 @@ function main() {
     if ((f.field === 'BelongsTo' || f.field === 'MorphTo') && f.related_resource) relResSet.add(f.related_resource);
   }
   for (const r of [...has_many, ...has_one]) relResSet.add(r.related_resource);
+  // A self-referencing relation (e.g. Employee -> manager -> Employee) points
+  // at the very class declared in this file. `use Same\Namespace\ThisClass;`
+  // is then a PHP fatal ("Cannot use X as X because the name is already in
+  // use") — invisible to `php -l` but fatal at class-load time. The class is
+  // already in scope in its own namespace, so skip the import for it.
   const related_resource_imports = [...relResSet].sort()
+    .filter(r => r !== modelName)
     .map(r => `${input.package_namespace}\\Nova\\${r}`);
 
   const contractSet = new Set();
@@ -291,20 +312,30 @@ function main() {
   }
   const action_imports = [...new Set((input.actions || []).map(a => a.action_class))].sort()
     .map(c => `${input.package_namespace}\\Services\\Actions\\${c}`);
+  // A canSee guard may let the action-run request through (`$request instanceof ActionRequest`).
+  if (actions.some(a => /\bActionRequest\b/.test(a.can_see_expr))) {
+    action_imports.unshift('Laravel\\Nova\\Http\\Requests\\ActionRequest');
+  }
 
   // Normalize status_badge.labels — accept { case, label (key), label_en,
   // label_es } (new) or { case, label_en, label_es } / { case, label } (legacy).
   // The template wraps `.label` in __(), so `.label` is the i18n KEY.
+  // Without an explicit key, a badge label gets a per-resource key derived from the
+  // resource label key (`ventas.order.label` → `ventas.order.status.{case}`): a shared
+  // global key would make every resource reuse the first seeded wording (and gender).
   const status_badge = input.status_badge || { map: [], labels: [] };
+  const resourceKeyBase = /\.label$/.test(input.label) ? input.label.replace(/\.label$/, '') : null;
+  const badgeKey = entry => entry.label
+    || (resourceKeyBase ? `${resourceKeyBase}.status.${snakeCase(entry.case)}` : entry.label_en);
   const status_badge_normalized = {
     map: status_badge.map || [],
     labels: (status_badge.labels || []).map(entry => ({
       case:  entry.case,
-      label: entry.label || entry.label_en,
+      label: badgeKey(entry),
     })),
   };
   const status_badge_label_i18n = (status_badge.labels || []).map(entry => ({
-    key: entry.label || entry.label_en,
+    key: badgeKey(entry),
     en:  entry.label_en || entry.label,
     es:  entry.label_es || entry.label_en || entry.label,
   }));
@@ -335,6 +366,7 @@ function main() {
     has_status:               !!input.has_status,
     status_enum:              input.status_enum || '',
     status_badge:             status_badge_normalized,
+    has_hidden_tabs,
     has_actions:              actions.length > 0,
     actions,
     action_imports,

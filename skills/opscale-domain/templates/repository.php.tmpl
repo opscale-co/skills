@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Builder;
 {{#if has_status}}
 use {{package_namespace}}\Models\Enums\{{status_enum}};
 {{/if}}
+{{#each enum_imports}}
+use {{package_namespace}}\Models\Enums\{{.}};
+{{/each}}
 
 /**
  * Repository trait for {{model_name}}.

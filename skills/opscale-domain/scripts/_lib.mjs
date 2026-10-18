@@ -256,6 +256,7 @@ export function readJsonInput(argv = process.argv.slice(2)) {
 // else derives from whatever discriminators the caller carries:
 //   - dbml field:       `type`/`enum`/`foreignKey`/`externalRef`
 //   - migration column: `reference` ("fk"|"external") + physical `type`
+//                        (`type: "enum"` marks an enum column)
 //   - model column:     the `is_reference`/`is_enum`/`is_date` hints the
 //                        model assembler annotates from its own inputs
 const FIELD_KIND_ORDER = { pk: 0, ref: 1, rest: 2, enum: 3, date: 4 };
@@ -265,7 +266,7 @@ export function fieldKind(f) {
   const name = f.code || f.name || f.column || '';
   if (name === 'id' || f.type === 'identifier') return 'pk';
   if (f.foreignKey || f.externalRef || f.reference || f.is_reference) return 'ref';
-  if (f.enum || f.is_enum) return 'enum';
+  if (f.enum || f.is_enum || f.type === 'enum') return 'enum';
   const t = f.type;
   if (t === 'date' || t === 'moment' || t === 'dateTime' || t === 'timestamp' || f.is_date) return 'date';
   return 'rest';

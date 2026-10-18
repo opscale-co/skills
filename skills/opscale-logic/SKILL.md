@@ -93,7 +93,7 @@ return against `outputs()` → dispatch the system event when the class uses
 | `prefill(): array` | optional | Suppliers | System-supplied parameters. Values may be Closures invoked with the adapter context (Nova: object with `->models` Collection of selected records; API: Request; CLI: Command; MCP: MCP Request). A Closure returning null is dropped so the caller value survives. Prefilled params are hidden from every adapter's input surface |
 | `options(): array` | optional | Inputs | Choice lists per parameter: Nova Select, MCP `enum`, CLI `choice()` |
 | `canRun(array $inputs): bool\|string` | optional | pre-P gate | State preconditions ("only from status X"). Return `true` to run or a reason string to soft-fail. Never throws |
-| `use EmitsEvent;` | optional | Clients | When the SIPOC declares an output/notification: the pipeline dispatches `event("{identifier}", [$outputs])` after every success |
+| `use EmitsEvent;` | optional | Clients | When the SIPOC declares an output/notification: the pipeline dispatches `event("opscale.actions.{identifier}", [$outputs])` after every success |
 
 ### parameters() format
 
@@ -122,7 +122,9 @@ public function parameters(): array
 Type conventions:
 - Eloquent model inputs: `ModelClass::class`
 - Scalar inputs: `'string'`, `'int'`, `'bool'`, `'array'`
-- Use `exists:table,id` rule for FK references
+- Use `exists:table,id` rule for FK references — **except on the `entity_param`**: Nova prefills it with the selected model instance, which `exists:` rejects, so its rules are `['required']` (an unknown id resolves to `null` and `canRun()` reports it as not found). The assembler refuses `exists:` on the entity_param.
+- `'array'` inputs render as a Nova MultiSelect, which submits a JSON string and validates the field rules against that string: never give them an `array` rule (the assembler refuses it); the generated `fill()` decodes the JSON before the pipeline validates.
+- Classes a body uses beyond the models (facades such as `DB`, host contracts, support classes) go in the assembler's `extra_imports`.
 
 ### handle() contract
 
@@ -168,7 +170,7 @@ private function entity(array $inputs): ?Entity
 }
 ```
 
-- Events: never dispatch manually — add `use EmitsEvent;` when the SIPOC declares an output/notification; the pipeline dispatches `event("{identifier}", [$outputs])` after success (post-transaction)
+- Events: never dispatch manually — add `use EmitsEvent;` when the SIPOC declares an output/notification; the pipeline dispatches `event("opscale.actions.{identifier}", [$outputs])` after success (post-transaction)
 - Compose with other Actions via `OtherAction::run(['param' => $value])`
 - No HTTP context, no `request()` helper — handle() is context-free
 - `Auth::id()` is allowed only when the business rule explicitly requires knowing who triggered it
@@ -312,7 +314,7 @@ If the number of unique logic `id`s in the graph manifest does not match the num
 [ ] Each parameter's sipoc.json inputs[].type is a business-type slug (not a bare varchar/text/decimal)
 [ ] Every slug used exists in .specify/memory/business-types.php (the binding)
 [ ] The binding's `rules` are folded into the parameter's `rules` array
-[ ] Model/FK/id params use identifier (exists:table,id), never a free string
+[ ] Model/FK/id params use identifier (exists:table,id — never on the prefilled entity_param), never a free string
 ```
 
 If a slug is missing from `.specify/memory/business-types.php`, stop and add it to the binding (or re-run the Plan skill that owns it) before generating — an untyped parameter cannot be validated.
@@ -453,7 +455,7 @@ Generation contract:
 - **Name the four cases explicitly** so both a reader and the gate can find them: `it('positive: …')`, `it('negative: …')`, `it('false-positive: …')`, `it('false-negative: …')`.
 - **Seed via factories** produced by `opscale-domain` (`{Model}::factory()->create([...])`) — never hand-build models.
 - Invoke the Action through the **`executeAction($class, [...])` helper** (from `tests/Helpers.php`, a thin wrapper over `::run()`) against the real DB (in-memory SQLite from the test harness) — **no DB mocks**, never call `handle()` directly.
-- Assert **persisted business state** (`->fresh()` field/status) **and events** (`Event::fake([...])` + `assertDispatched('{identifier}')` / `assertNotDispatched('{identifier}')`, matching the string identifier the `EmitsEvent` pipeline emits) — not just the return envelope.
+- Assert **persisted business state** (`->fresh()` field/status) **and events** (`Event::fake([...])` + `assertDispatched('opscale.actions.{identifier}')` / `assertNotDispatched('opscale.actions.{identifier}')` — `EmitsEvent` prefixes the identifier with `opscale.actions.`, e.g. `opscale.actions.ventas.approve-quote`) — not just the return envelope.
 - One business concern per `it()`; add an extra `it()` per Business Rule (BR-NN) the Action enforces, beyond the four canonical cases, as applicable.
 - Spawn the generator with `action_class`, `action_path`, `parameters`, `logic_rules` (the BR-NN set), `models_involved`, `composed_actions`, `events_expected`, `package_namespace`, and `output_dir=tests/Feature`.
 

@@ -111,7 +111,7 @@ The two rules the skill enforces every time:
 
 1. **Visibility per tab:**
    - **Creatable from UI** (operator can add the first child via Nova) → tab always visible.
-   - **System-only** (children only created by Actions / events) → tab HIDDEN when count = 0.
+   - **System-only** (children only created by Actions / events) → tab HIDDEN while the relation has no rows. Nova 5's `Tab` has no `canSee()`, so the generator adds the tab only when `$this->resource->{relation}()->exists()` and wraps the group in `array_filter([...])`.
 2. **Counts via Nova, not Eloquent.** Use `public static $with = [...]` or `indexQuery()` `withCount(...)` on the Resource — never `$withCount` on the Model. A model-level withCount runs on every query and is the canonical source of N+1 on index pages.
 
 ### Virtual (cross-subdomain) relations — Select, searchable, filterable
@@ -356,6 +356,14 @@ The skill never hand-writes Resource PHP — normalize into the JSON contract an
 let the assembler render the template.
 
 **Business types drive field selection.** Before picking a field heuristically, check the field's `dbml.json` **`type`**: the business-type slug IS the declared field type (`{ "code": "contact_email", "type": "email" }`), and the Nova field, its `config`, and its `->help()` hint come from the Laravel/Nova **binding** (`.specify/memory/business-types.php`; canonical slugs in `docs/plan/context/business-types.md`) — an `email` field renders `Email::make`, a `money` field renders `Currency::make` with its currency config, never a bare `Text::make`. Heuristics apply only to `enum`-typed fields (field carries `enum:"<code>"` → the Enum's select) and to `fk` fields (`foreignKey` → `BelongsTo`, `externalRef` → virtual `Select`). **Why:** the registry is what guarantees the same business type looks and validates identically across every module.
+
+**Catalog-backed options.** A slug whose binding is a `Select` over a configurable list (`options`, `city`, …) has no enum to read its cases from: pass the field as `{ "field": "Select", "options_expr": "<PHP expression>" }` (e.g. `Catalog::options('bank')` over the module's `config/{module}.php` catalogs). A `Select` needs either `enum_class` or `options_expr`. Enum Selects label each option with the enum's `label()` (translated), never the PHP case name.
+
+**Status badge labels are per Resource.** A badge label without an explicit `label` key gets `{prefix}.{resource}.status.{case}` (derived from the resource `label` key), so two Resources that share an English status keep their own Spanish wording and gender ("Aprobada" for a run, "Aprobado" for a voucher).
+
+**The package provider registers every Resource.** After generating, list each `src/Nova/*.php` class in the module's `SubdomainServiceProvider::configurePackage()` → `->hasResources(Nova\Profile::class, …)`. A bare `->hasResources()` registers nothing: the workbench still works (its `NovaServiceProvider` lists the Resources by hand), but a host app that installs the module serves none of them. Pin it with a Unit test that compares `$package->resources` against the files in `src/Nova`.
+
+**Actions register through `{Action}::make()`** (instantiating with `new` breaks the strict-rules dependency-inversion check). A `canSee` expression that references `ActionRequest` gets its import automatically.
 
 **Three invariants the JSON normalization must enforce** (the scripts assume they hold):
 

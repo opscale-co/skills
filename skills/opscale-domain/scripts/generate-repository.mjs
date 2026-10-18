@@ -37,6 +37,7 @@
 // Multi-line `body` strings are indented inside the method by the script.
 
 import { dirname, join, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { readJsonInput, render, writeOrConflict, loadTemplate, resultLine } from './_lib.mjs';
 
@@ -70,8 +71,22 @@ function main() {
 
   const has_boot = !!input.has_status; // boot only when status hooks needed
 
+  // Enums a scope or write method references (as a parameter type or `Enum::Case`)
+  // need their own `use` line; only enums that exist next to the repositories
+  // (`../Enums/{Name}.php`) are imported, and the status enum is already covered.
+  const enumsDir = resolve(input.output_dir, '..', 'Enums');
+  const referenced = new Set();
+  for (const m of [...(input.scopes || []), ...(input.write_methods || [])]) {
+    for (const p of m.params || []) referenced.add(String(p.type).replace(/^\?/, ''));
+    for (const [, name] of String(m.body || '').matchAll(/\b([A-Z][A-Za-z0-9]*)::/g)) referenced.add(name);
+  }
+  const enum_imports = [...referenced]
+    .filter(name => name !== input.status_enum && existsSync(join(enumsDir, `${name}.php`)))
+    .sort();
+
   const context = {
     package_namespace: input.package_namespace,
+    enum_imports,
     model_name:        input.model_name,
     has_status:        !!input.has_status,
     status_enum:       input.status_enum || '',

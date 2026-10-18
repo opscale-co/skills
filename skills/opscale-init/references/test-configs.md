@@ -128,6 +128,9 @@ abstract class TestCase extends BaseTestCase
             'driver' => 'sqlite',
             'database' => ':memory:',
             'prefix' => '',
+            // SQLite ignores FK constraints unless enabled — without this, cascade-on-delete
+            // schema tests pass vacuously.
+            'foreign_key_constraints' => true,
         ]);
     }
 
@@ -407,7 +410,9 @@ abstract class DuskTestCase extends BaseTestCase
             return $this->pause(300)  // toasts surface ~100ms after the response
                 ->assertMissing('.toasted.toasted-error')
                 ->assertMissing('[role="alert"].error')
-                ->assertMissing('.notification--error');
+                ->assertMissing('.notification--error')
+                // Nova 5 surfaces form and action failures as plain toasts.
+                ->assertDontSee('There was a problem');
         });
 
         // Wait for text ANYWHERE on the page (badge, table cell, header, toast).
@@ -432,7 +437,9 @@ abstract class DuskTestCase extends BaseTestCase
         return $browser
             ->waitFor('[data-action-id="'.$actionId.'"]')
             ->click('[data-action-id="'.$actionId.'"]')
-            ->waitFor('@confirm-action-button');
+            ->waitFor('@confirm-action-button')
+            // The modal fields mount after the confirm button; filling earlier is lost.
+            ->pause($this->pauseMs() + 900);
     }
 
     /**
@@ -442,11 +449,12 @@ abstract class DuskTestCase extends BaseTestCase
      * preserved and both native Selects and Text inputs are supported:
      *   $this->runAction($browser, 'approve-application', [
      *       ['select', 'committee_id', $committeeUlid],
-     *       ['type', 'decided_on', '01-15-2026'],   // dates in mdY
-     *   ]);
+     *       ['type', 'decided_on', '15012026'],     // native date input keystrokes, in the
+     *   ]);                                          // locale's order (dmY under es, mdY under en)
      *
-     * Modal fields are addressed as `form [dusk="{column}"]` (scoped to the modal
-     * form). Only native Nova Selects and Text inputs are drivable this way —
+     * The action id is the Action's full identifier(), module prefix included
+     * (`ventas.approve-quote`). Modal fields are addressed as `form [dusk="{column}"]`
+     * (scoped to the modal form; a bare `@{column}` can match a wrapper element). Only native Nova Selects and Text inputs are drivable this way —
      * ->searchable() / BelongsTo render custom components that select() cannot set.
      */
     final protected function runAction(Browser $browser, string $actionId, array $fields = []): Browser
@@ -460,8 +468,11 @@ abstract class DuskTestCase extends BaseTestCase
                 : $browser->type($selector, $value);
         }
 
+        // Wait for the pipeline's success toast so the caller never reads the page (or
+        // the database) before the Action finished.
         return $browser
             ->submitForm('@confirm-action-button')
+            ->waitForText('Action completed successfully.', 15)
             ->assertNoErrorToast();
     }
 

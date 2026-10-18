@@ -315,10 +315,15 @@ export function fieldHead(f, contIndent = '                ') {
     case 'MorphTo':
       return `MorphTo::make(__('${f.label}'), '${f.attribute}')`;
     case 'Select':
+      // A configurable catalog (or any non-enum list) passes its options as a PHP expression.
+      if (f.options_expr) {
+        return `Select::make(__('${f.label}'), '${f.attribute}')\n`
+          + `${c}->options(${f.options_expr})`;
+      }
       return `Select::make(__('${f.label}'), '${f.attribute}')\n`
         + `${c}->options(\n`
         + `${c}    collect(${f.enum_class}::cases())\n`
-        + `${c}        ->mapWithKeys(fn ($case) => [$case->value => __($case->name)])\n`
+        + `${c}        ->mapWithKeys(fn ($case) => [$case->value => __($case->label())])\n`
         + `${c}        ->all()\n`
         + `${c})`;
     case 'VirtualSelect':

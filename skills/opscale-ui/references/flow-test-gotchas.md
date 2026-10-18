@@ -30,7 +30,8 @@ Standalone actions placed on the **index** toolbar are **not Dusk-drivable**: th
 never carries a usable selector.
 
 **Rule:** register every Action a flow test must run on the **detail** toolbar and
-drive it via `[data-action-id="{id}"]` — the `openAction()` / `runAction()` helpers
+drive it via `[data-action-id="{identifier}"]` — the full `identifier()`, module prefix
+included (`[data-action-id="ventas.approve-quote"]`) — the `openAction()` / `runAction()` helpers
 on `DuskTestCase` encapsulate this:
 
 ```php

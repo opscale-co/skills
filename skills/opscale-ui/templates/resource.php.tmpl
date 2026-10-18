@@ -67,6 +67,11 @@ class {{model_name}} extends Resource
     }
 {{#if has_index_with_count}}
 
+    /**
+     * @param  \Illuminate\Contracts\Database\Eloquent\Builder  $query
+     * @return \Illuminate\Contracts\Database\Eloquent\Builder
+     */
+    #[\Override]
     public static function indexQuery(NovaRequest $request, $query)
     {
         return $query->withCount([{{#each index_with_count}}'{{.}}'{{#unless @last}}, {{/unless}}{{/each}}]);
@@ -133,7 +138,7 @@ class {{model_name}} extends Resource
     {
 {{#if has_tabs}}
         return [
-            Tab::group(__('{{label}}'), [
+            Tab::group(__('{{label}}'), {{#if has_hidden_tabs}}array_filter([{{else}}[{{/if}}
                 Tab::make(__('opscale.details'), [
 {{#each field_blocks}}
                     {{.}},
@@ -152,17 +157,17 @@ class {{model_name}} extends Resource
                 ]),
 {{#each has_many_relationships}}
 
-                Tab::make(__('{{label}}'), [
+                {{#unless creatable_from_ui}}$this->resource->{{name}}()->exists() ? {{/unless}}Tab::make(__('{{label}}'), [
                     HasMany::make(__('{{label}}'), '{{name}}', {{related_resource}}::class),
-                ]){{#unless creatable_from_ui}}->canSee(fn () => ($this->resource->{{count_column}} ?? 0) > 0){{/unless}},
+                ]){{#unless creatable_from_ui}} : null{{/unless}},
 {{/each}}
 {{#each has_one_relationships}}
 
-                Tab::make(__('{{label}}'), [
+                {{#unless creatable_from_ui}}$this->resource->{{name}}()->exists() ? {{/unless}}Tab::make(__('{{label}}'), [
                     HasOne::make(__('{{label}}'), '{{name}}', {{related_resource}}::class)->onlyOnDetail(),
-                ]){{#unless creatable_from_ui}}->canSee(fn () => ($this->resource->{{count_column}} ?? 0) > 0){{/unless}},
+                ]){{#unless creatable_from_ui}} : null{{/unless}},
 {{/each}}
-            ]),
+            ]{{#if has_hidden_tabs}}){{/if}}),
         ];
 {{else}}
         return [
@@ -194,7 +199,7 @@ class {{model_name}} extends Resource
     {
         return [
 {{#each actions}}
-            (new {{action_class}}){{#if can_see_expr}}
+            {{action_class}}::make(){{#if can_see_expr}}
                 ->canSee(fn () => {{can_see_expr}}){{/if}},
 {{/each}}
         ];

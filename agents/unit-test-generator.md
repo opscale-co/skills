@@ -6,9 +6,9 @@ description: >
   in parallel — one instance per domain component. Unit tests verify the domain
   layer in isolation and must prove BEHAVIOR (positive + negative), not just the
   existence of a table, column, cast, or method.
-tools: Read, Write, Glob, sqlite, memory
+tools: Read, Write, Glob, Bash, sqlite, memory
 model: sonnet
-maxTurns: 8
+maxTurns: 30
 ---
 
 # Unit Test Generator
@@ -381,3 +381,9 @@ TEST_CASES: {count}
 CONCERNS_COVERED: {list: exact_values, label, transition_matrix, terminal, schema_types, nullability, defaults, indexes, fk_cascade, negative_integrity, casts, attribute_defaults, fillable, validate_positive, validate_negative, relations_resolved, contract_relation, scopes, transition_guard, immutability, cast_roundtrip}
 HAS_VALUE_OBJECTS: {true|false}
 ```
+
+## Run what you wrote
+
+Run `./vendor/bin/pest <your test files>` from the module root before returning and fix your own test until it passes
+(or report the src defect it reveals). A test file that was never run proves nothing:
+return the command and its observed result.

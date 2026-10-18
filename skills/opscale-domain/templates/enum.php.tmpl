@@ -14,7 +14,15 @@ enum {{enum_name}}: string
     case {{case_name}} = '{{value}}';
 
 {{/each}}
+    /**
+     * Human-readable label for the case (the Title Case value), translated by the UI.
+     */
+    public function label(): string
+    {
+        return $this->value;
+    }
 {{#if is_status_enum}}
+
     /**
      * Check if the current status can transition to the given status.
      */

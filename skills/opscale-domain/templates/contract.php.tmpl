@@ -17,4 +17,10 @@ interface {{contract_class}}
      * @return array<string, string> Associative array of id to user-friendly description.
      */
     public function options(): array;
+
+    /**
+     * @return array<string, string> [id => label] for the Nova Select opscale-ui renders;
+     *                               the host may return a curated subset (e.g. active only).
+     */
+    public function forSelect(): array;
 }

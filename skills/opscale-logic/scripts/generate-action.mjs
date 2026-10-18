@@ -73,8 +73,17 @@
 //     ],
 //
 //     // SIPOC Client = system (optional, default false): adds `use EmitsEvent;`
-//     // so the pipeline dispatches event("{identifier}", [$outputs]) after success.
+//     // so the pipeline dispatches event("opscale.actions.{identifier}", [$outputs]) after success.
 //     "emits_event": true,
+//
+//     // Fully-qualified classes the bodies use beyond the models (optional):
+//     // facades, host contracts, support classes. Each becomes a `use` line.
+//     "extra_imports": ["Illuminate\\Support\\Facades\\DB"],
+//
+//     // A parameter typed "array" renders as a Nova MultiSelect: the generated fill()
+//     // decodes the JSON string Nova submits, and an `array` rule is refused (Nova
+//     // validates the field rules against that string). The entity_param refuses an
+//     // `exists:` rule (Nova prefills it with the model instance).
 //
 //     // handle(array $inputs) — VALIDATED inputs; messages wrapped in __() keys.
 //     "handle_body":  "$quote = $this->quote($inputs);\n\nreturn $this->succeed(['quote' => $quote->fresh()]);",
@@ -291,6 +300,18 @@ function main() {
 
   const entity_imports     = (input.entities     || []).map(e => `${input.package_namespace}\\Models\\${e}`).sort();
   const dependency_imports = (input.dependencies || []).map(d => `${input.package_namespace}\\Services\\Actions\\${d}`).sort();
+  // Fully-qualified classes the bodies use beyond the models (facades, contracts, support).
+  const extra_imports = [...new Set(input.extra_imports || [])].sort();
+
+  // Nova MultiSelect submits an array parameter as a JSON string and validates the
+  // field rules against that string, so an `array` rule always fails from Nova; the
+  // generated fill() decodes the string before the pipeline validates.
+  const array_params = (input.parameters || []).filter(p => p.type === 'array').map(p => p.name);
+  for (const p of (input.parameters || []).filter(p => p.type === 'array')) {
+    if ((p.rules || []).some(r => String(r) === 'array')) {
+      throw new Error(`parameter '${p.name}' is an array (Nova MultiSelect) and cannot carry an 'array' rule — Nova validates it as the submitted JSON string; use required/nullable and let the generated fill() decode it.`);
+    }
+  }
 
   // Each param/output carries a namespaced i18n KEY for its description; the
   // technical `name` stays untranslated (it is the input/output array key).
@@ -314,6 +335,9 @@ function main() {
     if (!entityRow || SCALAR_TYPES.has(entityRow.type)) {
       throw new Error(`entity_param '${input.entity_param}' must match a model-typed parameter`);
     }
+    if ((entityRow.rules || []).some(r => /^exists:/i.test(String(r)))) {
+      throw new Error(`entity_param '${input.entity_param}' cannot carry an exists: rule — Nova prefills the selected model instance, which exists: rejects; an unknown id already resolves to null and canRun() reports it as not found.`);
+    }
     entity_class = entityRow.type;
     entity_var = camelCase(input.entity_param);
     entity_resolver_name = entity_var;
@@ -333,6 +357,8 @@ function main() {
     outputs,
     entity_imports,
     dependency_imports,
+    extra_imports,
+    array_params,
     emits_event:       Boolean(input.emits_event),
     entity_param:      input.entity_param || null,
     entity_class,

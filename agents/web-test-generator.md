@@ -7,9 +7,9 @@ description: >
   trigger record through the real form, runs each Action of the subprocess from the
   detail toolbar, and asserts both the user-visible transition and the persisted DB
   post-condition.
-tools: Read, Write, Glob, sqlite, memory
+tools: Read, Write, Glob, Bash, sqlite, memory
 model: sonnet
-maxTurns: 8
+maxTurns: 30
 ---
 
 # Web Test Generator
@@ -186,3 +186,9 @@ DB_ASSERTIONS: {count — must be >= 1}
 If `ASSERT_NO_ERROR_TOAST_CALLS != SUBMIT_FORM_CALLS`, or `DB_ASSERTIONS == 0`, the
 generation is invalid — every submit must be paired with a toast assertion, and every
 flow must assert its persisted post-condition.
+
+## Run what you wrote
+
+Run `composer test:browser -- --filter=<YourFlowTest>` from the module root before returning and fix your own test until it passes
+(or report the src defect it reveals). A test file that was never run proves nothing:
+return the command and its observed result.
