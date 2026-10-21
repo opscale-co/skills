@@ -1,0 +1,35 @@
+{
+  "operations": {
+    "SP-01": {
+      "SP-01-01": [
+        { "type": "crud", "code": "SP-01-01-C01", "position": 1, "entity": "customer", "action": "create", "description": "Registers the customer that will receive the invoice" }
+      ],
+      "SP-01-02": [
+        { "type": "crud", "code": "SP-01-02-C01", "position": 1, "entity": "invoice", "action": "create", "description": "Creates the invoice in Draft for the customer" },
+        { "type": "crud", "code": "SP-01-02-C02", "position": 2, "entity": "invoice-item", "action": "create", "description": "Adds each billable line to the invoice", "iterative": true, "iterationNote": "One row per billable line" }
+      ],
+      "SP-01-03": [
+        { "type": "logic", "code": "SP-01-03-L01", "position": 1, "id": "issue-invoice", "rules": ["BR-01"], "description": "Validates the totals and moves the invoice to Issued",
+          "operations": [
+            { "type": "crud", "code": "SP-01-03-L01-C01", "entity": "invoice", "action": "update", "description": "Sets the total, the issue moment and the Issued status" }
+          ] }
+      ]
+    },
+    "SP-02": {
+      "SP-02-01": [
+        { "type": "crud", "code": "SP-02-01-C01", "position": 1, "entity": "invoice", "action": "read", "description": "Finds the issued invoice the payment settles" }
+      ],
+      "SP-02-02": [
+        { "type": "logic", "code": "SP-02-02-L01", "position": 1, "id": "record-payment", "rules": ["BR-02"], "description": "Records the payment and moves the invoice to Paid",
+          "operations": [
+            { "type": "crud", "code": "SP-02-02-L01-C01", "entity": "invoice", "action": "update", "description": "Sets the Paid status" }
+          ] }
+      ]
+    }
+  },
+  "events": [
+    { "type": "start", "name": "an operator needs to bill a customer" },
+    { "type": "catch", "subprocess": "SP-01", "name": "wait: the customer's payment arrives" },
+    { "type": "end", "name": "invoice paid" }
+  ]
+}

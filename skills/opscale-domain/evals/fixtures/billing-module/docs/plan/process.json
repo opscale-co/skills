@@ -1,0 +1,52 @@
+{
+  "module": {
+    "software": "Acme ERP",
+    "domain": "finance",
+    "subdomain": "finance/billing"
+  },
+  "subprocesses": [
+    {
+      "code": "SP-01",
+      "name": "Invoicing",
+      "description": "Registers the customer, drafts the invoice with its items and issues it.",
+      "trigger": "An operator needs to bill a customer",
+      "endsWith": "Wait for the customer's payment",
+      "steps": [
+        {
+          "code": "SP-01-01",
+          "title": "Register the customer",
+          "description": "Registers the customer that will receive the invoice."
+        },
+        {
+          "code": "SP-01-02",
+          "title": "Create the invoice",
+          "description": "Creates the invoice in Draft with its billable items."
+        },
+        {
+          "code": "SP-01-03",
+          "title": "Issue the invoice",
+          "description": "Validates the totals and moves the invoice to Issued."
+        }
+      ]
+    },
+    {
+      "code": "SP-02",
+      "name": "Settlement",
+      "description": "Records the customer's payment against the issued invoice.",
+      "trigger": "The payment from the customer arrived",
+      "endsWith": "—",
+      "steps": [
+        {
+          "code": "SP-02-01",
+          "title": "Locate the invoice",
+          "description": "Finds the issued invoice the payment settles."
+        },
+        {
+          "code": "SP-02-02",
+          "title": "Record the payment",
+          "description": "Records the payment and moves the invoice to Paid."
+        }
+      ]
+    }
+  ]
+}

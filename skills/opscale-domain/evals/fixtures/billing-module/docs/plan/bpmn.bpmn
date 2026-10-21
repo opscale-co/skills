@@ -1,12 +1,176 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="billing" targetNamespace="http://opscale.co/billing">
-  <bpmn:process id="billing_process" isExecutable="false">
-    <bpmn:startEvent id="start"/>
-    <bpmn:userTask id="register_customer" name="Register the customer"/>
-    <bpmn:userTask id="create_invoice" name="Create the invoice"/>
-    <bpmn:businessRuleTask id="issue_invoice" name="Issue Invoice"/>
-    <bpmn:intermediateCatchEvent id="wait_payment" name="Wait for payment"/>
-    <bpmn:businessRuleTask id="record_payment" name="Record Payment"/>
-    <bpmn:endEvent id="end"/>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_billing" targetNamespace="http://opscale.co/bpmn">
+  <bpmn:process id="proc_billing" isExecutable="false">
+    <bpmn:documentation>{"module":"Billing","standard":"UBL Invoice (Invoice, InvoiceLine, CustomerParty)"}</bpmn:documentation>
+    <bpmn:startEvent id="start_01" name="an operator needs to bill a customer">
+      <bpmn:outgoing>flow_009</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:endEvent id="end_01" name="invoice paid">
+      <bpmn:incoming>flow_012</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:intermediateCatchEvent id="catch_SP_01_1" name="wait: the customer&#39;s payment arrives">
+      <bpmn:incoming>flow_010</bpmn:incoming>
+      <bpmn:outgoing>flow_011</bpmn:outgoing>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:subProcess id="sub_SP_01" name="SP-01 Invoicing">
+      <bpmn:incoming>flow_009</bpmn:incoming>
+      <bpmn:outgoing>flow_010</bpmn:outgoing>
+      <bpmn:startEvent id="sub_SP_01_start" name="Inicio">
+        <bpmn:outgoing>flow_001</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:serviceTask id="op_SP_01_01_C01" name="create customer">
+        <bpmn:documentation>{"type":"crud","code":"SP-01-01-C01","entity":"customer","action":"create","step":"SP-01-01","subprocess":"Invoicing"}</bpmn:documentation>
+        <bpmn:incoming>flow_001</bpmn:incoming>
+        <bpmn:outgoing>flow_002</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="op_SP_01_02_C01" name="create invoice">
+        <bpmn:documentation>{"type":"crud","code":"SP-01-02-C01","entity":"invoice","action":"create","step":"SP-01-02","subprocess":"Invoicing"}</bpmn:documentation>
+        <bpmn:incoming>flow_002</bpmn:incoming>
+        <bpmn:outgoing>flow_003</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="op_SP_01_02_C02" name="create invoice-item">
+        <bpmn:documentation>{"type":"crud","code":"SP-01-02-C02","entity":"invoice-item","action":"create","step":"SP-01-02","subprocess":"Invoicing"}</bpmn:documentation>
+        <bpmn:incoming>flow_003</bpmn:incoming>
+        <bpmn:outgoing>flow_004</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:businessRuleTask id="op_SP_01_03_L01" name="Issue invoice">
+        <bpmn:documentation>{"type":"logic","code":"SP-01-03-L01","id":"issue-invoice","step":"SP-01-03","subprocess":"Invoicing","rules":["BR-01"],"operations":[{"code":"SP-01-03-L01-C01","entity":"invoice","action":"update"}]}</bpmn:documentation>
+        <bpmn:incoming>flow_004</bpmn:incoming>
+        <bpmn:outgoing>flow_005</bpmn:outgoing>
+      </bpmn:businessRuleTask>
+      <bpmn:endEvent id="sub_SP_01_end" name="Fin">
+        <bpmn:incoming>flow_005</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="flow_001" sourceRef="sub_SP_01_start" targetRef="op_SP_01_01_C01" />
+      <bpmn:sequenceFlow id="flow_002" sourceRef="op_SP_01_01_C01" targetRef="op_SP_01_02_C01" />
+      <bpmn:sequenceFlow id="flow_003" sourceRef="op_SP_01_02_C01" targetRef="op_SP_01_02_C02" />
+      <bpmn:sequenceFlow id="flow_004" sourceRef="op_SP_01_02_C02" targetRef="op_SP_01_03_L01" />
+      <bpmn:sequenceFlow id="flow_005" sourceRef="op_SP_01_03_L01" targetRef="sub_SP_01_end" />
+    </bpmn:subProcess>
+    <bpmn:subProcess id="sub_SP_02" name="SP-02 Settlement">
+      <bpmn:incoming>flow_011</bpmn:incoming>
+      <bpmn:outgoing>flow_012</bpmn:outgoing>
+      <bpmn:startEvent id="sub_SP_02_start" name="Inicio">
+        <bpmn:outgoing>flow_006</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:serviceTask id="op_SP_02_01_C01" name="read invoice">
+        <bpmn:documentation>{"type":"crud","code":"SP-02-01-C01","entity":"invoice","action":"read","step":"SP-02-01","subprocess":"Settlement"}</bpmn:documentation>
+        <bpmn:incoming>flow_006</bpmn:incoming>
+        <bpmn:outgoing>flow_007</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:businessRuleTask id="op_SP_02_02_L01" name="Record payment">
+        <bpmn:documentation>{"type":"logic","code":"SP-02-02-L01","id":"record-payment","step":"SP-02-02","subprocess":"Settlement","rules":["BR-02"],"operations":[{"code":"SP-02-02-L01-C01","entity":"invoice","action":"update"}]}</bpmn:documentation>
+        <bpmn:incoming>flow_007</bpmn:incoming>
+        <bpmn:outgoing>flow_008</bpmn:outgoing>
+      </bpmn:businessRuleTask>
+      <bpmn:endEvent id="sub_SP_02_end" name="Fin">
+        <bpmn:incoming>flow_008</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="flow_006" sourceRef="sub_SP_02_start" targetRef="op_SP_02_01_C01" />
+      <bpmn:sequenceFlow id="flow_007" sourceRef="op_SP_02_01_C01" targetRef="op_SP_02_02_L01" />
+      <bpmn:sequenceFlow id="flow_008" sourceRef="op_SP_02_02_L01" targetRef="sub_SP_02_end" />
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="flow_009" sourceRef="start_01" targetRef="sub_SP_01" />
+    <bpmn:sequenceFlow id="flow_010" sourceRef="sub_SP_01" targetRef="catch_SP_01_1" />
+    <bpmn:sequenceFlow id="flow_011" sourceRef="catch_SP_01_1" targetRef="sub_SP_02" />
+    <bpmn:sequenceFlow id="flow_012" sourceRef="sub_SP_02" targetRef="end_01" />
   </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_proc_billing">
+    <bpmndi:BPMNPlane id="BPMNPlane_proc_billing" bpmnElement="proc_billing">
+      <bpmndi:BPMNShape id="start_01_di" bpmnElement="start_01">
+        <dc:Bounds x="60" y="302" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_01_di" bpmnElement="end_01">
+        <dc:Bounds x="1776" y="302" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="sub_SP_01_di" bpmnElement="sub_SP_01" isExpanded="true">
+        <dc:Bounds x="176" y="230" width="817" height="180" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="sub_SP_01_start_di" bpmnElement="sub_SP_01_start">
+        <dc:Bounds x="216" y="307" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="op_SP_01_01_C01_di" bpmnElement="op_SP_01_01_C01">
+        <dc:Bounds x="297" y="285" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="op_SP_01_02_C01_di" bpmnElement="op_SP_01_02_C01">
+        <dc:Bounds x="452" y="285" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="op_SP_01_02_C02_di" bpmnElement="op_SP_01_02_C02">
+        <dc:Bounds x="607" y="285" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="op_SP_01_03_L01_di" bpmnElement="op_SP_01_03_L01">
+        <dc:Bounds x="762" y="285" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="sub_SP_01_end_di" bpmnElement="sub_SP_01_end">
+        <dc:Bounds x="917" y="307" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="catch_SP_01_1_di" bpmnElement="catch_SP_01_1">
+        <dc:Bounds x="1073" y="302" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="sub_SP_02_di" bpmnElement="sub_SP_02" isExpanded="true">
+        <dc:Bounds x="1189" y="230" width="507" height="180" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="sub_SP_02_start_di" bpmnElement="sub_SP_02_start">
+        <dc:Bounds x="1229" y="307" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="op_SP_02_01_C01_di" bpmnElement="op_SP_02_01_C01">
+        <dc:Bounds x="1310" y="285" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="op_SP_02_02_L01_di" bpmnElement="op_SP_02_02_L01">
+        <dc:Bounds x="1465" y="285" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="sub_SP_02_end_di" bpmnElement="sub_SP_02_end">
+        <dc:Bounds x="1620" y="307" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow_001_di" bpmnElement="flow_001">
+        <di:waypoint x="252" y="325" />
+        <di:waypoint x="297" y="325" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_002_di" bpmnElement="flow_002">
+        <di:waypoint x="407" y="325" />
+        <di:waypoint x="452" y="325" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_003_di" bpmnElement="flow_003">
+        <di:waypoint x="562" y="325" />
+        <di:waypoint x="607" y="325" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_004_di" bpmnElement="flow_004">
+        <di:waypoint x="717" y="325" />
+        <di:waypoint x="762" y="325" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_005_di" bpmnElement="flow_005">
+        <di:waypoint x="872" y="325" />
+        <di:waypoint x="917" y="325" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_006_di" bpmnElement="flow_006">
+        <di:waypoint x="1265" y="325" />
+        <di:waypoint x="1310" y="325" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_007_di" bpmnElement="flow_007">
+        <di:waypoint x="1420" y="325" />
+        <di:waypoint x="1465" y="325" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_008_di" bpmnElement="flow_008">
+        <di:waypoint x="1575" y="325" />
+        <di:waypoint x="1620" y="325" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_009_di" bpmnElement="flow_009">
+        <di:waypoint x="96" y="320" />
+        <di:waypoint x="176" y="320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_010_di" bpmnElement="flow_010">
+        <di:waypoint x="993" y="320" />
+        <di:waypoint x="1073" y="320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_011_di" bpmnElement="flow_011">
+        <di:waypoint x="1109" y="320" />
+        <di:waypoint x="1189" y="320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_012_di" bpmnElement="flow_012">
+        <di:waypoint x="1696" y="320" />
+        <di:waypoint x="1776" y="320" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
 </bpmn:definitions>
+

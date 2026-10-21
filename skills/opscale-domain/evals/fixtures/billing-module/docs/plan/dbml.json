@@ -1,0 +1,198 @@
+{
+  "prefix": "billing",
+  "standards": {
+    "modeling": "UBL Invoice (Invoice, InvoiceLine, CustomerParty)",
+    "notes": "Billing module: customers, invoices and their line items."
+  },
+  "enums": [
+    {
+      "code": "invoice_status",
+      "name": "Invoice status",
+      "values": [
+        {
+          "value": "Draft",
+          "description": "Being edited, not yet sent to the customer"
+        },
+        {
+          "value": "Issued",
+          "description": "Sent to the customer, awaiting payment"
+        },
+        {
+          "value": "Paid",
+          "description": "Payment received in full"
+        },
+        {
+          "value": "Cancelled",
+          "description": "Voided before payment; kept for audit"
+        }
+      ]
+    }
+  ],
+  "entities": [
+    {
+      "code": "customer",
+      "name": "Customer",
+      "description": "A party that receives invoices.",
+      "fields": [
+        {
+          "code": "id",
+          "type": "identifier",
+          "description": "ULID primary key"
+        },
+        {
+          "code": "legal_name",
+          "type": "name",
+          "nullable": false,
+          "description": "Registered business or person name"
+        },
+        {
+          "code": "contact_email",
+          "type": "email",
+          "nullable": false,
+          "description": "Billing contact"
+        },
+        {
+          "code": "tax_id",
+          "type": "document",
+          "nullable": true,
+          "description": "Government tax identifier"
+        }
+      ],
+      "permissions": {
+        "create": "true",
+        "update": "true",
+        "delete": "false"
+      },
+      "relationships": [
+        {
+          "type": "has_many",
+          "target": "invoice",
+          "field": "customer_id",
+          "description": "Invoices billed to the customer"
+        }
+      ]
+    },
+    {
+      "code": "invoice",
+      "name": "Invoice",
+      "description": "A bill sent to a customer; moves Draft -> Issued -> Paid/Cancelled.",
+      "fields": [
+        {
+          "code": "id",
+          "type": "identifier",
+          "description": "ULID primary key"
+        },
+        {
+          "code": "customer_id",
+          "foreignKey": "customer",
+          "nullable": false,
+          "description": "Issuing target"
+        },
+        {
+          "code": "number",
+          "type": "document",
+          "nullable": false,
+          "description": "Fiscal invoice number"
+        },
+        {
+          "code": "status",
+          "enum": "invoice_status",
+          "nullable": false,
+          "default": "Draft",
+          "description": "Lifecycle state"
+        },
+        {
+          "code": "total_amount",
+          "type": "money",
+          "nullable": false,
+          "default": 0,
+          "calculated": true,
+          "description": "Sum of line totals"
+        },
+        {
+          "code": "issued_at",
+          "type": "moment",
+          "nullable": true,
+          "calculated": true,
+          "description": "When status moved to Issued"
+        }
+      ],
+      "permissions": {
+        "create": "true",
+        "update": "status = Draft",
+        "delete": "false"
+      },
+      "relationships": [
+        {
+          "type": "belongs_to",
+          "target": "customer",
+          "field": "customer_id",
+          "description": "Customer billed"
+        },
+        {
+          "type": "has_many",
+          "target": "invoice-item",
+          "field": "invoice_id",
+          "description": "Billable lines of the invoice"
+        }
+      ]
+    },
+    {
+      "code": "invoice-item",
+      "name": "Invoice item",
+      "description": "One billable line inside an invoice.",
+      "fields": [
+        {
+          "code": "id",
+          "type": "identifier",
+          "description": "ULID primary key"
+        },
+        {
+          "code": "invoice_id",
+          "foreignKey": "invoice",
+          "nullable": false,
+          "description": "Owning invoice"
+        },
+        {
+          "code": "description",
+          "type": "description",
+          "nullable": false,
+          "description": "What is being charged"
+        },
+        {
+          "code": "quantity",
+          "type": "quantity",
+          "nullable": false,
+          "default": 1,
+          "description": "Units billed"
+        },
+        {
+          "code": "unit_price",
+          "type": "money",
+          "nullable": false,
+          "description": "Price per unit"
+        },
+        {
+          "code": "line_total",
+          "type": "money",
+          "nullable": false,
+          "calculated": true,
+          "description": "quantity * unit_price"
+        }
+      ],
+      "permissions": {
+        "create": "true",
+        "update": "true",
+        "delete": "true"
+      },
+      "relationships": [
+        {
+          "type": "belongs_to",
+          "target": "invoice",
+          "field": "invoice_id",
+          "description": "Owning invoice"
+        }
+      ]
+    }
+  ]
+}

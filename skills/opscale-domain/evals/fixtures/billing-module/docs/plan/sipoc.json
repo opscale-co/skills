@@ -1,0 +1,34 @@
+{
+  "sipocs": [
+    {
+      "id": "issue-invoice", "title": "Issue invoice",
+      "description": "Validates the invoice totals and moves it from Draft to Issued.",
+      "businessRules": [ { "code": "BR-01", "text": "Only a Draft invoice with at least one item can be issued; its total is the sum of its line totals." } ],
+      "composes": [],
+      "suppliers": [ { "actor": "User", "description": "Picks the Draft invoice to issue" } ],
+      "inputs": [ { "name": "invoice", "source": "User", "type": "options", "validation": "required", "description": "Draft invoice to issue" } ],
+      "process": [ { "operation": "SP-01-03-L01-C01", "rule": "BR-01", "description": "Sets the total, the issue moment and the Issued status" } ],
+      "outputs": [
+        { "name": "success", "consumer": "All callers", "type": "bool", "description": "Whether the invoice was issued" },
+        { "name": "invoice", "consumer": "System", "type": "invoice", "description": "The issued invoice" }
+      ],
+      "customers": [ { "actor": "User", "description": "The customer who receives the invoice" } ],
+      "failureModes": { "soft": ["The invoice has no items"], "hard": ["The invoice does not exist or is not Draft"] }
+    },
+    {
+      "id": "record-payment", "title": "Record payment",
+      "description": "Records the customer's payment and moves the invoice from Issued to Paid.",
+      "businessRules": [ { "code": "BR-02", "text": "Only an Issued invoice can be paid, and it is paid in full." } ],
+      "composes": [],
+      "suppliers": [ { "actor": "User", "description": "Picks the Issued invoice the payment settles" } ],
+      "inputs": [ { "name": "invoice", "source": "User", "type": "options", "validation": "required", "description": "Issued invoice being paid" } ],
+      "process": [ { "operation": "SP-02-02-L01-C01", "rule": "BR-02", "description": "Sets the Paid status" } ],
+      "outputs": [
+        { "name": "success", "consumer": "All callers", "type": "bool", "description": "Whether the payment was recorded" },
+        { "name": "invoice", "consumer": "System", "type": "invoice", "description": "The paid invoice" }
+      ],
+      "customers": [ { "actor": "System", "description": "The billing flow, which closes" } ],
+      "failureModes": { "soft": [], "hard": ["The invoice does not exist or is not Issued"] }
+    }
+  ]
+}
