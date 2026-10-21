@@ -28,7 +28,7 @@
     "should_trigger": true
   },
   {
-    "query": "render docs/plan/graph.mmd for the recruitment module",
+    "query": "render the interactive graph page for the recruitment module",
     "should_trigger": true
   },
   {
