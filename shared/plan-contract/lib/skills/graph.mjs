@@ -216,9 +216,12 @@ export function generate({ planDir, skillDir }) {
   const files = render(graph, sources);
   for (const [rel, content] of Object.entries(files)) fs.writeFileSync(path.join(planDir, rel), content);
 
-  // The projection replaced graph.mmd — remove any stale Mermaid file.
-  const staleMmd = path.join(planDir, 'graph.mmd');
-  if (fs.existsSync(staleMmd)) fs.rmSync(staleMmd);
+  // The projection replaced graph.mmd and the retired opscale-ontology outputs
+  // (ontology.mmd / ontology.txt) — remove any stale copies.
+  for (const stale of ['graph.mmd', 'ontology.mmd', 'ontology.txt']) {
+    const stalePath = path.join(planDir, stale);
+    if (fs.existsSync(stalePath)) fs.rmSync(stalePath);
+  }
 
   assertSelfContained(files[PROJECTION], R);
   if (!R.failures.length) {

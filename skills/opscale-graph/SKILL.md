@@ -4,9 +4,10 @@ description: >
   Closes the Plan phase: builds the module's traceability graph from the Plan
   JSONs — graph.json (a nested {id, ref} hierarchy, each ref-ing the phase that
   owns it) + graph.html (an interactive, self-contained card tree). Step 5 of
-  Plan, after opscale-sipoc, before Generate; non-interactive, reads
-  docs/plan/*.json. Trigger: "generate the graph", "show the module hierarchy",
-  "close the plan phase". Not for editing Plan artifacts — re-run the owner.
+  Plan, after opscale-sipoc, before Generate; reads
+  docs/plan/*.json. Replaces the retired opscale-ontology. Trigger: "generate
+  the graph", "generate the ontology", "show the module hierarchy", "close the
+  plan phase". Not for editing Plan artifacts — re-run the owner.
 ---
 
 # opscale-graph
@@ -131,7 +132,7 @@ Spawn `plan-generator` (skill: `graph`). It runs:
 node scripts/render-graph.mjs --dir=docs/plan
 ```
 
-The script is **non-interactive and needs no JSON payload**: `generate()` reads the four sibling JSONs, deterministically BUILDS `docs/plan/graph.json` (the nested `{id, ref}` hierarchy), validates it against the schema and the semantic rules, then projects `docs/plan/graph.html`. Replace existing files (any stale `graph.mmd` is removed). Never hand-edit either output.
+The script is **non-interactive and needs no JSON payload**: `generate()` reads the four sibling JSONs, deterministically BUILDS `docs/plan/graph.json` (the nested `{id, ref}` hierarchy), validates it against the schema and the semantic rules, then projects `docs/plan/graph.html`. Replace existing files (any stale `graph.mmd`, and the retired `opscale-ontology` outputs `ontology.mmd` / `ontology.txt`, are removed). Never hand-edit either output.
 
 ### Phase 2 — Validate (agent)
 

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Billing — module graph</title>
+<style>
+:root{color-scheme:light dark;
+  --bg:#f6f7f9;--fg:#1a1d24;--muted:#5b6472;--line:#d9dde4;--card:#ffffff;
+  --sp:#2563eb;--step:#0e7490;--crud:#15803d;--logic:#9333ea;--output:#b45309;
+  --entity:#0f766e;--accent:#334155;}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1115;--fg:#e6e9ef;--muted:#9aa4b2;--line:#2a2f3a;--card:#171a21;
+  --sp:#60a5fa;--step:#22d3ee;--crud:#4ade80;--logic:#c084fc;--output:#fbbf24;
+  --entity:#2dd4bf;--accent:#cbd5e1;}}
+:root[data-theme=dark]{
+  --bg:#0f1115;--fg:#e6e9ef;--muted:#9aa4b2;--line:#2a2f3a;--card:#171a21;
+  --sp:#60a5fa;--step:#22d3ee;--crud:#4ade80;--logic:#c084fc;--output:#fbbf24;
+  --entity:#2dd4bf;--accent:#cbd5e1;}
+:root[data-theme=light]{
+  --bg:#f6f7f9;--fg:#1a1d24;--muted:#5b6472;--line:#d9dde4;--card:#ffffff;
+  --sp:#2563eb;--step:#0e7490;--crud:#15803d;--logic:#9333ea;--output:#b45309;
+  --entity:#0f766e;--accent:#334155;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+.wrap{max-width:900px;margin:0 auto;padding:24px 18px 80px}
+header h1{margin:0 0 2px;font-size:20px}
+header p{margin:0 0 20px;color:var(--muted);font-size:13px}
+.tree{display:flex;flex-direction:column;gap:8px}
+.children{display:none;flex-direction:column;gap:8px;margin:8px 0 2px 20px;
+  padding-left:14px;border-left:2px solid var(--line)}
+.card.open>.children{display:flex}
+.card{border:1px solid var(--line);border-radius:10px;background:var(--card);
+  overflow:hidden}
+.card-head{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;
+  user-select:none}
+.card-head:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.card.leaf>.card-head{cursor:default}
+.twisty{width:14px;flex:0 0 14px;color:var(--muted);transition:transform .15s;font-size:11px}
+.card.open>.card-head .twisty{transform:rotate(90deg)}
+.card.leaf>.card-head .twisty{visibility:hidden}
+.badge{font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  padding:3px 6px;border-radius:5px;color:#fff;white-space:nowrap}
+.ttl{font-weight:600}
+.sub{color:var(--muted);font-size:13px;font-weight:400}
+.kind{margin-left:auto;font-size:11px;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.04em}
+.card-module>.card-head .badge{background:var(--accent)}
+.card-subprocess>.card-head .badge{background:var(--sp)}
+.card-step>.card-head .badge{background:var(--step)}
+.op-crud>.card-head .badge{background:var(--crud)}
+.op-logic>.card-head .badge{background:var(--logic)}
+.op-output>.card-head .badge{background:var(--output)}
+.card-entity{border-color:var(--entity)}
+.card-entity>.card-head .badge{background:var(--entity)}
+.card-logic{border-color:var(--logic)}
+.card-logic>.card-head .badge{background:var(--logic)}
+.detail{padding:4px 14px 14px;font-size:13px}
+.detail h4{margin:12px 0 4px;font-size:12px;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--muted)}
+.detail p{margin:4px 0}
+.detail ul{margin:4px 0;padding-left:18px}
+table.fields{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+table.fields th,table.fields td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);
+  vertical-align:top}
+table.fields th{color:var(--muted);font-weight:600}
+code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.toolbar{display:flex;gap:8px;margin-bottom:16px}
+button.tb{font:inherit;font-size:12px;padding:6px 10px;border:1px solid var(--line);
+  border-radius:8px;background:var(--card);color:var(--fg);cursor:pointer}
+button.tb:hover{border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1>Billing — module graph</h1>
+<p>finance/billing · finance · Acme ERP — interactive projection of graph.json</p>
+</header>
+<div class="toolbar">
+<button class="tb" id="expand" type="button">Expand all</button>
+<button class="tb" id="collapse" type="button">Collapse all</button>
+</div>
+<div class="tree" id="tree">
+<div class="card card-module"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">MODULE</span><span class="ttl">Billing <span class="sub">finance · Acme ERP</span></span><span class="kind">module</span></div><div class="children"><div class="card card-subprocess"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-01</span><span class="ttl">Invoicing <span class="sub">⟶ Wait for the customer's payment</span></span><span class="kind">subprocess</span></div><div class="children"><div class="detail"><p>Registers the customer, drafts the invoice with its items and issues it.</p></div><div class="card card-step"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-01-01</span><span class="ttl">Register the customer <span class="sub">Registers the customer that will receive the invoice.</span></span><span class="kind">step</span></div><div class="children"><div class="card op-crud"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-01-01-C01</span><span class="ttl">create customer <span class="sub">Registers the customer that will receive the invoice</span></span><span class="kind">crud</span></div><div class="children"><div class="card card-entity"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">customer</span><span class="ttl">Customer <span class="sub">customer</span></span><span class="kind">entity</span></div><div class="children"><div class="detail"><p>A party that receives invoices.</p><h4>Fields</h4><table class="fields"><tr><th>Field</th><th>Type</th><th>Null</th><th>Description</th></tr><tr><td><code>id</code></td><td><code>identifier</code></td><td>no</td><td>ULID primary key</td></tr><tr><td><code>legal_name</code></td><td><code>name</code></td><td>no</td><td>Registered business or person name</td></tr><tr><td><code>contact_email</code></td><td><code>email</code></td><td>no</td><td>Billing contact</td></tr><tr><td><code>tax_id</code></td><td><code>document</code></td><td>yes</td><td>Government tax identifier</td></tr></table></div></div></div></div></div></div></div><div class="card card-step"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-01-02</span><span class="ttl">Create the invoice <span class="sub">Creates the invoice in Draft with its billable items.</span></span><span class="kind">step</span></div><div class="children"><div class="card op-crud"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-01-02-C01</span><span class="ttl">create invoice <span class="sub">Creates the invoice in Draft for the customer</span></span><span class="kind">crud</span></div><div class="children"><div class="card card-entity"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">invoice</span><span class="ttl">Invoice <span class="sub">invoice</span></span><span class="kind">entity</span></div><div class="children"><div class="detail"><p>A bill sent to a customer; moves Draft -&gt; Issued -&gt; Paid/Cancelled.</p><h4>Fields</h4><table class="fields"><tr><th>Field</th><th>Type</th><th>Null</th><th>Description</th></tr><tr><td><code>id</code></td><td><code>identifier</code></td><td>no</td><td>ULID primary key</td></tr><tr><td><code>customer_id</code></td><td><code>→ customer</code></td><td>no</td><td>Issuing target</td></tr><tr><td><code>number</code></td><td><code>document</code></td><td>no</td><td>Fiscal invoice number</td></tr><tr><td><code>status</code></td><td><code>enum invoice_status</code></td><td>no</td><td>Lifecycle state</td></tr><tr><td><code>total_amount</code></td><td><code>money</code></td><td>no</td><td>Sum of line totals</td></tr><tr><td><code>issued_at</code></td><td><code>moment</code></td><td>yes</td><td>When status moved to Issued</td></tr></table></div></div></div></div></div><div class="card op-crud"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-01-02-C02</span><span class="ttl">create invoice_item <span class="sub">Adds each billable line to the invoice</span></span><span class="kind">crud</span></div><div class="children"><div class="card card-entity"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">invoice-item</span><span class="ttl">Invoice item <span class="sub">invoice_item</span></span><span class="kind">entity</span></div><div class="children"><div class="detail"><p>One billable line inside an invoice.</p><h4>Fields</h4><table class="fields"><tr><th>Field</th><th>Type</th><th>Null</th><th>Description</th></tr><tr><td><code>id</code></td><td><code>identifier</code></td><td>no</td><td>ULID primary key</td></tr><tr><td><code>invoice_id</code></td><td><code>→ invoice</code></td><td>no</td><td>Owning invoice</td></tr><tr><td><code>description</code></td><td><code>description</code></td><td>no</td><td>What is being charged</td></tr><tr><td><code>quantity</code></td><td><code>quantity</code></td><td>no</td><td>Units billed</td></tr><tr><td><code>unit_price</code></td><td><code>money</code></td><td>no</td><td>Price per unit</td></tr><tr><td><code>line_total</code></td><td><code>money</code></td><td>no</td><td>quantity * unit_price</td></tr></table></div></div></div></div></div></div></div><div class="card card-step"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-01-03</span><span class="ttl">Issue the invoice <span class="sub">Validates the totals and moves the invoice to Issued.</span></span><span class="kind">step</span></div><div class="children"><div class="card op-logic"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-01-03-L01</span><span class="ttl">issue-invoice <span class="sub">[BR-01]</span></span><span class="kind">logic</span></div><div class="children"><div class="card card-logic"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">issue-invoice</span><span class="ttl">Issue invoice <span class="sub">SIPOC</span></span><span class="kind">logic</span></div><div class="children"><div class="detail"><p>Validates the invoice totals and moves it from Draft to Issued.</p><h4>Inputs</h4><ul><li><code>invoice</code> <span class="sub">options · required</span> — Draft invoice to issue</li></ul><h4>Process</h4><ul><li><code>SP-01-03-L01-C01</code> — Sets the total, the issue moment and the Issued status <span class="sub">[BR-01]</span></li></ul><h4>Outputs</h4><ul><li><code>success</code> <span class="sub">bool</span> — Whether the invoice was issued</li><li><code>invoice</code> <span class="sub">invoice</span> — The issued invoice</li></ul><h4>Business rules</h4><ul><li><code>BR-01</code> — Only a Draft invoice with at least one item can be issued; its total is the sum of its line totals.</li></ul><h4>Soft failures</h4><ul><li>The invoice has no items</li></ul><h4>Hard failures</h4><ul><li>The invoice does not exist or is not Draft</li></ul></div></div></div><div class="card op-crud"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-01-03-L01-C01</span><span class="ttl">update invoice <span class="sub">Sets the total, the issue moment and the Issued status</span></span><span class="kind">crud</span></div><div class="children"><div class="card card-entity"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">invoice</span><span class="ttl">Invoice <span class="sub">invoice</span></span><span class="kind">entity</span></div><div class="children"><div class="detail"><p>A bill sent to a customer; moves Draft -&gt; Issued -&gt; Paid/Cancelled.</p><h4>Fields</h4><table class="fields"><tr><th>Field</th><th>Type</th><th>Null</th><th>Description</th></tr><tr><td><code>id</code></td><td><code>identifier</code></td><td>no</td><td>ULID primary key</td></tr><tr><td><code>customer_id</code></td><td><code>→ customer</code></td><td>no</td><td>Issuing target</td></tr><tr><td><code>number</code></td><td><code>document</code></td><td>no</td><td>Fiscal invoice number</td></tr><tr><td><code>status</code></td><td><code>enum invoice_status</code></td><td>no</td><td>Lifecycle state</td></tr><tr><td><code>total_amount</code></td><td><code>money</code></td><td>no</td><td>Sum of line totals</td></tr><tr><td><code>issued_at</code></td><td><code>moment</code></td><td>yes</td><td>When status moved to Issued</td></tr></table></div></div></div></div></div></div></div></div></div></div></div><div class="card card-subprocess"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-02</span><span class="ttl">Settlement</span><span class="kind">subprocess</span></div><div class="children"><div class="detail"><p>Records the customer's payment against the issued invoice.</p></div><div class="card card-step"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-02-01</span><span class="ttl">Locate the invoice <span class="sub">Finds the issued invoice the payment settles.</span></span><span class="kind">step</span></div><div class="children"><div class="card op-crud"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-02-01-C01</span><span class="ttl">read invoice <span class="sub">Finds the issued invoice the payment settles</span></span><span class="kind">crud</span></div><div class="children"><div class="card card-entity"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">invoice</span><span class="ttl">Invoice <span class="sub">invoice</span></span><span class="kind">entity</span></div><div class="children"><div class="detail"><p>A bill sent to a customer; moves Draft -&gt; Issued -&gt; Paid/Cancelled.</p><h4>Fields</h4><table class="fields"><tr><th>Field</th><th>Type</th><th>Null</th><th>Description</th></tr><tr><td><code>id</code></td><td><code>identifier</code></td><td>no</td><td>ULID primary key</td></tr><tr><td><code>customer_id</code></td><td><code>→ customer</code></td><td>no</td><td>Issuing target</td></tr><tr><td><code>number</code></td><td><code>document</code></td><td>no</td><td>Fiscal invoice number</td></tr><tr><td><code>status</code></td><td><code>enum invoice_status</code></td><td>no</td><td>Lifecycle state</td></tr><tr><td><code>total_amount</code></td><td><code>money</code></td><td>no</td><td>Sum of line totals</td></tr><tr><td><code>issued_at</code></td><td><code>moment</code></td><td>yes</td><td>When status moved to Issued</td></tr></table></div></div></div></div></div></div></div><div class="card card-step"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-02-02</span><span class="ttl">Record the payment <span class="sub">Records the payment and moves the invoice to Paid.</span></span><span class="kind">step</span></div><div class="children"><div class="card op-logic"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-02-02-L01</span><span class="ttl">record-payment <span class="sub">[BR-02]</span></span><span class="kind">logic</span></div><div class="children"><div class="card card-logic"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">record-payment</span><span class="ttl">Record payment <span class="sub">SIPOC</span></span><span class="kind">logic</span></div><div class="children"><div class="detail"><p>Records the customer's payment and moves the invoice from Issued to Paid.</p><h4>Inputs</h4><ul><li><code>invoice</code> <span class="sub">options · required</span> — Issued invoice being paid</li></ul><h4>Process</h4><ul><li><code>SP-02-02-L01-C01</code> — Sets the Paid status <span class="sub">[BR-02]</span></li></ul><h4>Outputs</h4><ul><li><code>success</code> <span class="sub">bool</span> — Whether the payment was recorded</li><li><code>invoice</code> <span class="sub">invoice</span> — The paid invoice</li></ul><h4>Business rules</h4><ul><li><code>BR-02</code> — Only an Issued invoice can be paid, and it is paid in full.</li></ul><h4>Hard failures</h4><ul><li>The invoice does not exist or is not Issued</li></ul></div></div></div><div class="card op-crud"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">SP-02-02-L01-C01</span><span class="ttl">update invoice <span class="sub">Sets the Paid status</span></span><span class="kind">crud</span></div><div class="children"><div class="card card-entity"><div class="card-head" role="button" tabindex="0" aria-expanded="false"><span class="twisty">▶</span><span class="badge">invoice</span><span class="ttl">Invoice <span class="sub">invoice</span></span><span class="kind">entity</span></div><div class="children"><div class="detail"><p>A bill sent to a customer; moves Draft -&gt; Issued -&gt; Paid/Cancelled.</p><h4>Fields</h4><table class="fields"><tr><th>Field</th><th>Type</th><th>Null</th><th>Description</th></tr><tr><td><code>id</code></td><td><code>identifier</code></td><td>no</td><td>ULID primary key</td></tr><tr><td><code>customer_id</code></td><td><code>→ customer</code></td><td>no</td><td>Issuing target</td></tr><tr><td><code>number</code></td><td><code>document</code></td><td>no</td><td>Fiscal invoice number</td></tr><tr><td><code>status</code></td><td><code>enum invoice_status</code></td><td>no</td><td>Lifecycle state</td></tr><tr><td><code>total_amount</code></td><td><code>money</code></td><td>no</td><td>Sum of line totals</td></tr><tr><td><code>issued_at</code></td><td><code>moment</code></td><td>yes</td><td>When status moved to Issued</td></tr></table></div></div></div></div></div></div></div></div></div></div></div></div></div>
+</div>
+</div>
+<script>
+(function(){
+  var tree=document.getElementById('tree');
+  function toggle(head){
+    var card=head.parentElement;
+    if(card.classList.contains('leaf'))return;
+    var open=card.classList.toggle('open');
+    head.setAttribute('aria-expanded',open?'true':'false');
+  }
+  tree.addEventListener('click',function(e){
+    var head=e.target.closest('.card-head');
+    if(head&&tree.contains(head))toggle(head);
+  });
+  tree.addEventListener('keydown',function(e){
+    if(e.key!=='Enter'&&e.key!==' ')return;
+    var head=e.target.closest('.card-head');
+    if(head&&tree.contains(head)){e.preventDefault();toggle(head);}
+  });
+  function setAll(open){
+    tree.querySelectorAll('.card').forEach(function(c){
+      if(c.classList.contains('leaf'))return;
+      c.classList.toggle('open',open);
+      var h=c.querySelector(':scope>.card-head');
+      if(h)h.setAttribute('aria-expanded',open?'true':'false');
+    });
+  }
+  document.getElementById('expand').addEventListener('click',function(){setAll(true);});
+  document.getElementById('collapse').addEventListener('click',function(){setAll(false);});
+})();
+</script>
+</body>
+</html>

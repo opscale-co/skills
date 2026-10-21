@@ -1,0 +1,85 @@
+{
+  "module": {
+    "ref": "process.json#/module"
+  },
+  "subprocesses": [
+    {
+      "id": "SP-01",
+      "ref": "process.json#/subprocesses/0",
+      "steps": [
+        {
+          "id": "SP-01-01",
+          "ref": "process.json#/subprocesses/0/steps/0",
+          "operations": [
+            {
+              "id": "SP-01-01-C01",
+              "ref": "bpmn.json#/operations/SP-01/SP-01-01/0"
+            }
+          ]
+        },
+        {
+          "id": "SP-01-02",
+          "ref": "process.json#/subprocesses/0/steps/1",
+          "operations": [
+            {
+              "id": "SP-01-02-C01",
+              "ref": "bpmn.json#/operations/SP-01/SP-01-02/0"
+            },
+            {
+              "id": "SP-01-02-C02",
+              "ref": "bpmn.json#/operations/SP-01/SP-01-02/1"
+            }
+          ]
+        },
+        {
+          "id": "SP-01-03",
+          "ref": "process.json#/subprocesses/0/steps/2",
+          "operations": [
+            {
+              "id": "SP-01-03-L01",
+              "ref": "bpmn.json#/operations/SP-01/SP-01-03/0",
+              "operations": [
+                {
+                  "id": "SP-01-03-L01-C01",
+                  "ref": "bpmn.json#/operations/SP-01/SP-01-03/0/operations/0"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SP-02",
+      "ref": "process.json#/subprocesses/1",
+      "steps": [
+        {
+          "id": "SP-02-01",
+          "ref": "process.json#/subprocesses/1/steps/0",
+          "operations": [
+            {
+              "id": "SP-02-01-C01",
+              "ref": "bpmn.json#/operations/SP-02/SP-02-01/0"
+            }
+          ]
+        },
+        {
+          "id": "SP-02-02",
+          "ref": "process.json#/subprocesses/1/steps/1",
+          "operations": [
+            {
+              "id": "SP-02-02-L01",
+              "ref": "bpmn.json#/operations/SP-02/SP-02-02/0",
+              "operations": [
+                {
+                  "id": "SP-02-02-L01-C01",
+                  "ref": "bpmn.json#/operations/SP-02/SP-02-02/0/operations/0"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+flowchart TD
+%% module: finance/billing
+  t0(["An operator needs to bill a customer"]) --> s01_01
+  subgraph sp01 ["SP-01 Invoicing"]
+    s01_01["01) Register the customer"]
+    s01_01 --> s01_02["02) Create the invoice"]
+    s01_02 --> s01_03["03) Issue the invoice"]
+  end
+  s01_03 --> w01(["wait: Wait for the customer's payment"])
+  w01 --> s02_01
+  subgraph sp02 ["SP-02 Settlement"]
+    s02_01["01) Locate the invoice"]
+    s02_01 --> s02_02["02) Record the payment"]
+  end

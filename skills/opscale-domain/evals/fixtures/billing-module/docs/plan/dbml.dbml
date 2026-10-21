@@ -1,6 +1,25 @@
-Project billing {
-  Note: 'Billing module: customers, invoices and their line items. Status: PASS'
+//=====================================
+// PROJECT
+//=====================================
+
+Project Billing {
+  database_type: 'MySQL'
+
+  Note: '''
+  # Subdomain: Billing
+  Source spec: finance/billing/process.txt
+  Modeling standard: UBL Invoice (Invoice, InvoiceLine, CustomerParty)
+
+  Billing module: customers, invoices and their line items.
+
+  ## Bounded Context
+  - Core entities: customer, invoice, invoice_item
+  '''
 }
+
+//=====================================
+// ENUMS
+//=====================================
 
 Enum invoice_status {
   Draft     [note: 'Being edited, not yet sent to the customer']
@@ -9,46 +28,58 @@ Enum invoice_status {
   Cancelled [note: 'Voided before payment; kept for audit']
 }
 
-Table customer {
-  id identifier [pk, note: 'ULID primary key']
-  legal_name name [not null, note: 'Registered business or person name']
-  contact_email email [not null, unique, note: 'Billing contact']
-  tax_id document [note: 'Government tax identifier']
-  created_at timestamp
-  updated_at timestamp
+//=====================================
+// TABLES
+//=====================================
 
-  Note: 'customer — A party that receives invoices.'
+Table customer {
+  id             identifier [pk, note: 'ULID generado en la aplicación']
+  legal_name     name       [not null, note: 'Registered business or person name']
+  contact_email  email      [not null, note: 'Billing contact']
+  tax_id         document   [null, note: 'Government tax identifier']
+  created_at     timestamp  [not null]
+  updated_at     timestamp  [not null]
+
+  Note: '''
+  customer — A party that receives invoices.
+  '''
 }
 
 Table invoice {
-  id identifier [pk, note: 'ULID primary key']
-  customer_id identifier [not null, note: 'Issuing target']
-  number document [not null, unique, note: 'Fiscal invoice number']
-  status invoice_status [not null, default: 'Draft', note: 'Lifecycle state']
-  total_amount money [not null, default: 0, note: 'Sum of line totals']
-  issued_at moment [null, note: 'When status moved to Issued']
-  created_at timestamp
-  updated_at timestamp
+  id            identifier     [pk, note: 'ULID generado en la aplicación']
+  customer_id   identifier     [ref: > customer.id, not null, note: 'Issuing target']
+  number        document       [not null, note: 'Fiscal invoice number']
+  status        invoice_status [not null, default: 'Draft', note: 'Lifecycle state']
+  total_amount  money          [not null, default: 0, note: 'Sum of line totals (calculado: derivado, no capturado)']
+  issued_at     moment         [null, note: 'When status moved to Issued (calculado: derivado, no capturado)']
+  created_at    timestamp      [not null]
+  updated_at    timestamp      [not null]
 
   indexes {
-    (status, created_at)
+    customer_id [name: 'idx_invoice_customer_id']
+    status      [name: 'idx_invoice_status']
   }
 
-  Note: 'invoice — A bill sent to a customer; moves Draft -> Issued -> Paid/Cancelled.'
+  Note: '''
+  invoice — A bill sent to a customer; moves Draft -> Issued -> Paid/Cancelled.
+  '''
 }
 
 Table invoice_item {
-  id identifier [pk, note: 'ULID primary key']
-  invoice_id identifier [not null, note: 'Owning invoice']
-  description description [not null, note: 'What is being charged']
-  quantity quantity [not null, default: 1, note: 'Units billed']
-  unit_price money [not null, note: 'Price per unit']
-  line_total money [not null, note: 'quantity * unit_price']
-  created_at timestamp
-  updated_at timestamp
+  id           identifier  [pk, note: 'ULID generado en la aplicación']
+  invoice_id   identifier  [ref: > invoice.id, not null, note: 'Owning invoice']
+  description  description [not null, note: 'What is being charged']
+  quantity     quantity    [not null, default: 1, note: 'Units billed']
+  unit_price   money       [not null, note: 'Price per unit']
+  line_total   money       [not null, note: 'quantity * unit_price (calculado: derivado, no capturado)']
+  created_at   timestamp   [not null]
+  updated_at   timestamp   [not null]
 
-  Note: 'invoice-item — One billable line inside an invoice.'
+  indexes {
+    invoice_id [name: 'idx_invoice_item_invoice_id']
+  }
+
+  Note: '''
+  invoice-item — One billable line inside an invoice.
+  '''
 }
-
-Ref: invoice.customer_id > customer.id
-Ref: invoice_item.invoice_id > invoice.id

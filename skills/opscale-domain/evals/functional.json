@@ -4,7 +4,7 @@
     {
       "id": "billing-domain-generation",
       "fixture": "billing-module",
-      "prompt": "The Plan phase for this module is complete: the ontology manifest is at docs/plan/ontology.mmd (the index of which entities to build), the validated data model at docs/plan/dbml.dbml (the detail), and the constitution at .specify/memory/constitution.md. Generate the PHP domain layer for this module now: one migration per table, one Eloquent model per table with casts/fillable/relationships, the status enum, a repository trait per model, plus a Unit test per component (tests/Unit/) and a factory per model (database/factories/). Work non-interactively; make reasonable decisions yourself instead of asking questions.",
+      "prompt": "The Plan phase for this module is complete: the traceability graph is at docs/plan/graph.json (the build manifest), the validated data model at docs/plan/dbml.json (the detail), and the constitution at .specify/memory/constitution.md. Generate the PHP domain layer for this module now: one migration per table, one Eloquent model per table with casts/fillable/relationships, the status enum, a repository trait per model, plus a Unit test per component (tests/Unit/) and a factory per model (database/factories/). Work non-interactively; make reasonable decisions yourself instead of asking questions.",
       "assertions": [
         {
           "id": "structure",
