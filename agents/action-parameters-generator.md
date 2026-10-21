@@ -56,6 +56,11 @@ requires_options? }`:
      with no static enum, e.g. SPICED answers from a criterion catalog) →
      `type: "string"`, `requires_options: true`, an `options_entries` entry
      querying the catalog (`{Model}::query()->pluck('name', 'id')->all()`).
+   - A **`pdf`** input (a signed document the Action archives, e.g. a contract
+     or a resignation letter) → `type: "string"`, `rules` = `file`, `mimes:pdf`,
+     `max:10240` plus `required`/`nullable` from the validation. The Nova
+     adapter renders it as a File field and stores the upload; `handle()`
+     receives the stored path. No requires_options.
    - Any other scalar business type → the binding's PHP type (`name`/`title`/
      `description`/`text` → `"string"`; `quantity`/`rating` → `"int"`;
      `money`/`signedMoney` → `"string"` numeric; `yesNo` → `"bool"`;

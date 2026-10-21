@@ -16,11 +16,12 @@ const outPath = path.join(here, '..', 'schema', 'common.schema.json');
 
 // Slugs ambiguous or non-atomic as a SIPOC input: composites, free-form blobs,
 // files, secrets and geo shapes. Keeping them out forces inputs to be a single
-// unambiguous scalar the Action can validate.
+// unambiguous scalar the Action can validate. `pdf` stays allowed: one signed
+// document the Action archives is a concrete, validatable value.
 const AMBIGUOUS_FOR_SIPOC = new Set([
   'metadata', 'snippet', 'multiOptions', 'geofence', 'route', 'area', 'location',
   'place', 'bpmn', 'dbml', 'post', 'hash', 'token', 'password', 'file', 'image',
-  'video', 'audio', 'pdf', 'path',
+  'video', 'audio', 'path',
 ]);
 
 function extractSlugs(md) {
