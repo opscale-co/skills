@@ -47,6 +47,8 @@ Validation semantics are written in neutral terms; UI intent describes the contr
 | `post` | Rich text: blog posts, articles, formatted messages | `text` | text | rich-text editor (with file embeds) |
 | `postalCode` | Postal/ZIP code for shipping and address validation | `varchar(20)` | letters, digits, spaces, dashes | single-line text |
 | `quantity` | Counts and stock amounts | `int` | integer, ≥ 0 | stepper (step 1) |
+| `signedQuantity` | Signed integer count: ledger movements that add or subtract units (e.g. leave days) | `int` | integer, may be negative | stepper (step 1, accepts negatives) |
+| `percentage` | Percentage rate: accrual rate, pay-treatment split, premium over salary | `decimal(5,2)` | numeric, 0–100, two decimals | percentage input |
 | `rating` | Score for reviews, quality assessment, feedback | `decimal(2,1)` | numeric 0–5 | rating input (step 0.5) |
 | `region` | Geographic region or territory for sales/market analysis | `varchar(100)` | text, max 100 | single-line text |
 | `route` | Multi-waypoint path: delivery routes, trips, itineraries | `json` | optional; valid geo-JSON line | map route editor |
